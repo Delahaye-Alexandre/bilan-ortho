@@ -205,9 +205,11 @@ def test_sauvegarde_api(client):
     assert r.status_code == 200
     s = r.json()
     assert s["octets"] > 0 and "bilan-ortho-sauvegarde-" in s["fichier"]
+    from pathlib import Path
+
     etat = client.get("/api/sauvegardes").json()
     assert etat["derniere"] is not None
-    assert any(f["fichier"] == s["fichier"].split("/")[-1] for f in etat["fichiers"])
+    assert any(f["fichier"] == Path(s["fichier"]).name for f in etat["fichiers"])
 
 
 # --- structuration (LLM mocké) -------------------------------------------------------

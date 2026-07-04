@@ -148,7 +148,8 @@ def test_sauvegarde_creation_rotation_et_chiffrement(con, data_dir):
     cfg = config._deep_merge(config.DEFAULTS, {"sauvegarde": {"retention": 2}})
     bilan.create(con, [], "initial_simple")
     r1 = sauvegarde.creer(con, cfg)
-    fichier = data_dir / "sauvegardes" / r1["fichier"].split("/")[-1]
+    from pathlib import Path
+    fichier = data_dir / "sauvegardes" / Path(r1["fichier"]).name
     assert fichier.exists() and r1["octets"] > 0
     # la copie reste chiffrée : aucun en-tête SQLite ni donnée en clair
     brut = fichier.read_bytes()

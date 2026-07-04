@@ -4,8 +4,11 @@ uvicorn[standard]>=0.29
 httpx>=0.27
 pydantic>=2.6
 python-multipart>=0.0.9      # upload audio (dictée) et fichiers (import)
-# Base chiffrée (SQLCipher) + index vectoriel local
-sqlcipher3-binary>=0.5
+# Base chiffrée (SQLCipher) + index vectoriel local.
+# Même module `sqlcipher3` et même format de coffre sur les deux plateformes :
+# roues manylinux via -binary, roues win_amd64 via le paquet officiel.
+sqlcipher3-binary>=0.5 ; sys_platform == "linux"
+sqlcipher3>=0.6.2 ; sys_platform == "win32"
 sqlite-vec>=0.1.9
 
 # --- Phase 1 : dictée vocale locale ---

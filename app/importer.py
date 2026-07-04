@@ -26,8 +26,29 @@ _HEADINGS: list[tuple[str, str]] = [
 _HEADING_RE = [(cle, re.compile(pat, re.I)) for cle, pat in _HEADINGS]
 
 
+# Chemins d'installation standards de Tesseract sous Windows (installeur
+# UB-Mannheim), cherchés quand le binaire n'est pas sur le PATH.
+_TESSERACT_WIN = [
+    r"C:\Program Files\Tesseract-OCR",
+    r"C:\Program Files (x86)\Tesseract-OCR",
+]
+
+
+def _tesseract_dir() -> str | None:
+    """Dossier contenant tesseract, ou None. Cherche PATH puis emplacements
+    Windows standards."""
+    exe = shutil.which("tesseract")
+    if exe:
+        return os.path.dirname(exe)
+    if sys.platform == "win32":
+        for d in _TESSERACT_WIN:
+            if os.path.exists(os.path.join(d, "tesseract.exe")):
+                return d
+    return None
+
+
 def _ocr_available() -> bool:
-    if shutil.which("tesseract") is None:
+    if _tesseract_dir() is None:
         return False
     try:
         import ocrmypdf  # noqa: F401
@@ -43,11 +64,17 @@ def _ocr_pdf(data: bytes) -> str:
         fi.flush()
         try:
             # Via l'interpréteur courant (-m) : ne dépend pas du PATH, cohérent
-            # avec le `import ocrmypdf` vérifié par _ocr_available().
+            # avec le `import ocrmypdf` vérifié par _ocr_available(). Le dossier
+            # de Tesseract est ajouté au PATH du sous-processus (Windows :
+            # installation standard hors PATH).
+            env = dict(os.environ)
+            tess = _tesseract_dir()
+            if tess:
+                env["PATH"] = tess + os.pathsep + env.get("PATH", "")
             subprocess.run(
                 [sys.executable, "-m", "ocrmypdf",
                  "-l", "fra", "--force-ocr", "--quiet", fi.name, fo.name],
-                check=True, capture_output=True,
+                check=True, capture_output=True, env=env,
             )
             return _pdf_text(open(fo.name, "rb").read())
         finally:

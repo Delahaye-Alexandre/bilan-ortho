@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -24,11 +25,17 @@ APP_HOST = os.environ.get("BILAN_ORTHO_HOST", "127.0.0.1")
 APP_PORT = int(os.environ.get("BILAN_ORTHO_PORT", "8000"))
 
 
+def _data_dir_defaut() -> Path:
+    """Emplacement par défaut des données, selon l'OS."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
+        return base / "bilan-ortho"
+    return Path.home() / ".local/share/bilan-ortho"
+
+
 def data_dir() -> Path:
     """Répertoire des données (créé au besoin). Hors du dépôt git par défaut."""
-    d = Path(
-        os.environ.get("BILAN_ORTHO_DATA_DIR", Path.home() / ".local/share/bilan-ortho")
-    )
+    d = Path(os.environ.get("BILAN_ORTHO_DATA_DIR") or _data_dir_defaut())
     d.mkdir(parents=True, exist_ok=True)
     return d
 

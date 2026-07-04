@@ -1,0 +1,81 @@
+"""Point d'entrée natif de Bilan Ortho (compilé par PyInstaller sous Windows).
+
+Double-clic : si une instance répond déjà sur un port local, ouvre simplement
+le navigateur dessus (single-instance) ; sinon démarre le serveur sur le
+premier port libre et ouvre le navigateur dès qu'il répond. En mode compilé
+(fenêtré, sans console), les journaux partent dans <données>/serveur.log.
+"""
+from __future__ import annotations
+
+import socket
+import sys
+import threading
+import time
+import webbrowser
+
+import httpx
+
+PORTS = range(8000, 8011)
+
+
+def _instance_existante() -> str | None:
+    """URL d'une instance Bilan Ortho déjà en cours, sinon None."""
+    for p in PORTS:
+        try:
+            r = httpx.get(f"http://127.0.0.1:{p}/api/status", timeout=0.5)
+            if r.status_code == 200 and "db_exists" in r.json():
+                return f"http://127.0.0.1:{p}"
+        except Exception:
+            continue
+    return None
+
+
+def _port_libre() -> int:
+    for p in PORTS:
+        with socket.socket() as s:
+            try:
+                s.bind(("127.0.0.1", p))
+                return p
+            except OSError:
+                continue
+    raise SystemExit("Aucun port local libre (8000-8010).")
+
+
+def _ouvrir_quand_pret(url: str) -> None:
+    for _ in range(240):  # jusqu'à 2 minutes (premier démarrage plus lent)
+        try:
+            if httpx.get(f"{url}/api/status", timeout=0.5).status_code == 200:
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+    webbrowser.open(url)
+
+
+def main() -> None:
+    url = _instance_existante()
+    if url:
+        webbrowser.open(url)
+        return
+
+    port = _port_libre()
+    threading.Thread(
+        target=_ouvrir_quand_pret, args=(f"http://127.0.0.1:{port}",), daemon=True
+    ).start()
+
+    if getattr(sys, "frozen", False):
+        # Mode fenêtré : pas de console -> journal dans le dossier de données.
+        from app import config
+
+        log = open(config.data_dir() / "serveur.log", "a", buffering=1, encoding="utf-8")
+        sys.stdout = sys.stderr = log
+
+    from app.main import app  # import direct : compatible PyInstaller
+
+    import uvicorn
+
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+
+
+if __name__ == "__main__":
+    main()
