@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bilan Ortho — assistant local</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --border: #e2e5ea; --text: #1f2430;
+    --muted: #6b7280; --accent: #2f6f4e; --accent-d: #245a3f; --warn: #b45309;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, "Segoe UI", sans-serif;
+         color: var(--text); background: var(--bg); }
+  header { background: var(--panel); border-bottom: 1px solid var(--border);
+           padding: 12px 20px; display: flex; align-items: baseline; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .tag { font-size: 12px; color: var(--muted); }
+  .banner { background: #fff7ed; color: var(--warn); border-bottom: 1px solid #fed7aa;
+            padding: 8px 20px; font-size: 13px; }
+  main { display: grid; grid-template-columns: 300px 1fr; gap: 0; height: calc(100vh - 98px); }
+  .side { border-right: 1px solid var(--border); background: var(--panel);
+          padding: 16px; overflow-y: auto; }
+  .content { padding: 20px; overflow-y: auto; }
+  label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 4px; }
+  textarea, select, input { width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+            border-radius: 8px; font: inherit; background: #fff; color: var(--text); }
+  textarea { resize: vertical; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+           padding: 9px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+  button:hover { background: var(--accent-d); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button.rec { background: #b91c1c; }
+  button.rec:hover { background: #991b1b; }
+  .sec { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px;
+         background: var(--panel); overflow: hidden; }
+  .sec > .head { display: flex; justify-content: space-between; align-items: center;
+                 padding: 10px 14px; background: #fafbfc; border-bottom: 1px solid var(--border); }
+  .sec > .head h3 { margin: 0; font-size: 15px; display:flex; align-items:center; gap:8px; }
+  .sec .body { padding: 12px 14px; }
+  .out { white-space: pre-wrap; min-height: 60px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .status { font-size: 12px; color: var(--muted); }
+  .grow { flex: 1; }
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .badge.vide { background: #eef1f4; color: #6b7280; }
+  .badge.propose_ia { background: #fff7ed; color: #b45309; }
+  .badge.valide { background: #ecfdf5; color: #047857; }
+  .q { border: 1px solid #fed7aa; background: #fff7ed; border-radius: 10px;
+       padding: 10px 12px; margin-bottom: 10px; }
+  .q .ans { margin-top: 8px; }
+  .lock-overlay { position: fixed; inset: 0; background: #eef1f4;
+    display: flex; align-items: center; justify-content: center; z-index: 50; }
+  .lock-overlay[hidden] { display: none; }
+  .lock-card { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 28px 26px; width: 380px; max-width: 92vw;
+    box-shadow: 0 10px 40px rgba(0,0,0,.08); }
+  .lock-card h2 { margin: 0 0 6px; font-size: 20px; }
+  .lock-card input { margin-top: 10px; }
+  .lock-card button { margin-top: 14px; width: 100%; }
+  .lock-err { color: #b91c1c; font-size: 13px; min-height: 18px; margin-top: 8px; }
+  .small { font-size: 11px; margin-top: 14px; }
+  .bilan-empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(31,36,48,.45);
+    display: flex; align-items: center; justify-content: center; z-index: 40; }
+  .modal-overlay[hidden] { display: none; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    width: 720px; max-width: 94vw; max-height: 88vh; display: flex; flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,0,0,.15); }
+  .modal > .mhead { display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 20px; border-bottom: 1px solid var(--border); }
+  .modal > .mhead h2 { margin: 0; font-size: 17px; }
+  .modal > .mbody { padding: 6px 20px 16px; overflow-y: auto; }
+  .modal > .mfoot { display: flex; gap: 10px; align-items: center; padding: 12px 20px;
+    border-top: 1px solid var(--border); }
+  .modal .close { background: transparent; color: var(--muted); border: 0; font-size: 20px;
+    padding: 0 4px; cursor: pointer; }
+  fieldset { border: 1px solid var(--border); border-radius: 10px; margin: 12px 0 0; padding: 4px 14px 12px; }
+  legend { font-weight: 600; font-size: 13px; padding: 0 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 16px; }
+  .check { display: flex; gap: 8px; align-items: center; font-weight: 400; margin-top: 10px; }
+  .check input { width: auto; }
+  .help-body h3 { font-size: 14px; margin: 16px 0 4px; }
+  .help-body p, .help-body li { font-size: 13.5px; }
+  .reclist a { display:block; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px; }
+  .reclist a:hover { background:#f1f5f9; }
+</style>
+</head>
+<body>
+<div class="lock-overlay" id="lockOverlay" hidden>
+  <div class="lock-card">
+    <h2>🔒 Bilan Ortho</h2>
+    <p class="muted" id="lockMsg">Déverrouillez votre coffre chiffré.</p>
+    <input type="password" id="passphrase" placeholder="Passphrase" autocomplete="current-password" />
+    <input type="password" id="passphrase2" placeholder="Confirmer la passphrase" autocomplete="new-password" hidden />
+    <div class="lock-err" id="lockErr"></div>
+    <button id="unlockBtn">Déverrouiller</button>
+    <p class="muted small">Données chiffrées localement (AES-256). Aucune donnée ne quitte votre machine.</p>
+  </div>
+</div>
+
+<header>
+  <h1>🗒️ Bilan Ortho</h1>
+  <span class="tag">assistant local — aucune donnée ne quitte votre machine</span>
+</header>
+<div class="banner">
+  ⚠️ Aide à la rédaction. L'IA <b>propose</b> ; vous <b>relisez, corrigez et validez</b> chaque rubrique.
+  L'outil ne pose aucun diagnostic : vous restez responsable du contenu.
+</div>
+
+<main>
+  <aside class="side">
+    <label for="patientSel">Patient</label>
+    <div class="row">
+      <select id="patientSel" class="grow"></select>
+      <button id="patientsBtn" class="ghost" title="Gérer les patients">👤</button>
+    </div>
+    <label for="domaine">Domaine du bilan</label>
+    <select id="domaine"></select>
+    <label for="btype">Type</label>
+    <select id="btype">
+      <option value="initial_simple">Bilan initial (simple)</option>
+      <option value="initial_complexe">Bilan initial (complexe)</option>
+      <option value="renouvellement">Renouvellement</option>
+    </select>
+    <div style="margin-top:12px"><button id="newBilan" class="grow" style="width:100%">+ Nouveau bilan</button></div>
+
+    <label>Bilan courant</label>
+    <div id="curBilan" class="status">aucun</div>
+
+    <label>Bilans récents</label>
+    <div id="recents" class="reclist muted">—</div>
+
+    <label for="llmModel">Modèle IA (Ollama)</label>
+    <select id="llmModel"></select>
+    <div id="sttInfo" class="status"></div>
+
+    <label>Mes bilans de référence</label>
+    <div class="muted">Importez vos propres bilans : l'IA s'inspire de votre style (100 % local).</div>
+    <input type="file" id="refFile" accept=".pdf,.txt,.md" style="margin-top:6px" />
+    <div class="row" style="margin-top:6px"><button id="refImport" class="ghost" style="width:100%">Importer</button></div>
+    <div id="refStatus" class="status"></div>
+    <div id="refList" class="reclist muted"></div>
+
+    <div style="margin-top:16px" class="row">
+      <button id="settingsBtn" class="ghost grow">⚙️ Paramètres</button>
+      <button id="helpBtn" class="ghost">❓</button>
+    </div>
+    <div style="margin-top:8px"><button id="lockBtn" class="ghost" style="width:100%">🔒 Verrouiller</button></div>
+  </aside>
+
+  <section class="content">
+    <div class="sec">
+      <div class="head">
+        <h3>🎙️ Dictée vocale</h3>
+        <div class="row">
+          <span class="status" id="recStatus"></span>
+          <button id="recBtn">● Démarrer la dictée</button>
+        </div>
+      </div>
+      <div class="body">
+        <div class="muted">Parlez librement ; à l'arrêt, la transcription <b>locale</b> s'ajoute ci-dessous. L'audio n'est jamais conservé.</div>
+        <textarea id="dicteeText" class="out" rows="5" placeholder="Votre dictée transcrite apparaîtra ici — vous pouvez aussi taper directement…"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="structBtn">➡️ Structurer dans le bilan</button>
+          <button class="ghost" id="dicteeClear">Effacer</button>
+          <span class="status" id="structStatus"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="questions"></div>
+    <div id="bilanView"><div class="bilan-empty">Créez un nouveau bilan pour commencer.</div></div>
+    <div id="actionsRow" class="row" style="display:none; gap:8px; margin-bottom:20px; flex-wrap:wrap">
+      <button id="coteBtn" class="ghost">€ Coter le bilan</button>
+      <span id="coteInfo" class="status"></span>
+      <button id="valideBtn" class="ghost">✔ Marquer validé</button>
+      <button id="envoyeBtn" class="ghost">📨 Marquer envoyé</button>
+      <span class="grow"></span>
+      <button class="ghost" id="expDocx">⬇ Word</button>
+      <button class="ghost" id="expMd">⬇ Markdown</button>
+      <button class="ghost" id="copyBilan">Copier</button>
+    </div>
+  </section>
+</main>
+
+<div class="modal-overlay" id="settingsOverlay" hidden>
+  <div class="modal">
+    <div class="mhead"><h2>⚙️ Paramètres</h2><button class="close" data-close="settingsOverlay">✕</button></div>
+    <div class="mbody">
+      <fieldset>
+        <legend>Assistant IA (Ollama)</legend>
+        <div class="grid2">
+          <div><label>Modèle LLM</label><input id="cfgLlmModel" placeholder="qwen2.5:7b-instruct-q4_K_M"></div>
+          <div><label>Température (0 = factuel)</label><input id="cfgLlmTemp" type="number" step="0.1" min="0" max="1"></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Dictée vocale (locale)</legend>
+        <div class="grid3">
+          <div><label>Matériel</label>
+            <select id="cfgSttDevice"><option value="auto">auto</option><option value="cpu">cpu</option><option value="cuda">cuda (GPU)</option></select></div>
+          <div><label>Modèle Whisper</label>
+            <input id="cfgSttModel" list="sttModels" placeholder="auto">
+            <datalist id="sttModels"><option value="auto"><option value="tiny"><option value="base"><option value="small"><option value="medium"><option value="large-v3"></datalist></div>
+          <div><label>Faisceau (beam)</label><input id="cfgSttBeam" type="number" min="1" max="10"></div>
+          <div><label>Langue</label><input id="cfgSttLang" placeholder="fr"></div>
+        </div>
+        <label class="check"><input type="checkbox" id="cfgSttVad"> Filtrer les silences (VAD)</label>
+        <label>Vocabulaire métier (un terme par ligne — aide la reconnaissance)</label>
+        <textarea id="cfgSttHotwords" rows="4"></textarea>
+        <label>Corrections automatiques (une par ligne : <code>motif =&gt; remplacement</code>, regex)</label>
+        <textarea id="cfgSttCorr" rows="3" placeholder="ortofonie => orthophonie"></textarea>
+      </fieldset>
+      <fieldset>
+        <legend>Style de rédaction</legend>
+        <div class="grid3">
+          <div><label>Extraits de mes bilans injectés</label><input id="cfgStyleK" type="number" min="0" max="10"></div>
+          <div><label>Niveau de détail</label>
+            <select id="cfgStyleDetail"><option value="concis">concis</option><option value="standard">standard</option><option value="detaille">détaillé</option></select></div>
+          <div><label class="check" style="margin-top:30px"><input type="checkbox" id="cfgStyleVouv"> Vouvoiement</label></div>
+        </div>
+        <div><label>Modèle d'embeddings (indexation de mes bilans)</label>
+          <input id="cfgEmbModel" list="embModels">
+          <datalist id="embModels"><option value="nomic-embed-text"><option value="bge-m3"></datalist>
+          <div class="muted">⚠️ En changer invalide l'index : les bilans de référence devront être réimportés.</div></div>
+      </fieldset>
+      <fieldset>
+        <legend>Seuils d'interprétation (écarts-types)</legend>
+        <div class="grid3">
+          <div><label>Fragilité ≤</label><input id="cfgSeuilFrag" type="number" step="0.1"></div>
+          <div><label>Pathologique ≤</label><input id="cfgSeuilPatho" type="number" step="0.1"></div>
+          <div><label>Sévère ≤</label><input id="cfgSeuilSev" type="number" step="0.1"></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Cotation NGAP (évolue par avenants — source : ameli.fr)</legend>
+        <div class="grid2">
+          <div><label>Valeur AMO (€)</label><input id="cfgCotAmo" type="number" step="0.01"></div>
+          <div><label>Coeff. bilan simple</label><input id="cfgCotSimple" type="number"></div>
+          <div><label>Coeff. bilan complexe</label><input id="cfgCotComplexe" type="number"></div>
+          <div><label>Coeff. renouvellement</label><input id="cfgCotRenouv" type="number"></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Confidentialité (RGPD)</legend>
+        <div class="grid2">
+          <div><label>Verrouillage après inactivité (min, 0 = jamais)</label><input id="cfgRgpdLock" type="number" min="0"></div>
+          <div><label>Conservation des bilans (jours, 0 = illimitée)</label><input id="cfgRgpdCons" type="number" min="0"></div>
+        </div>
+        <div class="muted" style="margin-top:8px">L'audio de dictée est toujours supprimé après transcription (non désactivable).</div>
+      </fieldset>
+      <fieldset>
+        <legend>Sauvegarde du coffre (chiffrée)</legend>
+        <div class="grid3">
+          <div><label>Dossier (vide = données/sauvegardes)</label><input id="cfgSauvDossier" placeholder="ex. /mnt/usb/bilan-ortho"></div>
+          <div><label>Copies conservées</label><input id="cfgSauvRet" type="number" min="1"></div>
+          <div><label>Auto au déverrouillage (jours, 0 = off)</label><input id="cfgSauvAuto" type="number" min="0"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="sauvBtn" class="ghost">💾 Sauvegarder maintenant</button>
+          <span class="status" id="sauvStatus"></span>
+        </div>
+        <div class="muted">La copie reste chiffrée (même passphrase). Restauration : remplacer <code>bilan.db</code> par la copie, application arrêtée. Pensez à un dossier sur un autre support (clé USB, disque externe).</div>
+      </fieldset>
+      <fieldset>
+        <legend>Avancé — trame, catalogues de tests, prompt (JSON)</legend>
+        <div class="muted">Rubriques des nouveaux bilans : <code>trame.sections</code> · tests par domaine : <code>catalogues.&lt;domaine&gt;</code> · prompt de structuration : <code>prompts.structure_system</code> (<code>{cles}</code> y est remplacé par les rubriques valides).</div>
+        <textarea id="cfgAdvanced" rows="8" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:12px"></textarea>
+      </fieldset>
+    </div>
+    <div class="mfoot">
+      <button id="cfgSave">Enregistrer</button>
+      <span class="status" id="cfgStatus"></span>
+      <span class="grow"></span>
+      <button id="cfgReset" class="ghost">Rétablir les défauts</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="patientsOverlay" hidden>
+  <div class="modal">
+    <div class="mhead"><h2>👤 Patients</h2><button class="close" data-close="patientsOverlay">✕</button></div>
+    <div class="mbody">
+      <fieldset>
+        <legend id="patFormTitle">Nouveau patient</legend>
+        <div class="grid3">
+          <div><label>Nom</label><input id="patNom"></div>
+          <div><label>Prénom</label><input id="patPrenom"></div>
+          <div><label>Date de naissance</label><input id="patDdn" type="date"></div>
+        </div>
+        <div class="grid2">
+          <div><label>Sexe</label>
+            <select id="patSexe"><option value="">—</option><option value="F">F</option><option value="M">M</option><option value="autre">autre</option></select></div>
+          <div><label>Notes (contexte, précautions…)</label><input id="patNotes"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="patSave">Enregistrer</button>
+          <button id="patCancel" class="ghost" hidden>Annuler la modification</button>
+          <span class="status" id="patStatus"></span>
+        </div>
+      </fieldset>
+      <label>Patients enregistrés (cliquer pour modifier)</label>
+      <div id="patList" class="reclist muted">—</div>
+      <div class="muted small">⚠️ Supprimer un patient efface définitivement <b>tous ses bilans</b> (droit à l'effacement RGPD). Les données restent chiffrées sur cette machine uniquement.</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="helpOverlay" hidden>
+  <div class="modal">
+    <div class="mhead"><h2>❓ Comment ça marche</h2><button class="close" data-close="helpOverlay">✕</button></div>
+    <div class="mbody help-body">
+      <h3>1. Créez le patient puis le bilan</h3>
+      <p>Bouton 👤 : enregistrez le patient (nom, date de naissance — elle permet à l'assistant de calculer l'âge et d'interpréter les étalonnages sans vous le redemander). Sélectionnez-le, choisissez le domaine et le type, puis « + Nouveau bilan ». La trame réglementaire (tronc commun) est créée automatiquement.</p>
+      <h3>2. Dictez librement</h3>
+      <p>« Démarrer la dictée » : parlez comme vous pensez — anamnèse, observations, scores… La transcription est <b>100 % locale</b> (l'audio n'est jamais conservé). Vous pouvez aussi taper directement.</p>
+      <h3>3. Structurez</h3>
+      <p>« Structurer dans le bilan » : l'IA répartit vos propos dans les bonnes rubriques et <b>pose des questions</b> quand il manque quelque chose (âge, étalonnage d'un score, test sans résultat…). Répondez : le bilan se complète.</p>
+      <h3>4. Saisissez les épreuves</h3>
+      <p>Dans « Épreuves &amp; scores », saisissez chaque test avec son étalonnage : le drapeau (norme / fragilité / pathologique / sévère) est déduit automatiquement de vos seuils, et une phrase-type est ajoutée à la rubrique.</p>
+      <h3>5. Relisez, validez, exportez</h3>
+      <p>Chaque rubrique proposée par l'IA est marquée « à valider » : <b>vous relisez, corrigez et validez</b> — vous restez seul(e) responsable du contenu. Puis cotez (NGAP), exportez en Word ou Markdown, et marquez le bilan « validé » puis « envoyé » (le destinataire est tracé).</p>
+      <h3>Vos bilans de référence (votre style)</h3>
+      <p>Importez vos propres bilans (PDF, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Les PDF scannés nécessitent Tesseract (<code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>).</p>
+      <h3>Confidentialité & sauvegardes</h3>
+      <p>Tout est chiffré (SQLCipher) et tout tourne en local : aucune donnée ne quitte votre machine. L'application se verrouille seule après inactivité. Pensez à votre passphrase : elle est <b>irrécupérable</b>.</p>
+      <p>Une <b>sauvegarde chiffrée</b> du coffre est créée automatiquement au déverrouillage (par défaut : au plus tous les 7 jours) ; configurez le dossier dans ⚙️ Paramètres — idéalement sur un autre support (clé USB). Supprimer un patient efface définitivement tous ses bilans (droit à l'effacement).</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const api = (p, o) => fetch(p, o);
+let CUR = null;         // bilan courant
+let QS = [];            // questions de clarification en cours
+
+// ---------- Déverrouillage ----------
+const overlay = document.getElementById('lockOverlay');
+const pass = document.getElementById('passphrase');
+const pass2 = document.getElementById('passphrase2');
+const lockErr = document.getElementById('lockErr');
+const lockMsg = document.getElementById('lockMsg');
+const unlockBtn = document.getElementById('unlockBtn');
+let appStarted = false;
+
+async function gate() {
+  const s = await (await api('/api/status')).json();
+  if (s.unlocked) { startApp(); return; }
+  overlay.hidden = false;
+  if (s.first_run) {
+    lockMsg.textContent = "Premier lancement : créez la passphrase de votre coffre. Notez-la : elle est irrécupérable.";
+    pass2.hidden = false; unlockBtn.textContent = 'Créer le coffre';
+  }
+  pass.focus();
+}
+async function doUnlock() {
+  lockErr.textContent = '';
+  const p = pass.value;
+  if (!p) { lockErr.textContent = 'Passphrase requise.'; return; }
+  if (!pass2.hidden && p !== pass2.value) { lockErr.textContent = 'Les passphrases ne correspondent pas.'; return; }
+  unlockBtn.disabled = true;
+  try {
+    const r = await api('/api/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: p }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    pass.value = ''; pass2.value = ''; overlay.hidden = true; startApp();
+  } catch (e) { lockErr.textContent = e.message; } finally { unlockBtn.disabled = false; }
+}
+unlockBtn.addEventListener('click', doUnlock);
+pass.addEventListener('keydown', e => { if (e.key === 'Enter' && pass2.hidden) doUnlock(); });
+pass2.addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); });
+document.getElementById('lockBtn').addEventListener('click', async () => { await api('/api/lock', { method: 'POST' }); location.reload(); });
+
+// ---------- Démarrage ----------
+async function startApp() {
+  if (appStarted) return; appStarted = true;
+  await Promise.all([loadDomaines(), loadLLM(), initDictee(), loadRecents(), loadRefs(), loadPatients()]);
+}
+
+// ---------- Patients ----------
+let PATIENTS = [], PAT_EDIT = null;
+function patLabel(p) { return (((p.nom || '').toUpperCase()) + ' ' + (p.prenom || '')).trim() || ('#' + p.id); }
+async function loadPatients() {
+  try {
+    PATIENTS = await (await api('/api/patients')).json();
+    const sel = document.getElementById('patientSel');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— sans patient —</option>' +
+      PATIENTS.map(p => `<option value="${p.id}">${escapeHtml(patLabel(p))}</option>`).join('');
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+    renderPatList();
+  } catch {}
+}
+function renderPatList() {
+  const el = document.getElementById('patList');
+  if (!el) return;
+  el.innerHTML = PATIENTS.length ? PATIENTS.map(p =>
+    `<a data-id="${p.id}"><span>${escapeHtml(patLabel(p))}${p.date_naissance ? ` <span class="muted">· ${escapeHtml(p.date_naissance)}</span>` : ''} <span class="muted">(${p.nb_bilans} bilan${p.nb_bilans > 1 ? 's' : ''})</span></span><span class="delpat" data-id="${p.id}" style="float:right;cursor:pointer">✕</span></a>`
+  ).join('') : 'Aucun.';
+  el.querySelectorAll('a').forEach(a => a.addEventListener('click', () => editPatient(+a.dataset.id)));
+  el.querySelectorAll('.delpat').forEach(x => x.addEventListener('click', async e => {
+    e.stopPropagation();
+    const p = PATIENTS.find(q => q.id === +x.dataset.id);
+    if (!confirm(`Supprimer ${patLabel(p)} et TOUS ses bilans (${p.nb_bilans}) ?\nAction définitive (effacement RGPD).`)) return;
+    await api('/api/patients/' + x.dataset.id, { method: 'DELETE' });
+    if (CUR && CUR.patient_id === p.id) { CUR = null; renderBilan(); }
+    resetPatForm(); loadPatients(); loadRecents();
+  }));
+}
+function editPatient(id) {
+  const p = PATIENTS.find(q => q.id === id); if (!p) return;
+  PAT_EDIT = id;
+  $('patFormTitle').textContent = 'Modifier : ' + patLabel(p);
+  $('patNom').value = p.nom || ''; $('patPrenom').value = p.prenom || '';
+  $('patDdn').value = p.date_naissance || ''; $('patSexe').value = p.sexe || '';
+  $('patNotes').value = p.notes || ''; $('patCancel').hidden = false;
+}
+function resetPatForm() {
+  PAT_EDIT = null; $('patFormTitle').textContent = 'Nouveau patient';
+  ['patNom', 'patPrenom', 'patDdn', 'patNotes'].forEach(i => { $(i).value = ''; });
+  $('patSexe').value = ''; $('patCancel').hidden = true; $('patStatus').textContent = '';
+}
+document.getElementById('patientsBtn').addEventListener('click', () => {
+  resetPatForm(); loadPatients(); document.getElementById('patientsOverlay').hidden = false;
+});
+document.getElementById('patCancel').addEventListener('click', resetPatForm);
+document.getElementById('patSave').addEventListener('click', async () => {
+  const st = $('patStatus');
+  const body = {
+    nom: $('patNom').value.trim(), prenom: $('patPrenom').value.trim(),
+    date_naissance: $('patDdn').value, sexe: $('patSexe').value, notes: $('patNotes').value.trim(),
+  };
+  if (!body.nom) { st.textContent = 'Nom requis.'; return; }
+  st.textContent = '…';
+  const wasEdit = !!PAT_EDIT;
+  try {
+    const url = PAT_EDIT ? '/api/patients/' + PAT_EDIT : '/api/patients';
+    const r = await api(url, { method: PAT_EDIT ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    const saved = await r.json();
+    resetPatForm(); await loadPatients(); loadRecents();
+    if (!wasEdit) document.getElementById('patientSel').value = saved.id;
+    st.textContent = '✓';
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+});
+
+async function loadRefs() {
+  try {
+    const list = await (await api('/api/references')).json();
+    const el = document.getElementById('refList');
+    el.innerHTML = list.length ? list.map(r =>
+      `<a><span data-open>${escapeHtml(r.titre || 'extrait')} <span class="muted">(${r.section_cle})</span></span><span class="delref" data-id="${r.id}" style="float:right;cursor:pointer">✕</span></a>`).join('') : 'Aucun.';
+    el.querySelectorAll('.delref').forEach(x => x.addEventListener('click', async e => {
+      e.stopPropagation(); await api('/api/references/' + x.dataset.id, { method: 'DELETE' }); loadRefs();
+    }));
+  } catch {}
+}
+document.getElementById('refImport').addEventListener('click', async () => {
+  const f = document.getElementById('refFile').files[0];
+  const st = document.getElementById('refStatus');
+  if (!f) { st.textContent = 'Choisissez un fichier.'; return; }
+  st.textContent = 'Import & indexation locale…';
+  const fd = new FormData(); fd.append('file', f); fd.append('domaine', document.getElementById('domaine').value || '');
+  try {
+    const r = await api('/api/references', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    const s = await r.json(); st.textContent = `✓ ${s.n} extrait(s) indexé(s)`;
+    document.getElementById('refFile').value = ''; loadRefs();
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+});
+
+async function loadDomaines() {
+  const sel = document.getElementById('domaine');
+  const doms = await (await api('/api/domaines')).json();
+  sel.innerHTML = '<option value="">Générique (tronc commun)</option>' +
+    doms.map(d => `<option value="${d.cle}">${d.titre}</option>`).join('');
+}
+async function loadLLM() {
+  const sel = document.getElementById('llmModel');
+  try {
+    const { models, default: def } = await (await api('/api/models')).json();
+    const cfg = await (await api('/api/config')).json();
+    const cur = cfg.llm.model;
+    sel.innerHTML = models.map(m => `<option ${m === cur ? 'selected' : ''}>${m}</option>`).join('') || `<option>${cur}</option>`;
+  } catch { sel.innerHTML = '<option>Ollama injoignable</option>'; }
+}
+document.getElementById('llmModel').addEventListener('change', async e => {
+  await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: { llm: { model: e.target.value } } }) });
+});
+
+// ---------- Bilan ----------
+document.getElementById('newBilan').addEventListener('click', async () => {
+  const dom = document.getElementById('domaine').value;
+  const type = document.getElementById('btype').value;
+  const pid = +document.getElementById('patientSel').value || null;
+  const body = { domaines: dom ? [dom] : [], type, patient_id: pid };
+  const r = await api('/api/bilans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  CUR = await r.json(); QS = []; renderBilan(); renderQuestions(); loadRecents(); loadPatients();
+});
+async function loadBilan(id) {
+  CUR = await (await api('/api/bilans/' + id)).json(); QS = []; renderBilan(); renderQuestions();
+}
+async function loadRecents() {
+  try {
+    const list = await (await api('/api/bilans')).json();
+    const el = document.getElementById('recents');
+    el.innerHTML = list.length ? list.map(b => {
+      const pat = b.patient_nom ? `${(b.patient_nom || '').toUpperCase()} ${b.patient_prenom || ''}`.trim() + ' · ' : '';
+      return `<a data-id="${b.id}">#${b.id} · ${escapeHtml(pat)}${b.domaine_titres || 'Générique'} <span class="muted">(${b.statut})</span></a>`;
+    }).join('') : '—';
+    el.querySelectorAll('a').forEach(a => a.addEventListener('click', () => loadBilan(a.dataset.id)));
+  } catch {}
+}
+function curLabel() {
+  const pat = CUR && CUR.patient ? patLabel(CUR.patient) + ' · ' : '';
+  document.getElementById('curBilan').textContent =
+    CUR ? `#${CUR.id} · ${pat}${CUR.domaine_titres || 'Générique'} · ${CUR.statut}` : 'aucun';
+}
+async function setStatut(statut) {
+  if (!CUR) return;
+  const body = { statut };
+  if (statut === 'envoye') {
+    const d = prompt('Destinataire (médecin prescripteur) :', '');
+    if (d === null) return;
+    body.destinataire = d.trim();
+  }
+  const r = await api(`/api/bilans/${CUR.id}/statut`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (r.ok) { CUR = await r.json(); renderBilan(); loadRecents(); }
+}
+document.getElementById('valideBtn').addEventListener('click', () => setStatut('valide'));
+document.getElementById('envoyeBtn').addEventListener('click', () => setStatut('envoye'));
+function renderBilan() {
+  curLabel();
+  const root = document.getElementById('bilanView');
+  document.getElementById('actionsRow').style.display = CUR ? 'flex' : 'none';
+  if (!CUR) { root.innerHTML = '<div class="bilan-empty">Créez un nouveau bilan pour commencer.</div>'; return; }
+  const sectionsHtml = CUR.sections.map(s => `
+    <div class="sec" data-cle="${s.cle}">
+      <div class="head">
+        <h3>${s.titre} <span class="badge ${s.statut}">${badgeLabel(s.statut)}</span></h3>
+        <button class="valider">Valider</button>
+      </div>
+      <div class="body">
+        <textarea class="secText out" rows="4" placeholder="—">${escapeHtml(s.contenu || '')}</textarea>
+        <div class="row" style="margin-top:8px"><button class="ghost save">Enregistrer</button><span class="status savest"></span></div>
+      </div>
+    </div>`).join('');
+  root.innerHTML = sectionsHtml + epreuvesCardHtml();
+  root.querySelectorAll('.sec[data-cle]').forEach(sec => {
+    const cle = sec.dataset.cle;
+    const ta = sec.querySelector('.secText');
+    sec.querySelector('.save').addEventListener('click', () => saveSection(cle, ta.value, null, sec));
+    sec.querySelector('.valider').addEventListener('click', () => saveSection(cle, ta.value, 'valide', sec));
+  });
+  document.getElementById('epAdd').addEventListener('click', addEpreuve);
+  loadTestList();
+  const cot = CUR.cotation;
+  document.getElementById('coteInfo').textContent = cot ? `${cot.code_amo} · ${cot.montant} €` : '';
+}
+
+function epreuvesCardHtml() {
+  const list = (CUR.epreuves || []).map(e => {
+    const rs = (e.resultats || []).map(r => {
+      const drap = r.drapeau_seuil ? ` <span class="badge ${drap2cls(r.drapeau_seuil)}">${r.drapeau_seuil}</span>` : '';
+      return `${escapeHtml(r.sous_epreuve || '')} : ${escapeHtml(r.score_brut || '')} ${escapeHtml(r.etalonnage_valeur || '')}${drap}`;
+    }).join(' · ');
+    return `<div class="muted" style="margin:2px 0"><b>${escapeHtml(e.test_nom)}</b> — ${rs}</div>`;
+  }).join('');
+  return `
+    <div class="sec">
+      <div class="head"><h3>🧪 Épreuves & scores</h3></div>
+      <div class="body">
+        <div id="epList">${list || '<span class="muted">Aucune épreuve saisie.</span>'}</div>
+        <div class="row" style="flex-wrap:wrap; gap:6px; margin-top:10px">
+          <input id="epTest" list="testList" placeholder="Test (ex. Alouette-R)" style="flex:2 1 140px">
+          <input id="epSub" placeholder="Sous-épreuve" style="flex:2 1 120px">
+          <input id="epScore" placeholder="Score brut" style="flex:1 1 90px">
+          <select id="epType" style="flex:1 1 120px">
+            <option value="">étalonnage…</option>
+            <option value="ecart_type">Écart-type</option>
+            <option value="percentile">Percentile</option>
+            <option value="note_standard">Note standard</option>
+            <option value="age_dev">Âge dév.</option>
+            <option value="age_lecture">Âge de lecture</option>
+          </select>
+          <input id="epVal" placeholder="Valeur (ex. -1,5)" style="flex:1 1 90px">
+          <button id="epAdd">Ajouter</button>
+        </div>
+        <div class="muted" style="margin-top:6px">Le drapeau (norme/fragilité/pathologique/sévère) est déduit automatiquement de l'étalonnage.</div>
+        <datalist id="testList"></datalist>
+      </div>
+    </div>`;
+}
+function drap2cls(d) { return d === 'norme' ? 'valide' : d === 'fragilite' ? 'propose_ia' : 'propose_ia'; }
+
+async function loadTestList() {
+  const dom = (CUR.domaines || [])[0];
+  const dl = document.getElementById('testList'); if (!dl) return;
+  if (!dom) { dl.innerHTML = ''; return; }
+  try {
+    const cat = await (await api('/api/catalogues/' + dom)).json();
+    dl.innerHTML = (cat.tests || []).map(t => `<option value="${t.nom}">${t.mesure}</option>`).join('');
+  } catch {}
+}
+
+async function addEpreuve() {
+  const test = document.getElementById('epTest').value.trim();
+  if (!test) return;
+  const r = {
+    sous_epreuve: document.getElementById('epSub').value.trim() || null,
+    score_brut: document.getElementById('epScore').value.trim() || null,
+    etalonnage_type: document.getElementById('epType').value || null,
+    etalonnage_valeur: document.getElementById('epVal').value.trim() || null,
+  };
+  const body = { test_nom: test, domaine: (CUR.domaines || [])[0] || '', resultats: [r] };
+  const resp = await api(`/api/bilans/${CUR.id}/epreuves`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (resp.ok) { CUR = await resp.json(); renderBilan(); }
+}
+function badgeLabel(s) { return s === 'valide' ? 'validé' : s === 'propose_ia' ? 'à valider' : 'vide'; }
+async function saveSection(cle, contenu, statut, sec) {
+  const st = sec.querySelector('.savest'); st.textContent = '…';
+  const body = { contenu }; if (statut) body.statut = statut;
+  const r = await api(`/api/bilans/${CUR.id}/sections/${cle}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (r.ok) {
+    const s = CUR.sections.find(x => x.cle === cle); s.contenu = contenu; if (statut) s.statut = statut;
+    const badge = sec.querySelector('.badge'); if (statut) { badge.className = 'badge ' + statut; badge.textContent = badgeLabel(statut); }
+    st.textContent = '✓';
+  } else { st.textContent = 'erreur'; }
+}
+document.getElementById('copyBilan').addEventListener('click', () => {
+  const txt = CUR.sections.filter(s => (s.contenu || '').trim())
+    .map(s => s.titre.toUpperCase() + '\n\n' + s.contenu.trim()).join('\n\n');
+  navigator.clipboard.writeText(txt);
+});
+document.getElementById('coteBtn').addEventListener('click', async () => {
+  if (!CUR) return;
+  const info = document.getElementById('coteInfo'); info.textContent = '…';
+  const r = await api(`/api/bilans/${CUR.id}/cotation`, { method: 'POST' });
+  if (r.ok) { const c = await r.json(); CUR.cotation = c; info.textContent = `${c.code_amo} · ${c.montant} €`; }
+  else info.textContent = 'erreur';
+});
+document.getElementById('expDocx').addEventListener('click', () => { if (CUR) window.open(`/api/bilans/${CUR.id}/export?format=docx`); });
+document.getElementById('expMd').addEventListener('click', () => { if (CUR) window.open(`/api/bilans/${CUR.id}/export?format=md`); });
+
+// ---------- Structuration ----------
+document.getElementById('structBtn').addEventListener('click', () => structure(document.getElementById('dicteeText').value, true));
+async function structure(text, replaceQuestions) {
+  if (!CUR) { document.getElementById('structStatus').textContent = 'Créez d\'abord un bilan.'; return; }
+  if (!text.trim()) { document.getElementById('structStatus').textContent = 'Rien à structurer.'; return; }
+  const st = document.getElementById('structStatus'); st.textContent = 'Analyse en cours…';
+  document.getElementById('structBtn').disabled = true;
+  try {
+    const r = await api(`/api/bilans/${CUR.id}/structure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transcription: text }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    const res = await r.json();
+    CUR = res.bilan; renderBilan();
+    QS = replaceQuestions ? res.questions : QS.concat(res.questions);
+    renderQuestions();
+    st.textContent = `✓ ${res.questions.length} question(s) de clarification`;
+    if (replaceQuestions) document.getElementById('dicteeText').value = '';
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+  finally { document.getElementById('structBtn').disabled = false; }
+}
+function renderQuestions() {
+  const root = document.getElementById('questions');
+  if (!QS.length) { root.innerHTML = ''; return; }
+  root.innerHTML = '<div class="sec"><div class="head"><h3>❓ Questions de l\'assistant</h3></div><div class="body" id="qbody"></div></div>';
+  const body = document.getElementById('qbody');
+  body.innerHTML = QS.map((q, i) => `
+    <div class="q" data-i="${i}">
+      <div><b>${escapeHtml(q.question)}</b>${q.pourquoi ? `<div class="muted">${escapeHtml(q.pourquoi)}</div>` : ''}</div>
+      <div class="row"><input class="ans" placeholder="Votre réponse…"><button class="ansBtn">Répondre</button></div>
+    </div>`).join('');
+  body.querySelectorAll('.q').forEach(qel => {
+    const i = +qel.dataset.i;
+    const inp = qel.querySelector('.ans');
+    const send = () => { const v = inp.value.trim(); if (!v) return; QS.splice(i, 1); structure(v, false); };
+    qel.querySelector('.ansBtn').addEventListener('click', send);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+  });
+}
+
+// ---------- Dictée (micro) ----------
+let mediaRecorder = null, chunks = [], recording = false;
+const recBtn = document.getElementById('recBtn');
+const dicteeText = document.getElementById('dicteeText');
+const recStatus = document.getElementById('recStatus');
+async function initDictee() {
+  try { const i = await (await api('/api/stt/info')).json(); document.getElementById('sttInfo').textContent = `Dictée : ${i.model} · ${i.device}`; } catch {}
+}
+let keepAlive = null;
+async function toggleRec() {
+  if (recording) { mediaRecorder.stop(); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { recStatus.textContent = 'Micro indisponible.'; return; }
+  chunks = []; mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  mediaRecorder.onstop = async () => {
+    clearInterval(keepAlive); keepAlive = null;
+    stream.getTracks().forEach(t => t.stop());
+    recording = false; recBtn.textContent = '● Démarrer la dictée'; recBtn.classList.remove('rec');
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    if (!blob.size) { recStatus.textContent = 'Rien enregistré.'; return; }
+    recStatus.textContent = 'Transcription locale… (1er lancement : téléchargement du modèle)'; recBtn.disabled = true;
+    try {
+      const fd = new FormData(); fd.append('audio', blob, 'dictee.webm');
+      const r = await api('/api/transcribe', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+      const res = await r.json();
+      dicteeText.value += (dicteeText.value ? ' ' : '') + res.text;
+      recStatus.textContent = '✓ transcrit';
+    } catch (e) { recStatus.textContent = 'Erreur : ' + e.message; }
+    finally { recBtn.disabled = false; }
+  };
+  mediaRecorder.start();
+  // Ping périodique : garde le coffre déverrouillé tant que la dictée tourne (évite un 423 au moment de transcrire).
+  keepAlive = setInterval(() => api('/api/keepalive', { method: 'POST' }).catch(() => {}), 60000);
+  recording = true; recBtn.textContent = '■ Arrêter'; recBtn.classList.add('rec'); recStatus.textContent = 'Enregistrement…';
+}
+recBtn.addEventListener('click', toggleRec);
+document.getElementById('dicteeClear').addEventListener('click', () => { dicteeText.value = ''; });
+
+function escapeHtml(s) { return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+// ---------- Paramètres & aide ----------
+document.querySelectorAll('.close').forEach(b => b.addEventListener('click', () => {
+  document.getElementById(b.dataset.close).hidden = true;
+}));
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => {
+  if (e.target === o) o.hidden = true;
+}));
+document.getElementById('helpBtn').addEventListener('click', () => { document.getElementById('helpOverlay').hidden = false; });
+
+const $ = id => document.getElementById(id);
+function fillSettings(c) {
+  $('cfgLlmModel').value = c.llm.model; $('cfgLlmTemp').value = c.llm.temperature;
+  $('cfgSttDevice').value = c.stt.device; $('cfgSttModel').value = c.stt.model;
+  $('cfgSttBeam').value = c.stt.beam_size; $('cfgSttVad').checked = !!c.stt.vad;
+  $('cfgSttLang').value = c.stt.language || 'fr';
+  $('cfgSttHotwords').value = (c.stt.hotwords || []).join('\n');
+  $('cfgSttCorr').value = Object.entries(c.stt.corrections || {}).map(([k, v]) => `${k} => ${v}`).join('\n');
+  $('cfgStyleK').value = c.style.few_shot_k; $('cfgStyleDetail').value = c.style.niveau_detail;
+  $('cfgStyleVouv').checked = !!c.style.vouvoiement; $('cfgEmbModel').value = c.embeddings.model;
+  $('cfgSeuilFrag').value = c.seuils.fragilite_et; $('cfgSeuilPatho').value = c.seuils.pathologique_et;
+  $('cfgSeuilSev').value = c.seuils.severe_et;
+  $('cfgCotAmo').value = c.cotation.valeur_amo; $('cfgCotSimple').value = c.cotation.bilan_simple_coeff;
+  $('cfgCotComplexe').value = c.cotation.bilan_complexe_coeff; $('cfgCotRenouv').value = c.cotation.renouvellement_coeff;
+  $('cfgRgpdLock').value = c.rgpd.verrouillage_inactivite_minutes; $('cfgRgpdCons').value = c.rgpd.conservation_jours;
+  $('cfgSauvDossier').value = c.sauvegarde.dossier || ''; $('cfgSauvRet').value = c.sauvegarde.retention;
+  $('cfgSauvAuto').value = c.sauvegarde.auto_jours;
+  $('cfgAdvanced').value = JSON.stringify(
+    { trame: c.trame, catalogues: c.catalogues, prompts: c.prompts }, null, 2);
+  api('/api/sauvegardes').then(r => r.json()).then(s => {
+    $('sauvStatus').textContent = s.derniere
+      ? `Dernière : ${s.derniere} UTC (${s.fichiers.length} copie${s.fichiers.length > 1 ? 's' : ''})`
+      : 'Aucune sauvegarde pour le moment.';
+  }).catch(() => {});
+}
+document.getElementById('sauvBtn').addEventListener('click', async () => {
+  const st = $('sauvStatus'); st.textContent = 'Sauvegarde…';
+  try {
+    const r = await api('/api/sauvegarde', { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    const s = await r.json();
+    st.textContent = `✓ ${s.fichier.split('/').pop()} (${Math.round(s.octets / 1024)} Ko)`;
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+});
+document.getElementById('settingsBtn').addEventListener('click', async () => {
+  try { fillSettings(await (await api('/api/config')).json()); } catch { return; }
+  $('cfgStatus').textContent = ''; $('settingsOverlay').hidden = false;
+});
+function collectSettings() {
+  const corrections = {};
+  $('cfgSttCorr').value.split('\n').forEach(l => {
+    const i = l.indexOf('=>');
+    if (i > 0 && l.slice(0, i).trim()) corrections[l.slice(0, i).trim()] = l.slice(i + 2).trim();
+  });
+  // Champ numérique vidé -> undefined : la clé est omise du JSON et la valeur
+  // précédente est conservée côté serveur (fusion), au lieu d'écrire NaN/null.
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
+  let advanced;
+  try { advanced = JSON.parse($('cfgAdvanced').value || '{}'); }
+  catch { throw new Error('le JSON de la section « Avancé » est invalide.'); }
+  return {
+    llm: { model: $('cfgLlmModel').value.trim(), temperature: num($('cfgLlmTemp').value) },
+    stt: {
+      device: $('cfgSttDevice').value, model: $('cfgSttModel').value.trim() || 'auto',
+      beam_size: num($('cfgSttBeam').value), vad: $('cfgSttVad').checked,
+      language: $('cfgSttLang').value.trim() || 'fr',
+      hotwords: $('cfgSttHotwords').value.split('\n').map(s => s.trim()).filter(Boolean),
+      corrections,
+    },
+    style: {
+      few_shot_k: num($('cfgStyleK').value), niveau_detail: $('cfgStyleDetail').value,
+      vouvoiement: $('cfgStyleVouv').checked,
+    },
+    embeddings: { model: $('cfgEmbModel').value.trim() || 'nomic-embed-text' },
+    seuils: {
+      fragilite_et: num($('cfgSeuilFrag').value), pathologique_et: num($('cfgSeuilPatho').value),
+      severe_et: num($('cfgSeuilSev').value),
+    },
+    cotation: {
+      valeur_amo: num($('cfgCotAmo').value), bilan_simple_coeff: num($('cfgCotSimple').value),
+      bilan_complexe_coeff: num($('cfgCotComplexe').value), renouvellement_coeff: num($('cfgCotRenouv').value),
+    },
+    rgpd: {
+      verrouillage_inactivite_minutes: num($('cfgRgpdLock').value),
+      conservation_jours: num($('cfgRgpdCons').value),
+    },
+    sauvegarde: {
+      dossier: $('cfgSauvDossier').value.trim(),
+      retention: num($('cfgSauvRet').value),
+      auto_jours: num($('cfgSauvAuto').value),
+    },
+    trame: advanced.trame, catalogues: advanced.catalogues, prompts: advanced.prompts,
+  };
+}
+document.getElementById('cfgSave').addEventListener('click', async () => {
+  const st = $('cfgStatus'); st.textContent = '…';
+  try {
+    const r = await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: collectSettings() }) });
+    if (!r.ok) throw new Error(r.statusText);
+    fillSettings(await r.json()); st.textContent = '✓ enregistré';
+    loadLLM(); initDictee();
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+});
+document.getElementById('cfgReset').addEventListener('click', async () => {
+  if (!confirm('Rétablir tous les paramètres par défaut ?')) return;
+  const st = $('cfgStatus');
+  try {
+    const r = await api('/api/config', { method: 'DELETE' });
+    if (!r.ok) throw new Error(r.statusText);
+    fillSettings(await r.json()); st.textContent = '✓ défauts rétablis';
+    loadLLM(); initDictee();
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+});
+
+gate();
+</script>
+</body>
+</html>

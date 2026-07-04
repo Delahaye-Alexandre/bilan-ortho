@@ -1,0 +1,25 @@
+# --- Socle (Phase 0+) ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx>=0.27
+pydantic>=2.6
+python-multipart>=0.0.9      # upload audio (dictée) et fichiers (import)
+# Base chiffrée (SQLCipher) + index vectoriel local
+sqlcipher3-binary>=0.5
+sqlite-vec>=0.1.9
+
+# --- Phase 1 : dictée vocale locale ---
+faster-whisper>=1.0          # STT (CTranslate2)
+
+# --- Phase 3 : export ---
+python-docx>=1.1             # export Word (.docx)
+
+# --- Phase 4 : import & RAG ---
+pypdf>=4                     # extraction texte des PDF natifs
+# Embeddings : via Ollama (nomic-embed-text par défaut, ou bge-m3). Aucune lib pip.
+# OCR des PDF scannés (optionnel) :
+#   pip install ocrmypdf
+#   sudo apt install tesseract-ocr tesseract-ocr-fra ghostscript
+
+# --- Développement (tests) ---
+# pytest>=8                  # `pip install pytest` puis `pytest tests/`

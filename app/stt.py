@@ -1,0 +1,131 @@
+"""Transcription vocale locale (faster-whisper), auto-adaptative au matériel.
+
+Aucune donnée ne quitte la machine : l'audio est transcrit en local puis le
+fichier temporaire est immédiatement supprimé (minimisation RGPD).
+
+Politique « auto » :
+- **device** : GPU seulement si CUDA présent ET VRAM totale ≥ 6 Go (sinon CPU) —
+  sur une machine où Ollama occupe déjà un petit GPU, on reste sur CPU.
+- **model** : `large-v3` sur GPU, `medium` sur CPU (qualité FR ; configurable).
+- Pour la meilleure qualité FR, pointer `stt.model` vers un modèle CTranslate2
+  fine-tuné FR (ex. conversion de `bofenghuang/whisper-large-v3-french`).
+"""
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import tempfile
+import threading
+
+_lock = threading.Lock()
+_cache: dict = {"model": None, "spec": None}
+
+
+class STTUnavailable(RuntimeError):
+    """faster-whisper n'est pas installé."""
+
+
+def _cuda_device_count() -> int:
+    try:
+        import ctranslate2
+
+        return ctranslate2.get_cuda_device_count()
+    except Exception:
+        return 0
+
+
+def _vram_total_mib() -> int | None:
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout.strip().splitlines()
+        return int(out[0].strip()) if out else None
+    except Exception:
+        return None
+
+
+def resolved(cfg: dict) -> dict:
+    """Résout (sans charger le modèle) le device/compute_type/model effectifs."""
+    stt = cfg["stt"]
+    device = stt.get("device", "auto")
+    if device == "auto":
+        has_cuda = _cuda_device_count() > 0
+        vram = _vram_total_mib() or 0
+        device = "cuda" if (has_cuda and vram >= 6000) else "cpu"
+
+    compute = stt.get("compute_type", "auto")
+    if compute == "auto":
+        compute = "float16" if device == "cuda" else "int8"
+
+    model = stt.get("model", "auto")
+    if not model or model == "auto":
+        model = "large-v3" if device == "cuda" else "medium"
+
+    return {"device": device, "compute_type": compute, "model": model}
+
+
+def _get_model(spec: dict):
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError as exc:  # pragma: no cover
+        raise STTUnavailable(
+            "faster-whisper n'est pas installé (pip install faster-whisper)."
+        ) from exc
+
+    with _lock:
+        if _cache["spec"] != spec or _cache["model"] is None:
+            _cache["model"] = WhisperModel(
+                spec["model"], device=spec["device"], compute_type=spec["compute_type"]
+            )
+            _cache["spec"] = spec
+        return _cache["model"]
+
+
+def _apply_corrections(text: str, corrections: dict) -> str:
+    for pattern, repl in (corrections or {}).items():
+        try:
+            text = re.sub(pattern, repl, text)
+        except re.error:
+            # Corrections mal formées : on ignore plutôt que de planter la dictée.
+            continue
+    return text
+
+
+def transcribe(audio_bytes: bytes, filename: str, cfg: dict) -> dict:
+    """Transcrit un audio (bytes) et supprime le fichier temporaire ensuite."""
+    stt = cfg["stt"]
+    spec = resolved(cfg)
+    model = _get_model(spec)
+
+    hotwords = ", ".join(stt.get("hotwords", [])) or None
+    suffix = os.path.splitext(filename or "")[1] or ".webm"
+
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    try:
+        tmp.write(audio_bytes)
+        tmp.flush()
+        tmp.close()
+        segments, info = model.transcribe(
+            tmp.name,
+            language=stt.get("language", "fr"),
+            vad_filter=stt.get("vad", True),
+            beam_size=int(stt.get("beam_size", 5)),
+            hotwords=hotwords,
+        )
+        text = "".join(seg.text for seg in segments).strip()
+        text = _apply_corrections(text, stt.get("corrections", {}))
+        return {
+            "text": text,
+            "language": getattr(info, "language", stt.get("language", "fr")),
+            "duration": round(getattr(info, "duration", 0.0), 2),
+            "model": spec["model"],
+            "device": spec["device"],
+        }
+    finally:
+        # Purge de l'audio brut (minimisation).
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass

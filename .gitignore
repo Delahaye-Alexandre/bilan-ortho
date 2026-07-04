@@ -1,0 +1,26 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+
+# Ne jamais versionner de données patient.
+# (Les données de l'app vivent HORS du dépôt : ~/.local/share/bilan-ortho ou
+# %LOCALAPPDATA%\bilan-ortho. data/reference/ ne contient que des bilans
+# fictifs d'amorce, eux versionnés.)
+*.db
+*.db-shm
+*.db-wal
+sauvegardes/
+bilans/
+*.patient.*
+
+# Journaux locaux
+*.log
+
+# Artefacts de build (générés)
+packaging/windows/BilanOrtho.exe
+packaging/windows/icone.ico
+build/
+dist/

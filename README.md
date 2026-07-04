@@ -1,0 +1,172 @@
+# Bilan Ortho — assistant local de rédaction de bilans orthophoniques
+
+Application **100 % locale** pour orthophonistes : vous **dictez** librement,
+l'IA **structure** vos propos dans la trame réglementaire du bilan, **pose des
+questions** quand il manque une donnée, s'inspire du **style de vos propres
+bilans**, puis vous **relisez, validez, cotez et exportez**.
+
+> ⚠️ **Aide à la rédaction, pas un dispositif de diagnostic.** L'IA *propose* ;
+> l'orthophoniste *relit, corrige, valide et signe*. Vous restez seul(e)
+> responsable du contenu. Aucune donnée ne quitte votre machine (pas
+> d'obligation HDS ; RGPD par conception). Voir `docs/notice-medico-legale.md`
+> et `docs/RGPD-registre-traitements.md`.
+
+## Fonctionnalités
+
+- **Coffre chiffré** (SQLCipher, AES-256) déverrouillé par passphrase ;
+  verrouillage automatique après inactivité ; journal d'audit ;
+  **sauvegardes chiffrées** automatiques (au déverrouillage, cadence
+  configurable) et manuelles, avec rotation — la copie s'ouvre avec la même
+  passphrase.
+- **Patients** : fiche minimale (nom, prénom, date de naissance, sexe, notes),
+  bilans rattachés, **âge calculé automatiquement** (transmis à l'IA pour les
+  étalonnages — jamais l'identité) et porté sur les exports ; suppression d'un
+  patient = **effacement RGPD** complet (bilans en cascade).
+- **Dictée vocale locale** (faster-whisper, auto-adaptée à votre matériel) :
+  l'audio est transcrit en local puis immédiatement supprimé.
+- **Structuration IA** (Ollama, local) : la dictée est répartie dans les
+  rubriques du tronc commun réglementaire (arrêté du 25/07/2023) et l'assistant
+  pose des **questions de clarification** (âge manquant, score sans étalonnage,
+  test sans résultat…).
+- **Épreuves & scores** : catalogues de tests par domaine (11 domaines),
+  interprétation automatique des étalonnages (écart-type, percentile, note
+  standard) selon **vos seuils**, phrases-types ajoutées au bilan.
+- **Votre style** : importez vos propres bilans (PDF natif, PDF scanné via OCR,
+  texte) ; ils sont indexés localement (embeddings + sqlite-vec dans la base
+  chiffrée) et réinjectés comme exemples de style à la rédaction. Des amorces
+  fictives sont fournies dans `data/reference/`.
+- **Cotation NGAP** paramétrable, **cycle de vie** du bilan (brouillon →
+  validé → envoyé au prescripteur, tracé) et **export** Word (.docx),
+  Markdown, texte.
+- **Tout est configurable** depuis l'écran ⚙️ Paramètres : modèles (LLM,
+  dictée, embeddings), style (détail, vouvoiement, nb d'exemples), seuils,
+  cotation, RGPD (verrouillage, durée de conservation — l'audio de dictée est,
+  lui, toujours supprimé), et même la **trame des bilans**, les **catalogues de
+  tests** et le **prompt de structuration** (éditeur avancé JSON) — sans
+  toucher au code.
+
+## Prérequis
+
+- Python 3.12+, [Ollama](https://ollama.com) lancé (`ollama serve`)
+- Modèles Ollama :
+  ```bash
+  ollama pull qwen2.5:7b-instruct-q4_K_M   # LLM (défaut, ~4 Go VRAM/RAM)
+  ollama pull nomic-embed-text             # embeddings (défaut, léger)
+  # option qualité FR : ollama pull bge-m3  (embeddings, ~1,2 Go)
+  ```
+- **Optionnel — OCR des PDF scannés** :
+  ```bash
+  sudo apt install tesseract-ocr tesseract-ocr-fra
+  pip install ocrmypdf
+  ```
+
+> N'utilisez **jamais** de modèle `:cloud` sur des données patient : tout doit
+> rester local.
+
+## Installation & lancement
+
+```bash
+cd ~/projects/bilan-ortho
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+./run.sh            # → http://localhost:8000 (bind 127.0.0.1 uniquement)
+```
+
+### Lancement en un clic (Windows/WSL)
+
+`BilanOrtho.exe` (sur le Bureau, source dans `packaging/windows/`) : double-clic
+→ démarre le serveur dans WSL s'il ne tourne pas déjà (via
+`scripts/start-serveur.sh`, silencieux et idempotent — jamais de doublon), puis
+ouvre http://localhost:8000 dans le navigateur. Recompiler après modification :
+`packaging/windows/build.sh bureau` (utilise le compilateur C# intégré à
+Windows, rien à installer). Journaux :
+`~/.local/share/bilan-ortho/serveur.log` (et `ollama.log`).
+
+Au premier lancement, créez la **passphrase** de votre coffre : elle chiffre
+toutes les données et est **irrécupérable** en cas d'oubli.
+
+Les données vivent dans `~/.local/share/bilan-ortho/` (surchargeable via
+`BILAN_ORTHO_DATA_DIR`). Hôte/port : `BILAN_ORTHO_HOST` / `BILAN_ORTHO_PORT` ;
+Ollama : `OLLAMA_HOST`.
+
+## Parcours type
+
+1. **Patient** (bouton 👤) puis **nouveau bilan** : domaine + type
+   (simple / complexe / renouvellement) — la date de naissance permet à
+   l'assistant de connaître l'âge sans le redemander.
+2. **Dictée** : parlez librement (ou tapez) ; transcription 100 % locale.
+3. **Structurer** : l'IA remplit les rubriques et pose ses questions ;
+   répondez-y (voix ou clavier), le bilan se complète.
+4. **Épreuves & scores** : saisissez chaque test ; le drapeau
+   norme / fragilité / pathologique / sévère est déduit de vos seuils.
+5. **Relire & valider** chaque rubrique (badge « à valider » → « validé »).
+6. **Coter** (NGAP), **exporter** (Word / Markdown / copie), puis marquer le
+   bilan **validé** et **envoyé** (destinataire tracé).
+
+Pour le style : importez 2-3 de vos bilans dans « Mes bilans de référence »
+(commencez avec `data/reference/` si vous n'en avez pas sous la main).
+
+## Sauvegarde & restauration
+
+Une sauvegarde chiffrée du coffre est créée automatiquement au déverrouillage
+si la dernière date de plus de N jours (défaut 7), et à la demande depuis
+⚙️ Paramètres. Dossier par défaut : `<données>/sauvegardes` — configurez
+plutôt un support externe (clé USB, disque). La copie reste chiffrée : **elle
+ne s'ouvre qu'avec votre passphrase**.
+
+**Restaurer** : application arrêtée, remplacez
+`~/.local/share/bilan-ortho/bilan.db` par le fichier de sauvegarde (renommé
+`bilan.db`), puis relancez et déverrouillez avec la même passphrase.
+
+## Dictée : choix du modèle
+
+Par défaut (`auto`), l'app choisit selon votre matériel : GPU ≥ 6 Go VRAM →
+`large-v3`, sinon CPU + `medium` (int8). Le modèle se télécharge au premier
+usage (~1,5 Go pour `medium`). Pour la meilleure qualité FR, pointez
+`Paramètres → Dictée → Modèle` vers un modèle CTranslate2 fine-tuné français
+(ex. conversion de `bofenghuang/whisper-large-v3-french`).
+
+## Tests
+
+```bash
+pip install pytest
+pytest tests/        # 60 tests, 100 % hors ligne (LLM/embeddings mockés ;
+                     # le test OCR est sauté si Tesseract n'est pas installé)
+```
+
+## Structure
+
+```
+bilan-ortho/
+├── app/
+│   ├── main.py         # API FastAPI (bind localhost)
+│   ├── security.py     # coffre, verrouillage, audit, purge RGPD
+│   ├── db.py           # schéma SQLCipher + sqlite-vec
+│   ├── config.py       # défauts + surcharges praticien (en base)
+│   ├── stt.py          # dictée locale (faster-whisper, auto-adaptative)
+│   ├── llm.py          # client Ollama (structuration JSON, génération)
+│   ├── prompts.py      # prompts (structuration, clarification, style)
+│   ├── bilan.py        # CRUD bilan, épreuves, interprétation étalonnages
+│   ├── patient.py      # patients, âge, effacement RGPD
+│   ├── sauvegarde.py   # copies chiffrées du coffre (VACUUM INTO, rotation)
+│   ├── catalogues.py   # tests étalonnés par domaine
+│   ├── cotation.py     # NGAP paramétrable
+│   ├── rag.py          # embeddings + recherche « style du praticien »
+│   ├── importer.py     # import PDF/OCR/texte → découpage → indexation
+│   ├── export.py       # Word / Markdown / texte
+│   └── static/         # interface web (vanilla, servie par FastAPI)
+├── data/reference/     # bilans fictifs d'amorce (style)
+├── docs/               # recherche, notice médico-légale, registre RGPD, avancement
+├── tests/              # pytest (hors ligne)
+├── requirements.txt
+└── run.sh
+```
+
+## Avertissement médico-légal
+
+Ce logiciel ne pose aucun diagnostic et ne remplace pas le jugement clinique.
+Les valeurs NGAP évoluent par avenants : vérifiez-les sur ameli.fr (elles sont
+modifiables dans les paramètres). Avant tout usage sur données réelles de
+patients, faites valider votre organisation par un DPO / juriste santé
+(consentement à l'enregistrement vocal notamment). Détails :
+`docs/notice-medico-legale.md`.
