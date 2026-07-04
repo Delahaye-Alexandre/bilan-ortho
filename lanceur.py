@@ -7,7 +7,9 @@ premier port libre et ouvre le navigateur dès qu'il répond. En mode compilé
 """
 from __future__ import annotations
 
+import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -16,6 +18,27 @@ import webbrowser
 import httpx
 
 PORTS = range(8000, 8011)
+
+# Navigateurs chromium capables du mode « application » (fenêtre dédiée sans
+# barre d'adresse ni onglets — l'app ressemble à un vrai logiciel).
+_NAVIGATEURS_APP = [
+    r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
+    r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
+    r"%LocalAppData%\Microsoft\Edge\Application\msedge.exe",
+    r"%ProgramFiles%\Google\Chrome\Application\chrome.exe",
+    r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe",
+]
+
+
+def _ouvrir_fenetre(url: str) -> None:
+    """Ouvre l'app dans une fenêtre dédiée (mode --app) ; à défaut, navigateur."""
+    if sys.platform == "win32":
+        for gabarit in _NAVIGATEURS_APP:
+            exe = os.path.expandvars(gabarit)
+            if os.path.exists(exe):
+                subprocess.Popen([exe, f"--app={url}", "--window-size=1280,860"])
+                return
+    webbrowser.open(url)
 
 
 def _instance_existante() -> str | None:
@@ -49,13 +72,13 @@ def _ouvrir_quand_pret(url: str) -> None:
         except Exception:
             pass
         time.sleep(0.5)
-    webbrowser.open(url)
+    _ouvrir_fenetre(url)
 
 
 def main() -> None:
     url = _instance_existante()
     if url:
-        webbrowser.open(url)
+        _ouvrir_fenetre(url)
         return
 
     port = _port_libre()

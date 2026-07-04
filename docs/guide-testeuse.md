@@ -30,7 +30,7 @@ donnée ne part sur internet, tout est chiffré sur votre machine.
 
 ## 2. Premier lancement (une seule fois, ~15-30 min de téléchargements)
 
-Au premier double-clic, votre navigateur s'ouvre sur l'écran
+Au premier double-clic, la fenêtre Bilan Ortho s'ouvre sur l'écran
 **« 🚀 Première installation »** qui vous guide :
 
 1. **Moteur Ollama** (l'IA locale) : si absent, cliquez « Télécharger

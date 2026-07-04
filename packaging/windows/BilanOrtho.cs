@@ -31,8 +31,27 @@ static class BilanOrtho
         catch { return false; }
     }
 
+    static readonly string[] NavigateursApp = {
+        @"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    };
+
     static void OuvrirNavigateur()
     {
+        // Fenêtre d'application dédiée (mode --app : ni onglets ni barre
+        // d'adresse) ; repli sur le navigateur par défaut.
+        foreach (var exe in NavigateursApp)
+        {
+            if (System.IO.File.Exists(exe))
+            {
+                Process.Start(new ProcessStartInfo(exe,
+                    "--app=" + Url + " --window-size=1280,860")
+                { UseShellExecute = false });
+                return;
+            }
+        }
         Process.Start(new ProcessStartInfo(Url) { UseShellExecute = true });
     }
 
