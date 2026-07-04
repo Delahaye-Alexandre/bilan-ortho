@@ -65,6 +65,15 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Vérifié** : exe copié sur le Bureau et exécuté depuis Windows — démarrage à froid OK (serveur up, 1 seul process), relance avec serveur déjà up → simple ouverture du navigateur, aucun doublon.
   - Distribution à d'autres orthophonistes (build natif Windows + installeur Ollama/Tesseract) : chantier séparé, non commencé (choix d'Alexandre : « mon PC d'abord »).
 
+- [~] **Chantier distribution (2026-07-05, plan validé `piped-pondering-hoare`)** — en cours
+  - [x] Phase A : dépôt GitHub **privé** `Delahaye-Alexandre/bilan-ortho`, tag v1.1.0.
+  - [x] Phase B : portabilité Windows natif — `sqlcipher3` officiel (roues win_amd64, même format de coffre) via marqueurs de plateforme, `data_dir` → `%LOCALAPPDATA%`, Tesseract Windows détecté, `lanceur.py` (single-instance, ports 8000-8010).
+  - [x] Phase C : premier lancement guidé — `app/systeme.py` (RAM, proposition **qwen3.5:9b** ≥16 Go / **qwen3.5:4b** 8-16 Go, recherche 07/2026), `GET /api/installation` + `POST /api/installation/pull` (NDJSON), écran UI avec progression, bascule du modèle après déverrouillage. OCR refactoré sur l'API Python ocrmypdf (compatible app compilée).
+  - [x] Phase E (jalon 1) : **CI verte sur windows-latest + ubuntu-latest** (68 tests) — SQLCipher Windows validé en vrai.
+  - [x] Phase D : spec PyInstaller onedir (DLL natives collectées), installeur Inno (par utilisateur, données préservées), job CI build + fumage du binaire + Release draft sur tag.
+  - [ ] Phase F : test réel de l'installeur sur le Windows d'Alexandre + retours testeuses. `docs/guide-testeuse.md` rédigé.
+  - Note machine d'Alexandre : l'app native Windows verra l'Ollama de WSL via localhost (port forwarding) et utilisera un coffre séparé (`%LOCALAPPDATA%\bilan-ortho`) — les données WSL ne bougent pas. Arrêter le serveur WSL avant de tester le natif (sinon le lanceur s'attache à l'instance WSL existante).
+
 ## Environnement (machine d'Alexandre)
 - Python 3.12.3, venv `.venv`. Ollama présent : `qwen2.5:7b-instruct-q4_K_M` (défaut LLM) + `glm-5.2:cloud` (⚠️ jamais sur données patient).
 - GPU RTX 3050 Ti **4 Go VRAM** (partagé avec Ollama) → STT lean CPU/distillé.

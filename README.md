@@ -162,6 +162,18 @@ bilan-ortho/
 └── run.sh
 ```
 
+## Distribution (Windows natif)
+
+Le dépôt GitHub privé (`Delahaye-Alexandre/bilan-ortho`) construit tout via
+Actions : tests sur Windows + Linux, binaire PyInstaller (`lanceur.py` →
+`dist/BilanOrtho/`), fumage du binaire, installeur Inno Setup
+(`packaging/windows/installeur.iss`, installation par utilisateur sans
+droits admin). Un tag `v*` publie une **Release draft** avec l'installeur —
+à partager en privé avec les testeuses, accompagné de
+`docs/guide-testeuse.md` (SmartScreen, premier lancement guidé, parcours
+d'essai). Les données vivent dans `%LOCALAPPDATA%\bilan-ortho` (préservées à
+la désinstallation).
+
 ## Avertissement médico-légal
 
 Ce logiciel ne pose aucun diagnostic et ne remplace pas le jugement clinique.
