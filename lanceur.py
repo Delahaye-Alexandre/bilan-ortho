@@ -78,4 +78,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Indispensable en app compilée (PyInstaller/Windows) : les bibliothèques
+    # qui créent des processus (ocrmypdf…) relanceraient l'app en boucle sinon.
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     main()

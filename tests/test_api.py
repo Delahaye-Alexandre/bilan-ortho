@@ -273,6 +273,33 @@ def test_structure_avec_llm_mocke(client, monkeypatch, mock_embed):
     assert "Durand" not in captured["user"] and "Léa" not in captured["user"]
 
 
+# --- premier lancement guidé -------------------------------------------------------
+
+def test_installation_etat(client, monkeypatch):
+    from app import systeme
+
+    monkeypatch.setattr(systeme, "ollama_etat", lambda cfg: {"ok": True, "modeles": ["x"]})
+    etat = client.get("/api/installation").json()
+    assert {"ollama", "ram_gio", "proposition", "pret"} <= set(etat)
+    assert etat["ollama"] is True and etat["pret"] is False
+
+
+def test_installation_accessible_verrouillee(client, monkeypatch):
+    """L'écran d'installation doit fonctionner avant tout déverrouillage."""
+    from app import systeme
+
+    monkeypatch.setattr(systeme, "ollama_etat", lambda cfg: {"ok": False, "modeles": []})
+    client.post("/api/lock")
+    assert client.get("/api/installation").status_code == 200
+
+
+def test_pull_nom_invalide(client):
+    assert client.post(
+        "/api/installation/pull", json={"modele": "méchant; rm -rf"}
+    ).status_code == 400
+    assert client.post("/api/installation/pull", json={}).status_code == 400
+
+
 # --- dictée ----------------------------------------------------------------------------
 
 def test_transcribe_audio_vide(client):

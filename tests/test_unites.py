@@ -168,6 +168,62 @@ def test_parse_structure_tolere_l_invalide():
     assert r["updates"] == [] and r["questions"] == []
 
 
+# --- système : RAM, proposition de modèle, installation ---------------------------
+
+def test_proposition_modele_par_ram():
+    from app import systeme
+
+    assert systeme.proposition_modele(32.0)["modele"] == systeme.MODELE_16GO
+    assert systeme.proposition_modele(15.6)["modele"] == systeme.MODELE_16GO
+    p8 = systeme.proposition_modele(8.0)
+    assert p8["modele"] == systeme.MODELE_8GO and not p8["deconseille"]
+    p4 = systeme.proposition_modele(4.0)
+    assert p4["modele"] == systeme.MODELE_8GO and p4["deconseille"]
+    # RAM indéterminable (0.0) -> proposition qualité sans avertissement
+    assert systeme.proposition_modele(0.0)["modele"] == systeme.MODELE_16GO
+
+
+def test_ram_totale_lisible():
+    from app import systeme
+
+    # Sur la machine de test (Linux/Windows), la lecture doit aboutir.
+    assert systeme.ram_totale_gio() > 0
+
+
+def test_nom_modele_valide():
+    from app import systeme
+
+    assert systeme.nom_modele_valide("qwen3.5:9b")
+    assert systeme.nom_modele_valide("nomic-embed-text")
+    assert not systeme.nom_modele_valide("")
+    assert not systeme.nom_modele_valide("nom avec espaces")
+    assert not systeme.nom_modele_valide("a" * 100)
+
+
+def test_etat_installation_sans_ollama(monkeypatch):
+    from app import config, systeme
+
+    monkeypatch.setattr(systeme, "ollama_etat", lambda cfg: {"ok": False, "modeles": []})
+    etat = systeme.etat_installation(config.DEFAULTS)
+    assert etat["ollama"] is False and etat["pret"] is False
+    assert etat["proposition"]["modele"]
+
+
+def test_etat_installation_pret_via_proposition(monkeypatch):
+    """Le modèle configuré (défaut) est absent mais la proposition et les
+    embeddings sont installés -> prêt (l'UI basculera la config après unlock)."""
+    from app import config, systeme
+
+    prop = systeme.proposition_modele(systeme.ram_totale_gio())["modele"]
+    monkeypatch.setattr(
+        systeme, "ollama_etat",
+        lambda cfg: {"ok": True, "modeles": [prop, "nomic-embed-text:latest"]},
+    )
+    etat = systeme.etat_installation(config.DEFAULTS)
+    assert etat["llm_present"] is False
+    assert etat["pret"] is True
+
+
 # --- patient : âge & dates -------------------------------------------------------
 
 def test_age_texte():

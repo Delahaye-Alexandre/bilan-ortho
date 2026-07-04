@@ -281,6 +281,38 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="installOverlay" hidden style="z-index:60">
+  <div class="modal">
+    <div class="mhead"><h2>🚀 Première installation</h2></div>
+    <div class="mbody">
+      <p class="muted">Bilan Ortho fonctionne 100 % sur votre machine : il lui faut le moteur d'IA local <b>Ollama</b> et deux modèles (téléchargés une seule fois).</p>
+      <fieldset>
+        <legend>1. Moteur Ollama</legend>
+        <div id="instOllama" class="muted">Vérification…</div>
+        <div class="row" style="margin-top:8px">
+          <button class="ghost" id="instOllamaLien">⬇ Télécharger Ollama (ollama.com)</button>
+          <button class="ghost" id="instRecheck">↻ Revérifier</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>2. Modèles d'IA</legend>
+        <div id="instModeles" class="muted">—</div>
+        <div class="row" style="margin-top:8px">
+          <button id="instPull">⬇ Télécharger les modèles</button>
+          <span class="status" id="instPullStatus"></span>
+        </div>
+        <div style="background:#eef1f4;border-radius:6px;height:10px;margin-top:8px;overflow:hidden">
+          <div id="instBarre" style="background:var(--accent);height:100%;width:0%"></div>
+        </div>
+      </fieldset>
+      <div class="row" style="margin-top:14px">
+        <span class="muted grow" id="instResume"></span>
+        <button id="instContinuer" disabled>Continuer →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="patientsOverlay" hidden>
   <div class="modal">
     <div class="mhead"><h2>👤 Patients</h2><button class="close" data-close="patientsOverlay">✕</button></div>
@@ -348,6 +380,10 @@ const unlockBtn = document.getElementById('unlockBtn');
 let appStarted = false;
 
 async function gate() {
+  try {
+    const inst = await (await api('/api/installation')).json();
+    if (!inst.pret) { showInstall(inst); return; }
+  } catch {}
   const s = await (await api('/api/status')).json();
   if (s.unlocked) { startApp(); return; }
   overlay.hidden = false;
@@ -357,6 +393,98 @@ async function gate() {
   }
   pass.focus();
 }
+
+// ---------- Première installation (Ollama + modèles) ----------
+let INST = null;
+function showInstall(inst) {
+  INST = inst;
+  const ov = document.getElementById('installOverlay'); ov.hidden = false;
+  document.getElementById('instOllama').innerHTML = inst.ollama
+    ? '✅ Ollama est installé et démarré.'
+    : '❌ Ollama n\'est pas détecté. Téléchargez-le (bouton ci-dessous), installez-le, puis « Revérifier ».';
+  const prop = inst.proposition || {};
+  const manquants = modelesManquants(inst);
+  document.getElementById('instModeles').innerHTML =
+    `Proposé pour votre machine : <b>${escapeHtml(prop.modele || '')}</b> <span class="muted">(${escapeHtml(prop.raison || '')})</span>` +
+    (prop.deconseille ? '<div style="color:var(--warn)">⚠️ Machine en dessous du minimum recommandé (8 Go de RAM).</div>' : '') +
+    `<div class="muted" style="margin-top:4px">${manquants.length ? 'À télécharger : ' + manquants.join(' + ') : '✅ Modèles déjà présents.'}</div>`;
+  document.getElementById('instPull').disabled = !inst.ollama || !manquants.length;
+  const pret = inst.pret;
+  document.getElementById('instContinuer').disabled = !pret;
+  document.getElementById('instResume').textContent = pret ? '✅ Tout est prêt.' : '';
+}
+function modelesManquants(inst) {
+  const l = [];
+  if (!inst.llm_present && !(inst.modeles || []).some(m => m.startsWith((inst.proposition || {}).modele || '§')))
+    l.push((inst.proposition || {}).modele);
+  if (!inst.embeddings_present) l.push(inst.embeddings_configure);
+  return l.filter(Boolean);
+}
+async function recheckInstall() {
+  try {
+    const inst = await (await api('/api/installation')).json();
+    if (inst.pret) { INST = inst; showInstall(inst); }
+    else showInstall(inst);
+  } catch {}
+}
+document.getElementById('instOllamaLien').addEventListener('click', () => window.open('https://ollama.com/download', '_blank'));
+document.getElementById('instRecheck').addEventListener('click', recheckInstall);
+document.getElementById('instContinuer').addEventListener('click', () => {
+  const m = (INST && INST.proposition || {}).modele;
+  if (m && INST && !INST.llm_present) localStorage.setItem('bilan_ortho_modele', m);
+  document.getElementById('installOverlay').hidden = true;
+  gateApresInstall();
+});
+async function gateApresInstall() {
+  const s = await (await api('/api/status')).json();
+  if (s.unlocked) { startApp(); return; }
+  overlay.hidden = false;
+  if (s.first_run) {
+    lockMsg.textContent = "Créez la passphrase de votre coffre. Notez-la : elle est irrécupérable.";
+    pass2.hidden = false; unlockBtn.textContent = 'Créer le coffre';
+  }
+  pass.focus();
+}
+async function pullUn(modele, base, part) {
+  const barre = document.getElementById('instBarre');
+  const st = document.getElementById('instPullStatus');
+  const r = await fetch('/api/installation/pull', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ modele }),
+  });
+  const lecteur = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await lecteur.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lignes = buf.split('\n'); buf = lignes.pop();
+    for (const l of lignes) {
+      if (!l.trim()) continue;
+      let j; try { j = JSON.parse(l); } catch { continue; }
+      if (j.error) throw new Error(j.error);
+      if (j.total && j.completed !== undefined) {
+        barre.style.width = Math.round((base + part * (j.completed / j.total)) * 100) + '%';
+      }
+      st.textContent = `${modele} : ${j.status || '…'}`;
+    }
+  }
+}
+document.getElementById('instPull').addEventListener('click', async () => {
+  const btn = document.getElementById('instPull');
+  const st = document.getElementById('instPullStatus');
+  const manquants = modelesManquants(INST || {});
+  if (!manquants.length) return;
+  btn.disabled = true;
+  try {
+    for (let i = 0; i < manquants.length; i++)
+      await pullUn(manquants[i], i / manquants.length, 1 / manquants.length);
+    document.getElementById('instBarre').style.width = '100%';
+    st.textContent = '✅ Téléchargement terminé.';
+    await recheckInstall();
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; btn.disabled = false; }
+});
 async function doUnlock() {
   lockErr.textContent = '';
   const p = pass.value;
@@ -377,6 +505,15 @@ document.getElementById('lockBtn').addEventListener('click', async () => { await
 // ---------- Démarrage ----------
 async function startApp() {
   if (appStarted) return; appStarted = true;
+  // Modèle choisi à la première installation : appliqué à la config une fois
+  // le coffre déverrouillé, puis oublié.
+  const mChoisi = localStorage.getItem('bilan_ortho_modele');
+  if (mChoisi) {
+    try {
+      await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: { llm: { model: mChoisi } } }) });
+      localStorage.removeItem('bilan_ortho_modele');
+    } catch {}
+  }
   await Promise.all([loadDomaines(), loadLLM(), initDictee(), loadRecents(), loadRefs(), loadPatients()]);
 }
 

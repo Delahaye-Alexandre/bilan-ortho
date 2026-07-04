@@ -7,7 +7,6 @@ import io
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 
@@ -58,26 +57,28 @@ def _ocr_available() -> bool:
 
 
 def _ocr_pdf(data: bytes) -> str:
+    # API Python d'ocrmypdf (pas de sous-processus Python : indispensable dans
+    # l'application compilée PyInstaller, où `python -m` n'existe pas).
+    # Tesseract/Ghostscript restent des binaires externes trouvés via le PATH :
+    # on y ajoute l'emplacement Windows standard de Tesseract si besoin.
+    import ocrmypdf
+
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fi, \
          tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fo:
         fi.write(data)
         fi.flush()
+        ancien_path = os.environ.get("PATH", "")
+        tess = _tesseract_dir()
         try:
-            # Via l'interpréteur courant (-m) : ne dépend pas du PATH, cohérent
-            # avec le `import ocrmypdf` vérifié par _ocr_available(). Le dossier
-            # de Tesseract est ajouté au PATH du sous-processus (Windows :
-            # installation standard hors PATH).
-            env = dict(os.environ)
-            tess = _tesseract_dir()
-            if tess:
-                env["PATH"] = tess + os.pathsep + env.get("PATH", "")
-            subprocess.run(
-                [sys.executable, "-m", "ocrmypdf",
-                 "-l", "fra", "--force-ocr", "--quiet", fi.name, fo.name],
-                check=True, capture_output=True, env=env,
+            if tess and tess not in ancien_path:
+                os.environ["PATH"] = tess + os.pathsep + ancien_path
+            ocrmypdf.ocr(
+                fi.name, fo.name,
+                language="fra", force_ocr=True, progress_bar=False,
             )
             return _pdf_text(open(fo.name, "rb").read())
         finally:
+            os.environ["PATH"] = ancien_path
             for p in (fi.name, fo.name):
                 try:
                     os.unlink(p)

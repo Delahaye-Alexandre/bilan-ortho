@@ -32,6 +32,7 @@ from . import (
     sauvegarde,
     security,
     stt,
+    systeme,
 )
 from .models import (
     BilanCreate,
@@ -91,6 +92,44 @@ async def keepalive() -> OkResponse:
     cours : l'enregistrement audio est côté navigateur et ne touche pas le
     serveur, sans quoi le coffre s'auto-verrouille et la transcription échoue)."""
     return OkResponse(ok=True)
+
+
+# --- Premier lancement guidé (avant même la création du coffre) --------------
+
+def _cfg_courante() -> dict:
+    """Config effective si déverrouillé, défauts sinon (aucune donnée patient)."""
+    if security.is_unlocked():
+        with security.transaction() as con:
+            return config.ConfigStore(con).effective()
+    return config.DEFAULTS
+
+
+@app.get("/api/installation")
+async def etat_installation() -> dict:
+    return await run_in_threadpool(systeme.etat_installation, _cfg_courante())
+
+
+@app.post("/api/installation/pull")
+async def pull_modele(req: dict) -> StreamingResponse:
+    """Télécharge un modèle Ollama en relayant la progression (NDJSON)."""
+    nom = (req or {}).get("modele", "")
+    if not systeme.nom_modele_valide(nom):
+        raise HTTPException(400, "Nom de modèle invalide.")
+    host = _cfg_courante()["llm"].get("host") or "http://localhost:11434"
+
+    async def relais():
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST", f"{host}/api/pull", json={"model": nom}
+                ) as resp:
+                    async for ligne in resp.aiter_lines():
+                        if ligne.strip():
+                            yield ligne + "\n"
+        except httpx.HTTPError:
+            yield '{"error": "Ollama injoignable."}\n'
+
+    return StreamingResponse(relais(), media_type="application/x-ndjson")
 
 
 # --- Configuration -----------------------------------------------------------
