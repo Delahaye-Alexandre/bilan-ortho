@@ -6,6 +6,9 @@ on:
     tags: ["v*"]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   tests:
     strategy:
@@ -25,3 +28,65 @@ jobs:
           pip install pytest
       - name: Tests (hors ligne — LLM/embeddings mockés)
         run: pytest tests/ -q
+
+  build-windows:
+    needs: tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Dépendances
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+      - name: Icône
+        run: python packaging/windows/genere_icone.py packaging/windows/icone.ico
+      - name: Build PyInstaller (onedir)
+        run: pyinstaller packaging/pyinstaller/BilanOrtho.spec --noconfirm
+      - name: Fumée — le binaire compilé démarre et répond
+        shell: pwsh
+        run: |
+          $env:BILAN_ORTHO_DATA_DIR = "$env:TEMP\bilan-ortho-fumee"
+          $p = Start-Process -FilePath "dist\BilanOrtho\BilanOrtho.exe" -PassThru
+          $ok = $false
+          foreach ($i in 1..90) {
+            try {
+              $r = Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/status" -UseBasicParsing -TimeoutSec 2
+              if ($r.StatusCode -eq 200) { $ok = $true; break }
+            } catch { Start-Sleep -Milliseconds 500 }
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "Le binaire n'a pas répondu sur /api/status" }
+          Write-Host "Réponse : $($r.Content)"
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref_name }}"
+          if ($ref.StartsWith("v")) { $v = $ref.Substring(1) }
+          else { $v = "0.0.0-dev" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+      - name: Installeur (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            /DAppVersion=${{ steps.version.outputs.version }} `
+            packaging\windows\installeur.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BilanOrtho-Setup
+          path: packaging/windows/Output/*.exe
+          if-no-files-found: error
+      - name: Release privée (sur tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" (Get-Item packaging/windows/Output/*.exe).FullName `
+            --draft --title "Bilan Ortho ${{ github.ref_name }}" `
+            --notes "Installeur Windows par utilisateur (non signé : SmartScreen affichera un avertissement — voir docs/guide-testeuse.md). Prérequis premier lancement : connexion internet pour Ollama + modèles."
