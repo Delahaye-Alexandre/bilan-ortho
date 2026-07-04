@@ -34,7 +34,61 @@ Name: "{userdesktop}\Bilan Ortho"; Filename: "{app}\BilanOrtho.exe"
 Name: "{userprograms}\Bilan Ortho"; Filename: "{app}\BilanOrtho.exe"
 
 [Run]
+; Ollama : installé silencieusement s'il vient d'être téléchargé (voir [Code]).
+Filename: "{tmp}\OllamaSetup.exe"; Parameters: "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART"; \
+  StatusMsg: "Installation du moteur d'IA local (Ollama)…"; \
+  Check: OllamaTelecharge; Flags: waituntilterminated
+; Démarre Ollama (icône près de l'horloge) pour que le premier lancement le trouve.
+Filename: "{localappdata}\Programs\Ollama\ollama app.exe"; \
+  Flags: nowait skipifdoesntexist
 Filename: "{app}\BilanOrtho.exe"; Description: "Lancer Bilan Ortho"; Flags: postinstall nowait skipifsilent
 
 ; À la désinstallation, les données patient ({localappdata}\bilan-ortho :
 ; coffre chiffré + sauvegardes) sont volontairement PRÉSERVÉES.
+
+[Code]
+var
+  PageTelechargement: TDownloadWizardPage;
+  OllamaOk: Boolean;
+
+function OllamaPresent(): Boolean;
+begin
+  Result := FileExists(ExpandConstant('{localappdata}\Programs\Ollama\ollama.exe'))
+    or FileExists(ExpandConstant('{pf}\Ollama\ollama.exe'));
+end;
+
+function OllamaTelecharge(): Boolean;
+begin
+  Result := OllamaOk and FileExists(ExpandConstant('{tmp}\OllamaSetup.exe'));
+end;
+
+procedure InitializeWizard;
+begin
+  OllamaOk := False;
+  PageTelechargement := CreateDownloadPage(
+    'Moteur d''IA local',
+    'Téléchargement d''Ollama (~1 Go). Tout reste ensuite 100 % sur cet ordinateur.',
+    nil);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (CurPageID = wpReady) and (not OllamaPresent()) then begin
+    PageTelechargement.Clear;
+    PageTelechargement.Add('https://ollama.com/download/OllamaSetup.exe', 'OllamaSetup.exe', '');
+    PageTelechargement.Show;
+    try
+      try
+        PageTelechargement.Download;
+        OllamaOk := True;
+      except
+        { Hors ligne ou lien indisponible : on n'interrompt pas l'installation —
+          l'écran « Première installation » de l'application guidera l'utilisatrice. }
+        Log('Téléchargement Ollama impossible : ' + GetExceptionMessage);
+      end;
+    finally
+      PageTelechargement.Hide;
+    end;
+  end;
+end;

@@ -25,17 +25,18 @@ donnée ne part sur internet, tout est chiffré sur votre machine.
    encore « signée » auprès de Microsoft (procédure payante), pas dangereuse.
    Cliquez sur **« Informations complémentaires »** puis **« Exécuter quand
    même »**.
-3. L'installation ne demande aucun droit administrateur et se termine en
-   quelques secondes. Une icône « Bilan Ortho » apparaît sur le Bureau.
+3. L'installation ne demande aucun droit administrateur. Elle télécharge et
+   installe aussi automatiquement le moteur d'IA local (**Ollama**, ~1 Go) —
+   patientez. Une icône « Bilan Ortho » apparaît sur le Bureau.
 
 ## 2. Premier lancement (une seule fois, ~15-30 min de téléchargements)
 
 Au premier double-clic, la fenêtre Bilan Ortho s'ouvre sur l'écran
 **« 🚀 Première installation »** qui vous guide :
 
-1. **Moteur Ollama** (l'IA locale) : si absent, cliquez « Télécharger
-   Ollama », installez-le (suivant → suivant), puis revenez et cliquez
-   « ↻ Revérifier ».
+1. **Moteur Ollama** : normalement déjà installé par l'installeur (✅). S'il
+   est marqué absent (installation faite hors ligne), cliquez « Télécharger
+   Ollama », installez-le, puis « ↻ Revérifier ».
 2. **Modèles d'IA** : l'application propose automatiquement le modèle adapté
    à votre machine. Cliquez « ⬇ Télécharger les modèles » et patientez
    (3 à 6 Go — la barre de progression vous accompagne).
