@@ -38,6 +38,7 @@ class StatusResponse(BaseModel):
     db_exists: bool
     unlocked: bool
     first_run: bool
+    version: str = ""
 
 
 class OkResponse(BaseModel):

@@ -75,8 +75,21 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Release v1.2.0 (draft, privée)** : `BilanOrtho-Setup-1.2.0.exe` (70 Mo) + guide — https://github.com/Delahaye-Alexandre/bilan-ortho/releases . Reste humain : passe manuelle d'Alexandre (double-clic, écran guidé, pull des modèles Windows), envoi du lien aux testeuses, retours.
   - Note machine d'Alexandre : l'app native Windows verra l'Ollama de WSL via localhost (port forwarding) et utilisera un coffre séparé (`%LOCALAPPDATA%\bilan-ortho`) — les données WSL ne bougent pas. Arrêter le serveur WSL avant de tester le natif (sinon le lanceur s'attache à l'instance WSL existante).
 
+- [x] **v1.2.1 (2026-07-05) — Fenêtre d'app dédiée + installeur tout-en-un** *(fait, release draft)*
+  - Fenêtre d'application dédiée (mode `--app` d'Edge/Chrome, 1280×860, favicon SVG) au lieu d'un onglet navigateur — `lanceur.py` + lanceur C# WSL, repli navigateur classique si absent.
+  - Installeur Inno **tout-en-un** : si Ollama est absent, son installeur officiel (~1 Go) est téléchargé (DownloadPage) puis exécuté en silencieux, et `ollama app` est démarré ; hors ligne, l'installation continue et l'écran guidé de l'app prend le relais.
+  - **Release v1.2.1 (draft, privée)** : `BilanOrtho-Setup-1.2.1.exe` + guide testeuse (md + html). **Non envoyée** — remplacée par la v1.3.0 : son écran guidé propose qwen3.5 sans le correctif `think`, une testeuse subirait des minutes d'attente à chaque structuration.
+
+- [x] **v1.3.0 (2026-07-11) — Correctifs issus des tests réels avec qwen3.5** *(fait, testé)*
+  - `app/llm.py` : `"think": false` sur `/api/chat` — les modèles à raisonnement (qwen3.5) partaient en minutes de « réflexion » CPU avant de produire le JSON ; repli automatique sans le champ si un vieil Ollama répond 400.
+  - `app/prompts.py` : les extraits de style injectés concernent **d'autres patients** — interdiction explicite d'y faire référence dans les textes ou questions (leurs tests/scores n'existent pas dans le dossier courant).
+  - Version unique `__version__` dans `app/__init__.py` (rappel dans la docstring : bumper + tag à chaque release), affichée dans l'en-tête de l'UI et retournée par `/api/status`.
+  - UX : « Analyse en cours… (jusqu'à 2-3 min selon la machine) » pendant la structuration.
+  - **Vérifié** : 68/68 tests pytest ; E2E réel contre Ollama WSL 0.30.10 — qwen3.5:4b rend son JSON en 27 s (contre plusieurs minutes avant), qwen2.5:7b par défaut inchangé (HTTP 200 avec `think:false`, le repli 400 reste une sécurité pour les vieux Ollama).
+  - Reste humain : passe rapide sur l'installeur 1.3.0, envoi du lien Release aux testeuses, retours.
+
 ## Environnement (machine d'Alexandre)
-- Python 3.12.3, venv `.venv`. Ollama présent : `qwen2.5:7b-instruct-q4_K_M` (défaut LLM) + `glm-5.2:cloud` (⚠️ jamais sur données patient).
+- Python 3.12.3, venv `.venv`. Ollama WSL 0.30.10 : `qwen2.5:7b-instruct-q4_K_M` (défaut LLM), `qwen3.5:4b`, `qwen3.5:9b`, `nomic-embed-text` + `glm-5.2:cloud` (⚠️ jamais sur données patient).
 - GPU RTX 3050 Ti **4 Go VRAM** (partagé avec Ollama) → STT lean CPU/distillé.
 - OCR **installé et vérifié** (2026-07-04) : tesseract 5.3.4 + `fra`, ghostscript, ocrmypdf 17.8.0 (pip, venv). Import d'un PDF scanné testé de bout en bout via l'API (7,5 s). Correctif au passage : `importer._ocr_pdf` invoque `python -m ocrmypdf` (indépendant du PATH) au lieu du binaire.
 

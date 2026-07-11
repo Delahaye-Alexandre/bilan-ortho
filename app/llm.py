@@ -75,9 +75,17 @@ async def chat_json(
         "format": "json",
         "stream": False,
         "options": {"temperature": temperature},
+        # Modèles à raisonnement (qwen3.5…) : réponse directe exigée, sinon
+        # des minutes de « réflexion » sur CPU avant le JSON.
+        "think": False,
     }
     async with httpx.AsyncClient(timeout=None) as client:
-        resp = await client.post(f"{host or OLLAMA_HOST}/api/chat", json=payload)
+        url = f"{host or OLLAMA_HOST}/api/chat"
+        resp = await client.post(url, json=payload)
+        if resp.status_code == 400:
+            # Vieil Ollama qui rejette le champ `think` : réessai sans.
+            payload.pop("think", None)
+            resp = await client.post(url, json=payload)
         resp.raise_for_status()
         data = resp.json()
     return data["message"]["content"]

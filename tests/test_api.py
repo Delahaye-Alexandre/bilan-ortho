@@ -15,8 +15,12 @@ BILAN_TXT = (
 # --- session / verrouillage ------------------------------------------------------
 
 def test_statut_et_verrouillage(client):
+    from app import __version__
+
     s = client.get("/api/status").json()
-    assert s == {"db_exists": True, "unlocked": True, "first_run": False}
+    assert s == {"db_exists": True, "unlocked": True, "first_run": False,
+                 "version": __version__}
+    assert s["version"].count(".") == 2
     assert client.post("/api/lock").status_code == 200
     assert client.get("/api/status").json()["unlocked"] is False
     # endpoint protégé -> 423

@@ -147,7 +147,10 @@ def build_structure_user(
         ex = "\n---\n".join(style_examples)
         reperes += (
             "\n\nExtraits de bilans passés du praticien — inspire-toi de LEUR STYLE "
-            "de rédaction (tournures, niveau de détail), PAS de leur contenu :\n" + ex
+            "de rédaction (tournures, niveau de détail), PAS de leur contenu. "
+            "Ils concernent D'AUTRES patients : n'y fais JAMAIS référence dans tes "
+            "textes ni dans tes questions (leurs tests et scores n'existent pas "
+            "dans le dossier actuel) :\n" + ex
         )
     return (
         f"Domaine(s) du bilan : {domaine_titres or 'non précisé'}{reperes}\n\n"

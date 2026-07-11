@@ -51,7 +51,9 @@ from .prompts import SECTIONS, SYSTEM_PROMPT, build_prompt
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="Bilan Ortho", version="1.1.0")
+from . import __version__
+
+app = FastAPI(title="Bilan Ortho", version=__version__)
 
 
 def require_unlock() -> None:
@@ -67,7 +69,8 @@ def require_unlock() -> None:
 async def status() -> StatusResponse:
     exists = security.db_exists()
     return StatusResponse(
-        db_exists=exists, unlocked=security.is_unlocked(), first_run=not exists
+        db_exists=exists, unlocked=security.is_unlocked(), first_run=not exists,
+        version=__version__,
     )
 
 

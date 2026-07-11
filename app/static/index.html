@@ -106,6 +106,7 @@
 <header>
   <h1>🗒️ Bilan Ortho</h1>
   <span class="tag">assistant local — aucune donnée ne quitte votre machine</span>
+  <span class="tag grow" style="text-align:right" id="appVersion"></span>
 </header>
 <div class="banner">
   ⚠️ Aide à la rédaction. L'IA <b>propose</b> ; vous <b>relisez, corrigez et validez</b> chaque rubrique.
@@ -381,6 +382,10 @@ const unlockBtn = document.getElementById('unlockBtn');
 let appStarted = false;
 
 async function gate() {
+  try {
+    const st = await (await api('/api/status')).json();
+    if (st.version) document.getElementById('appVersion').textContent = 'v' + st.version;
+  } catch {}
   try {
     const inst = await (await api('/api/installation')).json();
     if (!inst.pret) { showInstall(inst); return; }
@@ -788,7 +793,7 @@ document.getElementById('structBtn').addEventListener('click', () => structure(d
 async function structure(text, replaceQuestions) {
   if (!CUR) { document.getElementById('structStatus').textContent = 'Créez d\'abord un bilan.'; return; }
   if (!text.trim()) { document.getElementById('structStatus').textContent = 'Rien à structurer.'; return; }
-  const st = document.getElementById('structStatus'); st.textContent = 'Analyse en cours…';
+  const st = document.getElementById('structStatus'); st.textContent = 'Analyse en cours… (jusqu\'à 2-3 min selon la machine)';
   document.getElementById('structBtn').disabled = true;
   try {
     const r = await api(`/api/bilans/${CUR.id}/structure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transcription: text }) });
