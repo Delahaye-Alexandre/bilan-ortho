@@ -370,7 +370,8 @@
 <script>
 const api = (p, o) => fetch(p, o);
 let CUR = null;         // bilan courant
-let QS = [];            // questions de clarification en cours
+let QS = [];            // questions de clarification en cours (id stable par question)
+let QID = 0;            // compteur d'ids de questions
 
 // ---------- Déverrouillage ----------
 const overlay = document.getElementById('lockOverlay');
@@ -790,40 +791,79 @@ document.getElementById('expMd').addEventListener('click', () => { if (CUR) wind
 
 // ---------- Structuration ----------
 document.getElementById('structBtn').addEventListener('click', () => structure(document.getElementById('dicteeText').value, true));
-async function structure(text, replaceQuestions) {
+async function structure(text, replaceQuestions, answeredIds = []) {
   if (!CUR) { document.getElementById('structStatus').textContent = 'Créez d\'abord un bilan.'; return; }
   if (!text.trim()) { document.getElementById('structStatus').textContent = 'Rien à structurer.'; return; }
   const st = document.getElementById('structStatus'); st.textContent = 'Analyse en cours… (jusqu\'à 2-3 min selon la machine)';
   document.getElementById('structBtn').disabled = true;
+  setQuestionBtns(true);
   try {
     const r = await api(`/api/bilans/${CUR.id}/structure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transcription: text }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
     const res = await r.json();
     CUR = res.bilan; renderBilan();
-    QS = replaceQuestions ? res.questions : QS.concat(res.questions);
+    // Les questions répondues ne sont retirées qu'ici, une fois l'analyse réussie
+    // (en cas d'erreur, rien n'est perdu). Ids stables + dédoublonnage : l'IA
+    // repasse sa checklist à chaque tour et peut reposer une question en attente.
+    const pending = replaceQuestions ? [] : QS.filter(q => !answeredIds.includes(q.id));
+    const seen = new Set(pending.map(q => q.question.trim().toLowerCase()));
+    const fresh = res.questions.map(q => ({ ...q, id: ++QID }))
+      .filter(q => !seen.has(q.question.trim().toLowerCase()));
+    QS = pending.concat(fresh);
     renderQuestions();
-    st.textContent = `✓ ${res.questions.length} question(s) de clarification`;
+    st.textContent = answeredIds.length
+      ? `✓ réponse(s) intégrée(s)${fresh.length ? ` — ${fresh.length} nouvelle(s) question(s)` : ''}`
+      : `✓ ${fresh.length} question(s) de clarification`;
     if (replaceQuestions) document.getElementById('dicteeText').value = '';
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
-  finally { document.getElementById('structBtn').disabled = false; }
+  finally { document.getElementById('structBtn').disabled = false; setQuestionBtns(false); }
+}
+function setQuestionBtns(disabled) {
+  document.querySelectorAll('#questions button').forEach(b => { b.disabled = disabled; });
+}
+function formatReponses(pairs) {
+  return 'Le praticien répond aux questions de clarification :\n'
+    + pairs.map(p => `— À la question « ${p.q.question} » : ${p.v}`).join('\n');
 }
 function renderQuestions() {
   const root = document.getElementById('questions');
+  const drafts = {};  // réponses en cours de saisie, par id de question
+  root.querySelectorAll('.q').forEach(el => {
+    const v = el.querySelector('.ans').value;
+    if (v.trim()) drafts[el.dataset.id] = v;
+  });
   if (!QS.length) { root.innerHTML = ''; return; }
   root.innerHTML = '<div class="sec"><div class="head"><h3>❓ Questions de l\'assistant</h3></div><div class="body" id="qbody"></div></div>';
   const body = document.getElementById('qbody');
-  body.innerHTML = QS.map((q, i) => `
-    <div class="q" data-i="${i}">
+  body.innerHTML = QS.map(q => `
+    <div class="q" data-id="${q.id}">
       <div><b>${escapeHtml(q.question)}</b>${q.pourquoi ? `<div class="muted">${escapeHtml(q.pourquoi)}</div>` : ''}</div>
       <div class="row"><input class="ans" placeholder="Votre réponse…"><button class="ansBtn">Répondre</button></div>
-    </div>`).join('');
+    </div>`).join('') +
+    '<div class="row" id="qAllRow" style="display:none"><button id="qSendAll"></button><span class="muted">un seul passage de l\'IA pour toutes les réponses</span></div>';
+  const filled = () => QS.map(q => {
+    const el = body.querySelector(`.q[data-id="${q.id}"] .ans`);
+    return { q, v: (el ? el.value : '').trim() };
+  }).filter(p => p.v);
+  const refreshAll = () => {
+    const n = filled().length;
+    document.getElementById('qAllRow').style.display = n >= 2 ? '' : 'none';
+    if (n >= 2) document.getElementById('qSendAll').textContent = `Envoyer les ${n} réponses`;
+  };
   body.querySelectorAll('.q').forEach(qel => {
-    const i = +qel.dataset.i;
+    const q = QS.find(x => x.id === +qel.dataset.id);
     const inp = qel.querySelector('.ans');
-    const send = () => { const v = inp.value.trim(); if (!v) return; QS.splice(i, 1); structure(v, false); };
+    if (drafts[q.id]) inp.value = drafts[q.id];
+    const send = () => { const v = inp.value.trim(); if (!v) return; structure(formatReponses([{ q, v }]), false, [q.id]); };
     qel.querySelector('.ansBtn').addEventListener('click', send);
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+    inp.addEventListener('input', refreshAll);
   });
+  document.getElementById('qSendAll').addEventListener('click', () => {
+    const pairs = filled(); if (!pairs.length) return;
+    structure(formatReponses(pairs), false, pairs.map(p => p.q.id));
+  });
+  refreshAll();
 }
 
 // ---------- Dictée (micro) ----------

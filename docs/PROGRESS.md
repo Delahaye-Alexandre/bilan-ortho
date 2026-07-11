@@ -88,6 +88,11 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Vérifié** : 68/68 tests pytest ; E2E réel contre Ollama WSL 0.30.10 — qwen3.5:4b rend son JSON en 27 s (contre plusieurs minutes avant), qwen2.5:7b par défaut inchangé (HTTP 200 avec `think:false`, le repli 400 reste une sécurité pour les vieux Ollama).
   - Reste humain : passe rapide sur l'installeur 1.3.0, envoi du lien Release aux testeuses, retours.
 
+- [x] **Post-v1.3.0 (2026-07-11) — Panneau questions fiabilisé (une à une + envoi groupé)** *(fait, testé)*
+  - Bug signalé par Alexandre : répondre à une question effaçait les réponses en cours de saisie des autres. Causes : re-rendu `innerHTML` intégral (brouillons perdus), cartes identifiées par position (indices périmés → mauvaise question supprimée), retrait de la question AVANT l'appel LLM (perdue en cas d'erreur), réponse envoyée sans sa question (routage hasardeux).
+  - Correctif (`app/static/index.html` seul, aucune API touchée) : id stable par question, retrait après succès uniquement, brouillons sauvegardés/restaurés à chaque re-rendu, réponse contextualisée (« À la question “…” : … »), boutons désactivés pendant l'analyse (champs toujours éditables), dédoublonnage des questions reposées par l'IA, bouton « Envoyer les N réponses » dès 2 champs remplis (un seul passage IA pour plusieurs réponses).
+  - **Vérifié** : test fonctionnel happy-dom sur la vraie page (19 scénarios : brouillons préservés, seule la question répondue retirée, erreur 500 sans perte, envoi groupé en un appel, boutons en vol) + 68 tests pytest + validé en réel par Alexandre.
+
 ## Environnement (machine d'Alexandre)
 - Python 3.12.3, venv `.venv`. Ollama WSL 0.30.10 : `qwen2.5:7b-instruct-q4_K_M` (défaut LLM), `qwen3.5:4b`, `qwen3.5:9b`, `nomic-embed-text` + `glm-5.2:cloud` (⚠️ jamais sur données patient).
 - GPU RTX 3050 Ti **4 Go VRAM** (partagé avec Ollama) → STT lean CPU/distillé.
