@@ -92,6 +92,7 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - Bug signalé par Alexandre : répondre à une question effaçait les réponses en cours de saisie des autres. Causes : re-rendu `innerHTML` intégral (brouillons perdus), cartes identifiées par position (indices périmés → mauvaise question supprimée), retrait de la question AVANT l'appel LLM (perdue en cas d'erreur), réponse envoyée sans sa question (routage hasardeux).
   - Correctif (`app/static/index.html` seul, aucune API touchée) : id stable par question, retrait après succès uniquement, brouillons sauvegardés/restaurés à chaque re-rendu, réponse contextualisée (« À la question “…” : … »), boutons désactivés pendant l'analyse (champs toujours éditables), dédoublonnage des questions reposées par l'IA, bouton « Envoyer les N réponses » dès 2 champs remplis (un seul passage IA pour plusieurs réponses).
   - **Vérifié** : test fonctionnel happy-dom sur la vraie page (19 scénarios : brouillons préservés, seule la question répondue retirée, erreur 500 sans perte, envoi groupé en un appel, boutons en vol) + 68 tests pytest + validé en réel par Alexandre.
+  - **Release v1.3.1 (draft, privée)** taguée avec ce correctif — c'est elle qu'il faut envoyer aux testeuses (le panneau questions est au cœur de leur parcours), pas la v1.3.0.
 
 ## Environnement (machine d'Alexandre)
 - Python 3.12.3, venv `.venv`. Ollama WSL 0.30.10 : `qwen2.5:7b-instruct-q4_K_M` (défaut LLM), `qwen3.5:4b`, `qwen3.5:9b`, `nomic-embed-text` + `glm-5.2:cloud` (⚠️ jamais sur données patient).
