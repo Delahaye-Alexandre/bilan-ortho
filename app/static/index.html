@@ -372,6 +372,9 @@ const api = (p, o) => fetch(p, o);
 let CUR = null;         // bilan courant
 let QS = [];            // questions de clarification en cours (id stable par question)
 let QID = 0;            // compteur d'ids de questions
+let DISMISSED = new Map(); // questions écartées : clé normalisée → texte original (l'IA ne les repose pas)
+let ANSWERED = new Map();  // questions déjà répondues et intégrées : clé normalisée → texte original
+const normQ = (q) => q.trim().toLowerCase();
 
 // ---------- Déverrouillage ----------
 const overlay = document.getElementById('lockOverlay');
@@ -642,10 +645,10 @@ document.getElementById('newBilan').addEventListener('click', async () => {
   const pid = +document.getElementById('patientSel').value || null;
   const body = { domaines: dom ? [dom] : [], type, patient_id: pid };
   const r = await api('/api/bilans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  CUR = await r.json(); QS = []; renderBilan(); renderQuestions(); loadRecents(); loadPatients();
+  CUR = await r.json(); QS = []; DISMISSED.clear(); ANSWERED.clear(); renderBilan(); renderQuestions(); loadRecents(); loadPatients();
 });
 async function loadBilan(id) {
-  CUR = await (await api('/api/bilans/' + id)).json(); QS = []; renderBilan(); renderQuestions();
+  CUR = await (await api('/api/bilans/' + id)).json(); QS = []; DISMISSED.clear(); ANSWERED.clear(); renderBilan(); renderQuestions();
 }
 async function loadRecents() {
   try {
@@ -790,40 +793,120 @@ document.getElementById('expDocx').addEventListener('click', () => { if (CUR) wi
 document.getElementById('expMd').addEventListener('click', () => { if (CUR) window.open(`/api/bilans/${CUR.id}/export?format=md`); });
 
 // ---------- Structuration ----------
-document.getElementById('structBtn').addEventListener('click', () => structure(document.getElementById('dicteeText').value, true));
-async function structure(text, replaceQuestions, answeredIds = []) {
+document.getElementById('structBtn').addEventListener('click', () => structure({ transcription: document.getElementById('dicteeText').value }, true));
+// Un « tour » d'analyse : dictée libre et/ou réponses aux questions, envoyées
+// structurées avec la mémoire du dialogue (en attente / répondues / écartées)
+// pour que l'IA route précisément et ne repose jamais les mêmes questions.
+// Les questions ouvertes persistent jusqu'à réponse ou écartement (✕) — y
+// compris après une nouvelle dictée, puisque l'IA a consigne de ne pas les répéter.
+async function structure({ transcription = '', reponses = [] }, fromDictee, answeredIds = []) {
   if (!CUR) { document.getElementById('structStatus').textContent = 'Créez d\'abord un bilan.'; return; }
-  if (!text.trim()) { document.getElementById('structStatus').textContent = 'Rien à structurer.'; return; }
-  const st = document.getElementById('structStatus'); st.textContent = 'Analyse en cours… (jusqu\'à 2-3 min selon la machine)';
+  if (!transcription.trim() && !reponses.length) { document.getElementById('structStatus').textContent = 'Rien à structurer.'; return; }
+  const st = document.getElementById('structStatus');
+  const t0 = Date.now();
+  st.textContent = 'Analyse en cours… (souvent 2-3 min selon la machine)';
+  const chrono = setInterval(() => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    const el = s >= 60 ? `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')}` : `${s} s`;
+    st.textContent = `Analyse en cours… ${el} (souvent 2-3 min selon la machine)`;
+  }, 1000);
   document.getElementById('structBtn').disabled = true;
   setQuestionBtns(true);
   try {
-    const r = await api(`/api/bilans/${CUR.id}/structure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transcription: text }) });
+    const pendingQ = QS.filter(q => !answeredIds.includes(q.id)).map(q => q.question);
+    const r = await api(`/api/bilans/${CUR.id}/structure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      transcription, reponses,
+      questions_en_attente: pendingQ,
+      questions_ecartees: [...DISMISSED.values()],
+      questions_repondues: [...ANSWERED.values()],
+    }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
     const res = await r.json();
     CUR = res.bilan; renderBilan();
     // Les questions répondues ne sont retirées qu'ici, une fois l'analyse réussie
-    // (en cas d'erreur, rien n'est perdu). Ids stables + dédoublonnage : l'IA
-    // repasse sa checklist à chaque tour et peut reposer une question en attente.
-    const pending = replaceQuestions ? [] : QS.filter(q => !answeredIds.includes(q.id));
-    const seen = new Set(pending.map(q => q.question.trim().toLowerCase()));
+    // (en cas d'erreur, rien n'est perdu — et ANSWERED n'est enrichi qu'ici aussi).
+    // Ids stables + dédoublonnage : malgré les consignes, l'IA peut reposer une
+    // question en attente, déjà répondue ou écartée par le praticien.
+    reponses.forEach(rep => ANSWERED.set(normQ(rep.question), rep.question));
+    const pending = QS.filter(q => !answeredIds.includes(q.id));
+    const seen = new Set([...pending.map(q => normQ(q.question)), ...DISMISSED.keys(), ...ANSWERED.keys()]);
     const fresh = res.questions.map(q => ({ ...q, id: ++QID }))
-      .filter(q => !seen.has(q.question.trim().toLowerCase()));
+      .filter(q => !seen.has(normQ(q.question)));
     QS = pending.concat(fresh);
     renderQuestions();
     st.textContent = answeredIds.length
       ? `✓ réponse(s) intégrée(s)${fresh.length ? ` — ${fresh.length} nouvelle(s) question(s)` : ''}`
       : `✓ ${fresh.length} question(s) de clarification`;
-    if (replaceQuestions) document.getElementById('dicteeText').value = '';
+    if (fromDictee) document.getElementById('dicteeText').value = '';
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
-  finally { document.getElementById('structBtn').disabled = false; setQuestionBtns(false); }
+  finally { clearInterval(chrono); document.getElementById('structBtn').disabled = false; setQuestionBtns(false); }
 }
 function setQuestionBtns(disabled) {
-  document.querySelectorAll('#questions button').forEach(b => { b.disabled = disabled; });
+  document.querySelectorAll('#questions button').forEach(b => {
+    if (ansRec && b === micBtn(ansRec.qid)) return; // pouvoir toujours arrêter l'enregistrement
+    b.disabled = disabled;
+  });
 }
-function formatReponses(pairs) {
-  return 'Le praticien répond aux questions de clarification :\n'
-    + pairs.map(p => `— À la question « ${p.q.question} » : ${p.v}`).join('\n');
+function toReponses(pairs) { // paires {q, v} → payload structuré pour l'API
+  return pairs.map(p => ({ question: p.q.question, reponse: p.v, section: p.q.section || '' }));
+}
+// ---------- Dictée d'une réponse (micro par question) ----------
+let ansRec = null;   // enregistrement en cours : { rec, stream, qid }
+const micBtn = (qid) => document.querySelector(`#questions .q[data-id="${qid}"] .qMic`);
+const micInp = (qid) => document.querySelector(`#questions .q[data-id="${qid}"] .ans`);
+function stopAnsRec() { // idempotent : onstop arrive en asynchrone après stop()
+  if (ansRec && !ansRec.stopping) { ansRec.stopping = true; ansRec.rec.stop(); }
+}
+function setMicBtns() {
+  // Pendant un enregistrement de réponse : un seul micro actif à la fois,
+  // et le micro de la dictée principale est mis en attente.
+  const rb = document.getElementById('recBtn');
+  if (rb) {
+    if (ansRec) { rb.dataset.micHold = '1'; rb.disabled = true; }
+    else if (rb.dataset.micHold) { delete rb.dataset.micHold; rb.disabled = false; }
+  }
+  document.querySelectorAll('#questions .qMic').forEach(b => {
+    if (ansRec && b === micBtn(ansRec.qid)) return;
+    b.disabled = !!ansRec;
+  });
+}
+async function toggleAnsRec(qid) {
+  if (ansRec) { if (ansRec.qid === qid) stopAnsRec(); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { document.getElementById('structStatus').textContent = 'Micro indisponible.'; return; }
+  const chunks = [];
+  const rec = new MediaRecorder(stream);
+  ansRec = { rec, stream, qid };
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    ansRec = null;
+    setMicBtns();
+    // Boutons/champ re-résolus par id : le panneau a pu être re-rendu entre-temps.
+    let btn = micBtn(qid);
+    if (btn) { btn.textContent = '🎤'; btn.classList.remove('rec'); btn.classList.add('ghost'); }
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    if (!blob.size || !micInp(qid)) return;
+    if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+    try {
+      const fd = new FormData(); fd.append('audio', blob, 'reponse.webm');
+      const r = await api('/api/transcribe', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+      const res = await r.json();
+      const inp = micInp(qid);
+      if (inp) {
+        inp.value = (inp.value.trim() ? inp.value.trim() + ' ' : '') + res.text;
+        inp.dispatchEvent(new Event('input'));
+        inp.focus();
+      }
+    } catch (e) { document.getElementById('structStatus').textContent = 'Erreur transcription : ' + e.message; }
+    finally { btn = micBtn(qid); if (btn) { btn.textContent = '🎤'; btn.disabled = false; } }
+  };
+  rec.start();
+  const btn = micBtn(qid);
+  if (btn) { btn.textContent = '■'; btn.classList.add('rec'); btn.classList.remove('ghost'); }
+  setMicBtns();
 }
 function renderQuestions() {
   const root = document.getElementById('questions');
@@ -832,13 +915,16 @@ function renderQuestions() {
     const v = el.querySelector('.ans').value;
     if (v.trim()) drafts[el.dataset.id] = v;
   });
-  if (!QS.length) { root.innerHTML = ''; return; }
+  if (!QS.length) { stopAnsRec(); root.innerHTML = ''; return; }
   root.innerHTML = '<div class="sec"><div class="head"><h3>❓ Questions de l\'assistant</h3></div><div class="body" id="qbody"></div></div>';
   const body = document.getElementById('qbody');
   body.innerHTML = QS.map(q => `
     <div class="q" data-id="${q.id}">
-      <div><b>${escapeHtml(q.question)}</b>${q.pourquoi ? `<div class="muted">${escapeHtml(q.pourquoi)}</div>` : ''}</div>
-      <div class="row"><input class="ans" placeholder="Votre réponse…"><button class="ansBtn">Répondre</button></div>
+      <div class="row" style="align-items:flex-start">
+        <div class="grow"><b>${escapeHtml(q.question)}</b>${q.pourquoi ? `<div class="muted">${escapeHtml(q.pourquoi)}</div>` : ''}</div>
+        <button class="ghost qDrop" title="Écarter cette question sans y répondre" style="padding:2px 9px; font-size:12px">✕</button>
+      </div>
+      <div class="row"><input class="ans" placeholder="Votre réponse…"><button class="ghost qMic" title="Dicter la réponse au micro">🎤</button><button class="ansBtn">Répondre</button></div>
     </div>`).join('') +
     '<div class="row" id="qAllRow" style="display:none"><button id="qSendAll"></button><span class="muted">un seul passage de l\'IA pour toutes les réponses</span></div>';
   const filled = () => QS.map(q => {
@@ -854,16 +940,29 @@ function renderQuestions() {
     const q = QS.find(x => x.id === +qel.dataset.id);
     const inp = qel.querySelector('.ans');
     if (drafts[q.id]) inp.value = drafts[q.id];
-    const send = () => { const v = inp.value.trim(); if (!v) return; structure(formatReponses([{ q, v }]), false, [q.id]); };
+    const send = () => { const v = inp.value.trim(); if (!v) return; structure({ reponses: toReponses([{ q, v }]) }, false, [q.id]); };
     qel.querySelector('.ansBtn').addEventListener('click', send);
+    qel.querySelector('.qMic').addEventListener('click', () => toggleAnsRec(q.id));
+    qel.querySelector('.qDrop').addEventListener('click', () => {
+      if (ansRec && ansRec.qid === q.id) stopAnsRec(); // ne pas laisser un micro orphelin
+      DISMISSED.set(normQ(q.question), q.question); // l'IA ne la reposera pas sur ce bilan
+      QS = QS.filter(x => x.id !== q.id);
+      renderQuestions();
+    });
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
     inp.addEventListener('input', refreshAll);
   });
   document.getElementById('qSendAll').addEventListener('click', () => {
     const pairs = filled(); if (!pairs.length) return;
-    structure(formatReponses(pairs), false, pairs.map(p => p.q.id));
+    structure({ reponses: toReponses(pairs) }, false, pairs.map(p => p.q.id));
   });
   refreshAll();
+  if (ansRec) { // re-rendu pendant un enregistrement : restaure l'état du micro actif
+    const b = micBtn(ansRec.qid);
+    if (b) { b.textContent = '■'; b.classList.add('rec'); b.classList.remove('ghost'); }
+    else stopAnsRec(); // la question a disparu : on coupe le micro
+  }
+  setMicBtns();
 }
 
 // ---------- Dictée (micro) ----------

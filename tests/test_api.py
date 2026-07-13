@@ -277,6 +277,53 @@ def test_structure_avec_llm_mocke(client, monkeypatch, mock_embed):
     assert "Durand" not in captured["user"] and "Léa" not in captured["user"]
 
 
+def test_structure_reponses_sans_dictee(client, monkeypatch, mock_embed):
+    captured = {}
+
+    async def fake_chat_json(system, user, **kw):
+        captured["user"], captured["kw"] = user, kw
+        return ('{"updates":[{"section":"anamnese",'
+                '"texte":"Le patient est âgé de 7 ans."}],"questions":[]}')
+
+    monkeypatch.setattr(llm, "chat_json", fake_chat_json)
+    bid = client.post("/api/bilans", json={"domaines": ["langage_oral"]}).json()["id"]
+
+    # ni dictée ni réponse -> 400
+    assert client.post(
+        f"/api/bilans/{bid}/structure", json={"transcription": " "}
+    ).status_code == 400
+
+    r = client.post(f"/api/bilans/{bid}/structure", json={
+        "transcription": "",
+        "reponses": [
+            {"question": "Quel âge a le patient ?", "reponse": "7 ans", "section": "anamnese"},
+        ],
+        "questions_en_attente": ["Le score ELO est-il en note standard ?"],
+        "questions_ecartees": ["Y a-t-il un suivi ORL ?"],
+        "questions_repondues": ["Des antécédents familiaux ?"],
+    })
+    assert r.status_code == 200
+    u = captured["user"]
+    # la réponse et sa question arrivent structurées, avec la rubrique visée
+    assert "Quel âge a le patient ?" in u and "7 ans" in u
+    assert "rubrique visée : anamnese" in u
+    # la mémoire du dialogue est transmise au LLM
+    assert "EN ATTENTE" in u and "note standard" in u
+    assert "ÉCARTÉES" in u and "suivi ORL" in u
+    assert "DÉJÀ RÉPONDUES" in u and "antécédents familiaux" in u
+    # pas de dictée ce tour-ci -> pas de bloc transcription
+    assert "Transcription de la dictée" not in u
+    # num_ctx par défaut transmis à Ollama (le prompt embarque tout le bilan)
+    assert captured["kw"].get("num_ctx") == 8192
+    # la réponse est intégrée à la rubrique
+    sections = {s["cle"]: s for s in r.json()["bilan"]["sections"]}
+    assert sections["anamnese"]["contenu"] == "Le patient est âgé de 7 ans."
+
+    # au tour suivant, le contenu déjà rédigé est visible dans le prompt
+    client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Suite."})
+    assert "« Le patient est âgé de 7 ans. »" in captured["user"]
+
+
 # --- premier lancement guidé -------------------------------------------------------
 
 def test_installation_etat(client, monkeypatch):

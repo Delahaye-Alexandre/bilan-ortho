@@ -64,8 +64,16 @@ async def chat_json(
     model: str | None = None,
     temperature: float = 0.2,
     host: str | None = None,
+    num_ctx: int | None = None,
 ) -> str:
-    """Appel Ollama /api/chat en mode JSON forcé (non streamé). Retourne le texte."""
+    """Appel Ollama /api/chat en mode JSON forcé (non streamé). Retourne le texte.
+
+    ``num_ctx`` doit couvrir prompt + réponse : sans lui, Ollama applique son
+    défaut (~4k) et TRONQUE silencieusement le début du prompt — donc les
+    consignes système — dès que l'ensemble dépasse."""
+    options = {"temperature": temperature}
+    if num_ctx:
+        options["num_ctx"] = int(num_ctx)
     payload = {
         "model": model or OLLAMA_MODEL,
         "messages": [
@@ -74,7 +82,7 @@ async def chat_json(
         ],
         "format": "json",
         "stream": False,
-        "options": {"temperature": temperature},
+        "options": options,
         # Modèles à raisonnement (qwen3.5…) : réponse directe exigée, sinon
         # des minutes de « réflexion » sur CPU avant le JSON.
         "think": False,
@@ -121,10 +129,17 @@ def _parse_structure(raw: str) -> dict:
 async def structure(
     transcription: str, sections: list[dict], domaines: list[str], cfg: dict,
     style_examples: list[str] | None = None, patient_desc: str = "",
+    reponses: list[dict] | None = None,
+    questions_en_attente: list[str] | None = None,
+    questions_ecartees: list[str] | None = None,
+    questions_repondues: list[str] | None = None,
 ) -> dict:
-    """Route une dictée vers les rubriques + génère les questions de clarification.
+    """Route une dictée et/ou des réponses de clarification vers les rubriques
+    + génère les nouvelles questions de clarification.
 
     ``domaines`` = liste de clés de domaine (pour injecter repères + tests connus).
+    Les listes de questions (en attente/écartées/répondues) donnent au LLM la
+    mémoire du dialogue pour qu'il ne repose pas les mêmes questions.
     Retourne ``{"updates": [{section, texte}], "questions": [{section, question, pourquoi}]}``.
     Ne conserve que des clés de section valides.
     """
@@ -147,12 +162,17 @@ async def structure(
         style_examples=style_examples,
         style_prefs=cfg.get("style"),
         patient_desc=patient_desc,
+        reponses=reponses,
+        questions_en_attente=questions_en_attente,
+        questions_ecartees=questions_ecartees,
+        questions_repondues=questions_repondues,
     )
     raw = await chat_json(
         system, user,
         model=llmcfg["model"],
         temperature=float(llmcfg.get("temperature", 0.2)),
         host=llmcfg.get("host"),
+        num_ctx=llmcfg.get("num_ctx"),
     )
     result = _parse_structure(raw)
     result["updates"] = [u for u in result["updates"] if u["section"] in valid]

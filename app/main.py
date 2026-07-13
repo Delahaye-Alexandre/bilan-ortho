@@ -289,20 +289,25 @@ async def get_bilan(bilan_id: int) -> dict:
 
 @app.post("/api/bilans/{bilan_id}/structure", dependencies=[Depends(require_unlock)])
 async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
-    if not req.transcription.strip():
-        raise HTTPException(400, "Transcription vide.")
+    if not req.transcription.strip() and not req.reponses:
+        raise HTTPException(400, "Rien à structurer : ni dictée, ni réponse.")
     with security.transaction() as con:
         b = bilan.get(con, bilan_id)
         cfg = config.ConfigStore(con).effective()
     if not b:
         raise HTTPException(404, "Bilan introuvable.")
+    # Texte de ce tour (dictée + réponses) : sert à retrouver des extraits proches.
+    texte_tour = " ".join(
+        [req.transcription.strip()]
+        + [f"{r.question} {r.reponse}" for r in req.reponses]
+    ).strip()
     # Récupère des extraits du praticien pour inspirer le style (best-effort).
     style = []
     try:
         dom = b["domaines"][0] if b["domaines"] else None
         k = cfg["style"]["few_shot_k"]
         with security.transaction() as con:
-            refs = rag.retrieve(con, req.transcription, cfg, domaine=dom, k=k)
+            refs = rag.retrieve(con, texte_tour, cfg, domaine=dom, k=k)
         style = [r["texte"][:800] for r in refs]
     except Exception:
         style = []
@@ -320,6 +325,10 @@ async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
         result = await llm.structure(
             req.transcription, b["sections"], b["domaines"], cfg,
             style_examples=style, patient_desc=patient_desc,
+            reponses=[r.model_dump() for r in req.reponses],
+            questions_en_attente=req.questions_en_attente,
+            questions_ecartees=req.questions_ecartees,
+            questions_repondues=req.questions_repondues,
         )
     except httpx.HTTPError:
         raise HTTPException(503, "Ollama injoignable. Lancez « ollama serve ».")
@@ -327,7 +336,8 @@ async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
         bilan.apply_updates(con, bilan_id, result["updates"])
         security.audit(
             "structure", "bilan", bilan_id,
-            f"{len(result['updates'])} maj, {len(result['questions'])} questions",
+            f"{len(result['updates'])} maj, {len(result['questions'])} questions"
+            + (f", {len(req.reponses)} réponse(s) intégrée(s)" if req.reponses else ""),
         )
         b2 = bilan.get(con, bilan_id)
     return {"bilan": b2, "questions": result["questions"]}

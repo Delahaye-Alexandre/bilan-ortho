@@ -76,6 +76,10 @@ DEFAULTS: dict[str, Any] = {
         "model": "qwen2.5:7b-instruct-q4_K_M",
         "temperature": 0.3,
         "host": OLLAMA_HOST,
+        # Fenêtre de contexte demandée à Ollama : le prompt de structuration
+        # embarque le contenu des rubriques + la mémoire du dialogue ; sans
+        # cette option, Ollama tronque silencieusement au défaut (~4k).
+        "num_ctx": 8192,
     },
     "stt": {
         # "auto" -> stt.py détecte GPU/VRAM et choisit le modèle adapté.

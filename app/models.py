@@ -63,8 +63,27 @@ class BilanCreate(BaseModel):
     motif: str = ""
 
 
+class ReponseClarification(BaseModel):
+    """Réponse du praticien à une question de clarification posée par l'IA."""
+
+    question: str
+    reponse: str
+    section: str = ""   # rubrique visée par la question d'origine (indice de routage)
+
+
 class StructureRequest(BaseModel):
-    transcription: str
+    """Un passage de structuration : dictée libre et/ou réponses aux questions.
+
+    Les listes de questions donnent au LLM la mémoire du dialogue : il ne doit
+    ni reposer une question encore affichée (`questions_en_attente`), ni une
+    question écartée par le praticien (`questions_ecartees`), ni une question
+    dont la réponse vient d'être intégrée (`questions_repondues`)."""
+
+    transcription: str = ""
+    reponses: list[ReponseClarification] = []
+    questions_en_attente: list[str] = []
+    questions_ecartees: list[str] = []
+    questions_repondues: list[str] = []
 
 
 class SectionPut(BaseModel):

@@ -292,6 +292,32 @@ def test_build_structure_user_injecte_style_et_prefs():
     assert "concise" in msg and "tutoyant" in msg
 
 
+def test_build_structure_user_etat_reel_et_dialogue():
+    sections = [
+        {"cle": "anamnese", "titre": "Anamnèse", "contenu": "Né à terme. " * 200},
+        {"cle": "projet", "titre": "Projet thérapeutique", "contenu": ""},
+    ]
+    msg = prompts.build_structure_user(
+        "", sections, "Langage oral",
+        reponses=[{"question": "Quel âge ?", "reponse": "7 ans", "section": "anamnese"}],
+        questions_en_attente=["Le score est-il étalonné ?"],
+        questions_ecartees=["Y a-t-il un suivi ORL ?"],
+        questions_repondues=["Des antécédents familiaux ?"],
+    )
+    # contenu réel des rubriques : injecté, tronqué au-delà du plafond, vide signalé
+    assert "Né à terme." in msg and "[…]" in msg and "(vide)" in msg
+    coupe = msg.split("« ", 1)[1].split(" […]", 1)[0]
+    assert len(coupe) <= prompts.MAX_CAR_SECTION
+    # mémoire du dialogue : les trois blocs, avec le texte des questions
+    assert "EN ATTENTE" in msg and "Le score est-il étalonné ?" in msg
+    assert "ÉCARTÉES" in msg and "suivi ORL" in msg
+    assert "DÉJÀ RÉPONDUES" in msg and "antécédents familiaux" in msg
+    # réponse structurée : question + réponse + rubrique visée
+    assert "Quel âge ?" in msg and "7 ans" in msg and "rubrique visée : anamnese" in msg
+    # pas de dictée ce tour-ci -> pas de bloc transcription
+    assert "Transcription de la dictée" not in msg
+
+
 # --- export ---------------------------------------------------------------------
 
 BILAN = {
