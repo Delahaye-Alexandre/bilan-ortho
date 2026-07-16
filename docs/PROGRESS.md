@@ -94,6 +94,12 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Vérifié** : test fonctionnel happy-dom sur la vraie page (19 scénarios : brouillons préservés, seule la question répondue retirée, erreur 500 sans perte, envoi groupé en un appel, boutons en vol) + 68 tests pytest + validé en réel par Alexandre.
   - **Release v1.3.1 (draft, privée)** taguée avec ce correctif — c'est elle qu'il faut envoyer aux testeuses (le panneau questions est au cœur de leur parcours), pas la v1.3.0.
 
+- [x] **Post-v1.3.1 (2026-07-13) — Mémoire du dialogue de clarification + panneau questions enrichi** *(fait, testé, commit 9cef7b2 — pas encore dans une release)*
+  - Problème : l'IA reposait les mêmes questions à chaque dictée car elle ne voyait ni le contenu déjà rédigé ni l'historique du dialogue.
+  - Backend : l'endpoint de structuration accepte des réponses **sans dictée** (payload structuré : `transcription`, `reponses` [{question, reponse, section}], `questions_en_attente/ecartees/repondues` ; 400 seulement si le tour est vide) ; le prompt reçoit le **contenu réel des rubriques** (tronqué à 1500 car./rubrique) + les 3 listes de questions avec interdiction de reposer (à l'identique comme reformulé) ; `num_ctx: 8192` par défaut (sinon Ollama tronque silencieusement à ~4k — passer à 16384 via la config si bilans très remplis).
+  - Front : chrono sur « Analyse en cours… », bouton ✕ pour écarter une question, micro de dictée par question. Changement de sémantique assumé : les questions ouvertes **persistent après une nouvelle dictée** (avant : panneau remplacé) ; maps écartées/répondues par bilan, filtre de sûreté si l'IA repose quand même.
+  - **Vérifié** : 70 tests pytest + 40 scénarios UI (`bun tests/ui/test_questions_ui.mjs`, happy-dom sur la vraie page — suite désormais versionnée dans le repo) + test réel puis go d'Alexandre le 13/07.
+
 ## Environnement (machine d'Alexandre)
 - Python 3.12.3, venv `.venv`. Ollama WSL 0.30.10 : `qwen2.5:7b-instruct-q4_K_M` (défaut LLM), `qwen3.5:4b`, `qwen3.5:9b`, `nomic-embed-text` + `glm-5.2:cloud` (⚠️ jamais sur données patient).
 - GPU RTX 3050 Ti **4 Go VRAM** (partagé avec Ollama) → STT lean CPU/distillé.
