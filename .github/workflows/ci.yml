@@ -89,4 +89,4 @@ jobs:
         run: |
           gh release create "${{ github.ref_name }}" (Get-Item packaging/windows/Output/*.exe).FullName `
             --draft --title "Bilan Ortho ${{ github.ref_name }}" `
-            --notes "Installeur Windows par utilisateur (non signé : SmartScreen affichera un avertissement — voir docs/guide-testeuse.md). Prérequis premier lancement : connexion internet pour Ollama + modèles."
+            --notes "Installeur Windows par utilisateur (non signé : SmartScreen affichera un avertissement — voir docs/guide-test.md). Prérequis premier lancement : connexion internet pour Ollama + modèles."

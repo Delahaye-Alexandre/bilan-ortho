@@ -54,8 +54,8 @@ même Alexandre, ne peut la retrouver).
 1. Bouton **👤** : créez un patient **fictif** (nom inventé, date de
    naissance réelle plausible — elle sert au calcul de l'âge).
 2. Choisissez un domaine (ex. Langage écrit) → **+ Nouveau bilan**.
-3. **🎙️ Dictez** comme vous parleriez à une collègue : anamnèse, ce que vous
-   avez observé, les tests passés, les scores…
+3. **🎙️ Dictez** naturellement, comme si vous racontiez le dossier à voix
+   haute : anamnèse, ce que vous avez observé, les tests passés, les scores…
 4. **➡️ Structurer** : l'assistant répartit vos propos dans la trame et vous
    pose des **questions** quand il manque quelque chose — répondez-y.
 5. Saisissez une épreuve dans **🧪 Épreuves & scores** (le drapeau
@@ -84,7 +84,7 @@ de l'horloge), puis relancez Bilan Ortho.
   l'audio des dictées est supprimé dès la transcription ; une sauvegarde
   chiffrée est faite automatiquement chaque semaine.
 - **Responsabilité** : l'outil est une aide à la rédaction — il ne pose
-  aucun diagnostic ; vous restez seule responsable du contenu validé.
+  aucun diagnostic ; vous restez entièrement responsable du contenu validé.
 - **Désinstallation** : via les Paramètres Windows, comme toute application.
   Vos données (coffre chiffré) sont conservées dans
   `%LOCALAPPDATA%\bilan-ortho` — supprimez ce dossier pour tout effacer.

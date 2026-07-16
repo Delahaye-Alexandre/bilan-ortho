@@ -170,9 +170,9 @@ Actions : tests sur Windows + Linux, binaire PyInstaller (`lanceur.py` →
 `dist/BilanOrtho/`), fumage du binaire, installeur Inno Setup
 (`packaging/windows/installeur.iss`, installation par utilisateur sans
 droits admin). Un tag `v*` publie une **Release draft** avec l'installeur —
-à partager en privé avec les testeuses, accompagné de
-`docs/guide-testeuse.md` (SmartScreen, premier lancement guidé, parcours
-d'essai). Les données vivent dans `%LOCALAPPDATA%\bilan-ortho` (préservées à
+à partager en privé avec les personnes qui testent l'application,
+accompagné de `docs/guide-test.md` (SmartScreen, premier lancement guidé,
+parcours d'essai). Les données vivent dans `%LOCALAPPDATA%\bilan-ortho` (préservées à
 la désinstallation).
 
 ## Avertissement médico-légal
