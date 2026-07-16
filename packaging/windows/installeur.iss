@@ -22,6 +22,9 @@ SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=icone.ico
 UninstallDisplayIcon={app}\BilanOrtho.exe
+; L'app est un processus sans fenêtre : impossible de la fermer « proprement »
+; via le gestionnaire de redémarrage → on force (et voir PrepareToInstall).
+CloseApplications=force
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
@@ -71,6 +74,20 @@ begin
     nil);
 end;
 
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  CodeSortie: Integer;
+begin
+  Result := '';
+  { Une instance de l'app peut tourner en arrière-plan et verrouiller {app}
+    (elle n'a pas de fenêtre, le gestionnaire de redémarrage échoue à la
+    fermer). On l'arrête avant la copie des fichiers ; sans instance,
+    taskkill échoue silencieusement. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM BilanOrtho.exe', '',
+    SW_HIDE, ewWaitUntilTerminated, CodeSortie);
+  Sleep(500);
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
@@ -84,7 +101,7 @@ begin
         OllamaOk := True;
       except
         { Hors ligne ou lien indisponible : on n'interrompt pas l'installation —
-          l'écran « Première installation » de l'application guidera l'utilisatrice. }
+          l'écran « Première installation » de l'application prendra le relais. }
         Log('Téléchargement Ollama impossible : ' + GetExceptionMessage);
       end;
     finally
