@@ -46,6 +46,12 @@ jobs:
         run: python packaging/windows/genere_icone.py packaging/windows/icone.ico
       - name: Build PyInstaller (onedir)
         run: pyinstaller packaging/pyinstaller/BilanOrtho.spec --noconfirm
+      - name: Données embarquées — le VAD Silero est dans le build
+        shell: pwsh
+        run: |
+          $vad = Get-ChildItem "dist\BilanOrtho\_internal\faster_whisper\assets\silero_vad*.onnx" -ErrorAction SilentlyContinue
+          if (-not $vad) { throw "Modèle VAD Silero absent du build — la dictée planterait (collect_data_files('faster_whisper') dans le spec)" }
+          Write-Host "VAD embarqué : $($vad.Name)"
       - name: Fumée — le binaire compilé démarre et répond
         shell: pwsh
         run: |

@@ -10,6 +10,7 @@
 
 from PyInstaller.utils.hooks import (
     collect_all,
+    collect_data_files,
     collect_dynamic_libs,
     collect_submodules,
 )
@@ -25,7 +26,7 @@ binaries += vec_binaries
 datas = [
     ("../../app/static", "app/static"),
     ("../../data/reference", "data/reference"),
-] + vec_datas
+] + vec_datas + collect_data_files("faster_whisper")  # assets/ : VAD Silero (onnx)
 
 hiddenimports = (
     ["sqlcipher3", "app.main", "faster_whisper"]

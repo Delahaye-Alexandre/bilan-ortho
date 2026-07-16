@@ -100,6 +100,12 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - Front : chrono sur « Analyse en cours… », bouton ✕ pour écarter une question, micro de dictée par question. Changement de sémantique assumé : les questions ouvertes **persistent après une nouvelle dictée** (avant : panneau remplacé) ; maps écartées/répondues par bilan, filtre de sûreté si l'IA repose quand même.
   - **Vérifié** : 70 tests pytest + 40 scénarios UI (`bun tests/ui/test_questions_ui.mjs`, happy-dom sur la vraie page — suite désormais versionnée dans le repo) + test réel puis go d'Alexandre le 13/07.
 
+- [x] **v1.4.1 (2026-07-16) — Dictée native réparée + installeur robuste + vocabulaire neutre** *(correctifs issus de la passe manuelle d'Alexandre sur l'installeur v1.4.0)*
+  - **Dictée cassée dans TOUTES les builds natives depuis la v1.2.0** (découvert à la première vraie dictée native) : le spec PyInstaller collectait le code de `faster_whisper` mais pas ses données — `assets/silero_vad_v6.onnx` manquait, et le VAD est actif par défaut (`stt.vad: true`) → `ONNXRuntimeError NO_SUCHFILE` à chaque transcription. Correctif : `collect_data_files("faster_whisper")` dans le spec + **garde-fou CI** (étape qui échoue si `silero_vad*.onnx` est absent du build — le test de fumée ne dicte pas, il ne pouvait pas le voir).
+  - **Installeur** : `CloseApplications=force` + `taskkill /F /IM BilanOrtho.exe` dans `PrepareToInstall` — l'app est un processus sans fenêtre, le gestionnaire de redémarrage ne savait pas la fermer et la mise à jour affichait « Choisissez une action » (vécu par Alexandre en installant la 1.4.0 par-dessus une instance résiduelle).
+  - **Vocabulaire neutre** (demande d'Alexandre) : `guide-testeuse.md` → `guide-test.md`, plus aucune désignation genrée dans le dépôt (README, CI, installeur, guide) ; assets et notes des releases mis à jour.
+  - Non testable hors Windows : la collecte du spec et l'installeur sont validés par la CI (garde-fou VAD + fumée) puis par la passe manuelle.
+
 ## Environnement (machine d'Alexandre)
 - Python 3.12.3, venv `.venv`. Ollama WSL 0.30.10 : `qwen2.5:7b-instruct-q4_K_M` (défaut LLM), `qwen3.5:4b`, `qwen3.5:9b`, `nomic-embed-text` + `glm-5.2:cloud` (⚠️ jamais sur données patient).
 - GPU RTX 3050 Ti **4 Go VRAM** (partagé avec Ollama) → STT lean CPU/distillé.
