@@ -79,10 +79,10 @@ var
   CodeSortie: Integer;
 begin
   Result := '';
-  { Une instance de l'app peut tourner en arrière-plan et verrouiller {app}
-    (elle n'a pas de fenêtre, le gestionnaire de redémarrage échoue à la
-    fermer). On l'arrête avant la copie des fichiers ; sans instance,
-    taskkill échoue silencieusement. }
+  { Une instance de l'app peut tourner en arrière-plan et verrouiller le
+    dossier d'installation (processus sans fenêtre : le gestionnaire de
+    redémarrage échoue à la fermer). On l'arrête avant la copie des
+    fichiers ; sans instance, taskkill échoue silencieusement. }
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM BilanOrtho.exe', '',
     SW_HIDE, ewWaitUntilTerminated, CodeSortie);
   Sleep(500);
