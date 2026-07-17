@@ -112,6 +112,9 @@ DEFAULTS: dict[str, Any] = {
         # embarque le contenu des rubriques + la mémoire du dialogue ; sans
         # cette option, Ollama tronque silencieusement au défaut (~4k).
         "num_ctx": 8192,
+        # Attente maximale d'une structuration (secondes). Sans borne, un
+        # Ollama gelé suspendait l'interface à l'infini.
+        "timeout_s": 600,
     },
     "stt": {
         # "auto" -> stt.py détecte GPU/VRAM et choisit le modèle adapté.

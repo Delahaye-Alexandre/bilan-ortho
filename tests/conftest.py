@@ -16,10 +16,15 @@ PASSPHRASE = "passphrase-de-test"
 EMBED_DIM = 16
 
 
-def fake_embed(text: str, cfg: dict) -> list[float]:
-    """Embedding déterministe et local : hash du texte -> vecteur stable."""
+def fake_vec(text: str) -> list[float]:
+    """Vecteur déterministe et local : hash du texte -> embedding stable."""
     h = hashlib.sha256(text.encode()).digest()
     return [struct.unpack("<H", h[2 * i : 2 * i + 2])[0] / 65535.0 for i in range(EMBED_DIM)]
+
+
+async def fake_embed(text: str, cfg: dict) -> list[float]:
+    """Doublure asynchrone de rag.embed (aucun réseau)."""
+    return fake_vec(text)
 
 
 @pytest.fixture()

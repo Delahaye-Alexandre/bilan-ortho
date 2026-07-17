@@ -10,8 +10,6 @@ import shutil
 import sys
 import tempfile
 
-from . import rag
-
 # Mots-clés d'en-tête -> clé de rubrique (tronc commun).
 _HEADINGS: list[tuple[str, str]] = [
     ("administratif", r"donn[ée]es administratives|identit[ée]|objet du bilan"),
@@ -139,21 +137,15 @@ def sectionize(text: str) -> list[tuple[str, str, str]]:
     return out or [("global", "Extrait", text.strip())]
 
 
-def import_bilan(
-    con, data: bytes, filename: str, domaine: str, cfg: dict,
-    praticien_id=None, source: str = "import",
-) -> dict:
+def decouper(data: bytes, filename: str) -> list[tuple[str, str, str]]:
+    """Extrait le texte puis le découpe en extraits (clé, titre, contenu).
+
+    Fonction pure (CPU/OCR, aucun réseau ni base) : l'appelant calcule les
+    embeddings hors verrou puis insère via ``rag.add_reference``."""
     text = extract_text(data, filename)
     if not text.strip():
         raise ValueError(
             "Aucun texte extrait. PDF scanné ? Installez Tesseract "
             "(apt install tesseract-ocr tesseract-ocr-fra ocrmypdf)."
         )
-    chunks = sectionize(text)
-    ids = []
-    for cle, titre, contenu in chunks:
-        if contenu.strip():
-            ids.append(
-                rag.add_reference(con, praticien_id, source, domaine, cle, titre, contenu, cfg)
-            )
-    return {"n": len(ids), "sections": [c[0] for c in chunks], "filename": filename}
+    return [c for c in sectionize(text) if c[2].strip()]

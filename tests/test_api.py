@@ -42,6 +42,16 @@ def test_keepalive_rafraichit(client):
     assert client.post("/api/keepalive").status_code == 200
 
 
+def test_verrouillage_survit_config_corrompue(client):
+    """Une vieille surcharge mal typée déjà stockée (avant la validation
+    Pydantic) ne doit plus bloquer toutes les routes protégées (audit C5)."""
+    with security.transaction() as con:
+        config.ConfigStore(con).set_overrides(
+            {"rgpd": {"verrouillage_inactivite_minutes": "quinze"}}
+        )
+    assert client.get("/api/bilans").status_code == 200
+
+
 # --- config -----------------------------------------------------------------------
 
 def test_config_get_put_delete(client):
@@ -315,6 +325,8 @@ def test_structure_reponses_sans_dictee(client, monkeypatch, mock_embed):
     assert "Transcription de la dictée" not in u
     # num_ctx par défaut transmis à Ollama (le prompt embarque tout le bilan)
     assert captured["kw"].get("num_ctx") == 8192
+    # timeout borné transmis (un Ollama gelé ne suspend plus l'UI à l'infini)
+    assert captured["kw"].get("timeout_s") == 600
     # la réponse est intégrée à la rubrique
     sections = {s["cle"]: s for s in r.json()["bilan"]["sections"]}
     assert sections["anamnese"]["contenu"] == "Le patient est âgé de 7 ans."
@@ -322,6 +334,20 @@ def test_structure_reponses_sans_dictee(client, monkeypatch, mock_embed):
     # au tour suivant, le contenu déjà rédigé est visible dans le prompt
     client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Suite."})
     assert "« Le patient est âgé de 7 ans. »" in captured["user"]
+
+
+def test_structure_verrouillage_pendant_analyse(client, monkeypatch, mock_embed):
+    """Si le coffre se verrouille pendant l'analyse LLM, le résultat n'est
+    plus jeté en 500 opaque : 423 explicite (l'UI ré-affiche l'écran de
+    verrouillage et la dictée n'est pas perdue)."""
+    async def structure_puis_verrou(*a, **k):
+        security.lock()
+        return {"updates": [], "questions": []}
+
+    monkeypatch.setattr(llm, "structure", structure_puis_verrou)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.status_code == 423
 
 
 # --- premier lancement guidé -------------------------------------------------------

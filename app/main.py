@@ -97,7 +97,10 @@ async def unlock(req: UnlockRequest) -> OkResponse:
             f"Passphrase trop courte : {PASSPHRASE_MIN} caractères minimum "
             "pour protéger le coffre.",
         )
-    if security.unlock(req.passphrase):
+    # Threadpool : dérivation de clé + purge + sauvegarde auto (VACUUM INTO)
+    # peuvent prendre plusieurs secondes sur une grosse base — l'event loop
+    # (keepalive, dictée) doit rester réactif.
+    if await run_in_threadpool(security.unlock, req.passphrase):
         return OkResponse(ok=True)
     raise HTTPException(401, "Passphrase incorrecte.")
 
@@ -212,9 +215,14 @@ async def transcribe(audio: UploadFile = File(...)) -> dict:
         raise HTTPException(503, str(exc))
     except Exception as exc:  # pragma: no cover - erreurs modèle/audio
         raise HTTPException(500, f"Échec de la transcription : {exc}")
-    with security.transaction() as con:
-        # Journalise l'acte, jamais le contenu.
-        security.audit("transcribe", "dictee", None, f"{len(result['text'])} car.")
+    try:
+        with security.transaction() as con:
+            # Journalise l'acte, jamais le contenu.
+            security.audit("transcribe", "dictee", None, f"{len(result['text'])} car.")
+    except RuntimeError:
+        # Coffre verrouillé pendant la transcription : 423 explicite plutôt
+        # qu'un 500 opaque (l'UI ré-affiche l'écran de verrouillage).
+        raise HTTPException(423, "Application verrouillée pendant la transcription.")
     return result
 
 
@@ -262,14 +270,21 @@ async def delete_patient(patient_id: int) -> OkResponse:
 
 @app.post("/api/sauvegarde", dependencies=[Depends(require_unlock)])
 async def creer_sauvegarde() -> dict:
-    with security.transaction() as con:
-        cfg = config.ConfigStore(con).effective()
-        try:
+    def _creer() -> dict:
+        with security.transaction() as con:
+            cfg = config.ConfigStore(con).effective()
             res = sauvegarde.creer(con, cfg)
-        except Exception as exc:
-            raise HTTPException(500, f"Échec de la sauvegarde : {exc}")
-        security.audit("sauvegarde", "app", None, f"{res['octets']} octets")
-    return res
+            security.audit("sauvegarde", "app", None, f"{res['octets']} octets")
+            return res
+
+    # Threadpool : VACUUM INTO peut durer plusieurs secondes sur une grosse
+    # base — le verrou est tenu dans un thread, l'event loop reste libre.
+    try:
+        return await run_in_threadpool(_creer)
+    except RuntimeError:
+        raise HTTPException(423, "Application verrouillée.")
+    except Exception as exc:
+        raise HTTPException(500, f"Échec de la sauvegarde : {exc}")
 
 
 @app.get("/api/sauvegardes", dependencies=[Depends(require_unlock)])
@@ -322,13 +337,17 @@ async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
         + [f"{r.question} {r.reponse}" for r in req.reponses]
     ).strip()
     # Récupère des extraits du praticien pour inspirer le style (best-effort).
+    # L'embedding (appel réseau) est calculé HORS du verrou : un Ollama lent
+    # ne gèle plus le serveur (audit C3).
     style = []
     try:
         dom = b["domaines"][0] if b["domaines"] else None
         k = cfg["style"]["few_shot_k"]
-        with security.transaction() as con:
-            refs = rag.retrieve(con, texte_tour, cfg, domaine=dom, k=k)
-        style = [r["texte"][:800] for r in refs]
+        if texte_tour and k:
+            emb = await rag.embed(texte_tour, cfg)
+            with security.transaction() as con:
+                refs = rag.retrieve(con, emb, domaine=dom, k=k)
+            style = [r["texte"][:800] for r in refs]
     except Exception:
         style = []
     # Données patient minimisées pour le LLM : âge (clé des étalonnages) et
@@ -350,16 +369,27 @@ async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
             questions_ecartees=req.questions_ecartees,
             questions_repondues=req.questions_repondues,
         )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            504,
+            "Le modèle n'a pas répondu dans le délai imparti. Réessayez, ou "
+            "choisissez un modèle plus léger (⚙️ Paramètres).",
+        )
     except httpx.HTTPError:
         raise HTTPException(503, "Ollama injoignable. Lancez « ollama serve ».")
-    with security.transaction() as con:
-        bilan.apply_updates(con, bilan_id, result["updates"])
-        security.audit(
-            "structure", "bilan", bilan_id,
-            f"{len(result['updates'])} maj, {len(result['questions'])} questions"
-            + (f", {len(req.reponses)} réponse(s) intégrée(s)" if req.reponses else ""),
-        )
-        b2 = bilan.get(con, bilan_id)
+    try:
+        with security.transaction() as con:
+            bilan.apply_updates(con, bilan_id, result["updates"])
+            security.audit(
+                "structure", "bilan", bilan_id,
+                f"{len(result['updates'])} maj, {len(result['questions'])} questions"
+                + (f", {len(req.reponses)} réponse(s) intégrée(s)" if req.reponses else ""),
+            )
+            b2 = bilan.get(con, bilan_id)
+    except RuntimeError:
+        # Coffre verrouillé pendant l'analyse : 423 explicite, résultat non
+        # appliqué (la dictée reste dans l'interface, rien n'est perdu).
+        raise HTTPException(423, "Application verrouillée pendant l'analyse.")
     return {"bilan": b2, "questions": result["questions"]}
 
 
@@ -458,18 +488,34 @@ async def import_reference(
         raise HTTPException(400, "Fichier vide.")
     with security.transaction() as con:
         cfg = config.ConfigStore(con).effective()
+    # 1. Extraction du texte (PDF/OCR : potentiellement plusieurs minutes)
+    #    dans le threadpool — l'event loop reste réactif.
     try:
-        with security.transaction() as con:
-            summary = importer.import_bilan(con, data, file.filename or "", domaine, cfg)
-            security.audit(
-                "import_reference", "reference", None,
-                f"{summary['n']} extraits · {file.filename}",
-            )
-    except rag.EmbeddingUnavailable as exc:
-        raise HTTPException(503, str(exc))
+        chunks = await run_in_threadpool(importer.decouper, data, file.filename or "")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return summary
+    # 2. Embeddings (réseau) hors verrou : la dictée et le keepalive
+    #    continuent de répondre pendant l'indexation.
+    try:
+        embs = [await rag.embed(contenu, cfg) for _, _, contenu in chunks]
+    except rag.EmbeddingUnavailable as exc:
+        raise HTTPException(503, str(exc))
+    # 3. Insertion rapide sous verrou.
+    try:
+        with security.transaction() as con:
+            for (cle, titre, contenu), emb in zip(chunks, embs):
+                rag.add_reference(con, None, "import", domaine, cle, titre, contenu, emb)
+            security.audit(
+                "import_reference", "reference", None,
+                f"{len(chunks)} extraits · {file.filename}",
+            )
+    except RuntimeError:
+        raise HTTPException(423, "Application verrouillée pendant l'import.")
+    return {
+        "n": len(chunks),
+        "sections": [c[0] for c in chunks],
+        "filename": file.filename or "",
+    }
 
 
 @app.get("/api/references", dependencies=[Depends(require_unlock)])

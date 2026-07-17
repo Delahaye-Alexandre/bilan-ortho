@@ -19,11 +19,16 @@ def _dicts(cur) -> list[dict]:
     return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
-def embed(text: str, cfg: dict) -> list[float]:
+async def embed(text: str, cfg: dict) -> list[float]:
+    """Calcule l'embedding d'un texte via Ollama.
+
+    Asynchrone : l'appel réseau (potentiellement long) rend la main à
+    l'event loop — il doit être fait HORS de ``security.transaction()``
+    pour ne jamais geler le serveur sous le verrou global (audit C3)."""
     e = cfg["embeddings"]
     try:
-        with httpx.Client(timeout=120) as client:
-            r = client.post(
+        async with httpx.AsyncClient(timeout=120) as client:
+            r = await client.post(
                 f"{e['host']}/api/embeddings",
                 json={"model": e["model"], "prompt": text},
             )
@@ -66,9 +71,10 @@ def _ensure_table(con, dim: int) -> None:
 
 def add_reference(
     con, praticien_id, source: str, domaine: str, section_cle: str,
-    titre: str, texte: str, cfg: dict,
+    titre: str, texte: str, emb: list[float],
 ) -> int:
-    emb = embed(texte, cfg)
+    """Insère une référence + son vecteur. ``emb`` est calculé au préalable
+    (via :func:`embed`), hors transaction : ici, uniquement de la base."""
     _ensure_table(con, len(emb))
     rid = con.execute(
         "INSERT INTO bilan_reference(praticien_id, source, domaine, section_cle, titre, texte) "
@@ -89,15 +95,12 @@ def _table_exists(con) -> bool:
 
 
 def retrieve(
-    con, query_text: str, cfg: dict, domaine: str | None = None,
+    con, emb: list[float] | None, domaine: str | None = None,
     section_cle: str | None = None, k: int = 4,
 ) -> list[dict]:
-    """Extraits de référence les plus proches (filtrés par section/domaine)."""
-    if not _table_exists(con) or not query_text.strip():
-        return []
-    try:
-        emb = embed(query_text, cfg)
-    except EmbeddingUnavailable:
+    """Extraits de référence les plus proches du vecteur ``emb`` (filtrés par
+    section/domaine). ``emb`` est calculé au préalable, hors transaction."""
+    if not emb or not _table_exists(con):
         return []
     rows = con.execute(
         "SELECT rowid, distance FROM reference_embedding "

@@ -65,12 +65,16 @@ async def chat_json(
     temperature: float = 0.2,
     host: str | None = None,
     num_ctx: int | None = None,
+    timeout_s: float | None = 600,
 ) -> str:
     """Appel Ollama /api/chat en mode JSON forcé (non streamé). Retourne le texte.
 
     ``num_ctx`` doit couvrir prompt + réponse : sans lui, Ollama applique son
     défaut (~4k) et TRONQUE silencieusement le début du prompt — donc les
-    consignes système — dès que l'ensemble dépasse."""
+    consignes système — dès que l'ensemble dépasse.
+
+    ``timeout_s`` borne l'attente : sans lui, un Ollama gelé suspendait
+    l'interface à l'infini (audit)."""
     options = {"temperature": temperature}
     if num_ctx:
         options["num_ctx"] = int(num_ctx)
@@ -87,7 +91,8 @@ async def chat_json(
         # des minutes de « réflexion » sur CPU avant le JSON.
         "think": False,
     }
-    async with httpx.AsyncClient(timeout=None) as client:
+    timeout = httpx.Timeout(timeout_s or 600, connect=10)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         url = f"{host or OLLAMA_HOST}/api/chat"
         resp = await client.post(url, json=payload)
         if resp.status_code == 400:
@@ -173,6 +178,7 @@ async def structure(
         temperature=float(llmcfg.get("temperature", 0.2)),
         host=llmcfg.get("host"),
         num_ctx=llmcfg.get("num_ctx"),
+        timeout_s=llmcfg.get("timeout_s"),
     )
     result = _parse_structure(raw)
     result["updates"] = [u for u in result["updates"] if u["section"] in valid]

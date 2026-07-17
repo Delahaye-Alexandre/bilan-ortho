@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from app import bilan, config, db, patient, rag, sauvegarde, security
-from tests.conftest import PASSPHRASE, fake_embed
+from tests.conftest import PASSPHRASE, fake_vec
 
 
 # --- chiffrement / verrouillage ------------------------------------------------
@@ -203,26 +203,26 @@ def test_set_statut_et_envoi(con):
 
 # --- RAG (embeddings factices) ----------------------------------------------------
 
-def test_rag_ajout_recherche_suppression(con, mock_embed):
-    cfg = config.DEFAULTS
-    r1 = rag.add_reference(con, None, "import", "voix", "anamnese", "A", "La voix est rauque.", cfg)
-    rag.add_reference(con, None, "import", "langage_ecrit", "projet", "B", "Deux séances par semaine.", cfg)
+def test_rag_ajout_recherche_suppression(con):
+    r1 = rag.add_reference(con, None, "import", "voix", "anamnese", "A",
+                           "La voix est rauque.", fake_vec("La voix est rauque."))
+    rag.add_reference(con, None, "import", "langage_ecrit", "projet", "B",
+                      "Deux séances par semaine.", fake_vec("Deux séances par semaine."))
     # la requête identique au texte doit remonter le bon extrait en premier
-    hits = rag.retrieve(con, "La voix est rauque.", cfg, k=1)
+    hits = rag.retrieve(con, fake_vec("La voix est rauque."), k=1)
     assert hits and hits[0]["id"] == r1
     # filtre par domaine
-    hits = rag.retrieve(con, "La voix est rauque.", cfg, domaine="langage_ecrit", k=5)
+    hits = rag.retrieve(con, fake_vec("La voix est rauque."), domaine="langage_ecrit", k=5)
     assert all(h["domaine"] == "langage_ecrit" for h in hits)
     # suppression : plus de référence ni de vecteur
     rag.delete(con, r1)
-    assert all(h["id"] != r1 for h in rag.retrieve(con, "La voix est rauque.", cfg, k=5))
+    assert all(h["id"] != r1 for h in rag.retrieve(con, fake_vec("La voix est rauque."), k=5))
     n_emb = con.execute("SELECT count(*) FROM reference_embedding").fetchone()[0]
     assert n_emb == len(rag.liste(con)) == 1
 
 
-def test_rag_changement_de_modele_invalide_l_index(con, mock_embed):
-    cfg = config.DEFAULTS
-    rag.add_reference(con, None, "import", "", "global", "T", "Texte.", cfg)
+def test_rag_changement_de_modele_invalide_l_index(con):
+    rag.add_reference(con, None, "import", "", "global", "T", "Texte.", fake_vec("Texte."))
     assert len(rag.liste(con)) == 1
     # dimension différente -> l'index et les références sont réinitialisés
     rag._ensure_table(con, 8)
@@ -230,25 +230,39 @@ def test_rag_changement_de_modele_invalide_l_index(con, mock_embed):
 
 
 def test_rag_vide_sans_table(con):
-    assert rag.retrieve(con, "requête", config.DEFAULTS) == []
+    assert rag.retrieve(con, fake_vec("requête")) == []
+    assert rag.retrieve(con, None) == []
 
 
-def test_import_bilan_complet(con, mock_embed):
+def test_import_decoupe_et_indexe(con):
     from app import importer
 
     texte = "Anamnèse\nEnfant né à terme.\n\nProjet thérapeutique\nDeux séances."
-    resume = importer.import_bilan(con, texte.encode(), "bilan.txt", "langage_oral", config.DEFAULTS)
-    assert resume["n"] == 2 and set(resume["sections"]) == {"anamnese", "projet"}
+    chunks = importer.decouper(texte.encode(), "bilan.txt")
+    assert {c[0] for c in chunks} == {"anamnese", "projet"}
+    for cle, titre, contenu in chunks:
+        rag.add_reference(con, None, "import", "langage_oral", cle, titre,
+                          contenu, fake_vec(contenu))
     assert len(rag.liste(con)) == 2
 
 
-def test_import_fichier_vide_leve(con, mock_embed):
+def test_import_fichier_vide_leve(con):
     from app import importer
 
     with pytest.raises(ValueError):
-        importer.import_bilan(con, b"   ", "vide.txt", "", config.DEFAULTS)
+        importer.decouper(b"   ", "vide.txt")
 
 
-def test_fake_embed_est_stable():
-    assert fake_embed("abc", {}) == fake_embed("abc", {})
-    assert fake_embed("abc", {}) != fake_embed("abd", {})
+def test_fake_vec_est_stable():
+    assert fake_vec("abc") == fake_vec("abc")
+    assert fake_vec("abc") != fake_vec("abd")
+
+
+def test_update_section_rafraichit_updated_at_du_bilan(con):
+    """Un bilan édité uniquement rubrique par rubrique ne doit pas être
+    considéré comme inactif par la purge de conservation RGPD (audit)."""
+    bid = bilan.create(con, [])
+    con.execute("UPDATE bilan SET updated_at='2000-01-01 00:00:00' WHERE id=?", (bid,))
+    assert bilan.update_section(con, bid, "anamnese", "Texte relu.")
+    maj = con.execute("SELECT updated_at FROM bilan WHERE id=?", (bid,)).fetchone()[0]
+    assert maj != "2000-01-01 00:00:00"

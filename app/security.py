@@ -80,16 +80,28 @@ def seconds_idle() -> float:
 
 
 def enforce_inactivity() -> bool:
-    """Verrouille si le délai d'inactivité configuré est dépassé. True si verrouillé."""
-    if not is_unlocked():
-        return True
-    minutes = config.ConfigStore(_con()).effective()["rgpd"][
-        "verrouillage_inactivite_minutes"
-    ]
-    if minutes and seconds_idle() > minutes * 60:
-        lock()
-        return True
-    return False
+    """Verrouille si le délai d'inactivité configuré est dépassé. True si verrouillé.
+
+    Tout se fait sous ``_lock`` : la connexion ne peut pas être fermée par un
+    autre thread entre la vérification et la lecture (TOCTOU → 500). Le délai
+    est parsé avec tolérance : une vieille surcharge mal typée (« "15" »)
+    stockée avant la validation ne doit jamais bloquer les routes protégées."""
+    with _lock:
+        con = _state["con"]
+        if con is None:
+            return True
+        try:
+            minutes = float(
+                config.ConfigStore(con).effective()["rgpd"][
+                    "verrouillage_inactivite_minutes"
+                ] or 0
+            )
+        except (KeyError, TypeError, ValueError):
+            minutes = float(config.DEFAULTS["rgpd"]["verrouillage_inactivite_minutes"])
+        if minutes and (time.monotonic() - _state["last_activity"]) > minutes * 60:
+            lock()  # RLock : réentrant depuis ce même thread
+            return True
+        return False
 
 
 def _purge_conservation(con) -> None:

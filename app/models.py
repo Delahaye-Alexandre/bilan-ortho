@@ -74,6 +74,7 @@ class LlmPatch(_SectionPatch):
     temperature: float | None = Field(None, ge=0, le=2)
     host: str | None = None
     num_ctx: int | None = Field(None, ge=256)
+    timeout_s: float | None = Field(None, ge=10)
 
     _host_local = field_validator("host")(_exiger_hote_local)
 

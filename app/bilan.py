@@ -153,6 +153,12 @@ def update_section(
             "updated_at=datetime('now') WHERE bilan_id=? AND cle=?",
             (contenu, bilan_id, cle),
         )
+    if cur.rowcount:
+        # Sans cela, un bilan édité uniquement rubrique par rubrique restait
+        # « inactif » aux yeux de la purge de conservation RGPD.
+        con.execute(
+            "UPDATE bilan SET updated_at=datetime('now') WHERE id=?", (bilan_id,)
+        )
     return cur.rowcount > 0
 
 
