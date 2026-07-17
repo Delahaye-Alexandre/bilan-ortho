@@ -29,6 +29,13 @@ CloseApplications=force
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 
+[InstallDelete]
+; Mise a jour par-dessus une ancienne version : on purge le dossier _internal
+; de PyInstaller AVANT la copie, sinon d'anciennes DLL residuelles cohabitent
+; avec les nouvelles et provoquent des crashs au demarrage chez ceux qui
+; mettent a jour (audit).
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
 Source: "..\..\dist\BilanOrtho\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
@@ -50,6 +57,14 @@ Filename: "{app}\BilanOrtho.exe"; Description: "Lancer Bilan Ortho"; Flags: post
 ; coffre chiffré + sauvegardes) sont volontairement PRÉSERVÉES.
 
 [Code]
+const
+  { Version epinglee + empreinte SHA-256 officielle (GitHub Releases) :
+    le telechargement est verifie avant d'etre execute en /VERYSILENT.
+    A chaque montee de version : reprendre le digest de l'asset
+    OllamaSetup.exe sur api.github.com/repos/ollama/ollama/releases. }
+  OllamaVersion = '0.32.1';
+  OllamaSHA256 = '2f53afab45547896e66b2879174ee78bb1f079f4a20b0858e0e377da0c3631f0';
+
 var
   PageTelechargement: TDownloadWizardPage;
   OllamaOk: Boolean;
@@ -93,19 +108,37 @@ begin
   Result := True;
   if (CurPageID = wpReady) and (not OllamaPresent()) then begin
     PageTelechargement.Clear;
-    PageTelechargement.Add('https://ollama.com/download/OllamaSetup.exe', 'OllamaSetup.exe', '');
+    PageTelechargement.Add(
+      'https://github.com/ollama/ollama/releases/download/v' + OllamaVersion
+        + '/OllamaSetup.exe',
+      'OllamaSetup.exe', OllamaSHA256);
     PageTelechargement.Show;
     try
       try
         PageTelechargement.Download;
         OllamaOk := True;
       except
-        { Hors ligne ou lien indisponible : on n'interrompt pas l'installation —
-          l'écran « Première installation » de l'application prendra le relais. }
+        { Hors ligne, lien indisponible ou empreinte SHA-256 non conforme :
+          on n'interrompt pas l'installation — l'ecran « Premiere
+          installation » de l'application prendra le relais. }
         Log('Téléchargement Ollama impossible : ' + GetExceptionMessage);
       end;
     finally
       PageTelechargement.Hide;
     end;
   end;
+end;
+
+function InitializeUninstall(): Boolean;
+var
+  CodeSortie: Integer;
+begin
+  { L'app est un processus sans fenetre : on la force a quitter avant la
+    desinstallation, sinon les fichiers verrouilles laissent une
+    desinstallation partielle (audit). Sans instance, taskkill echoue
+    silencieusement. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM BilanOrtho.exe', '',
+    SW_HIDE, ewWaitUntilTerminated, CodeSortie);
+  Sleep(500);
+  Result := True;
 end;

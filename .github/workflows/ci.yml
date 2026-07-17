@@ -38,6 +38,15 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: Garde-fou — le tag git doit égaler app.__version__
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $ver = python -c "from app import __version__; print(__version__)"
+          if ($tag -ne $ver) {
+            throw "Tag v$tag mais app.__version__ = $ver — bumpez app/__init__.py avant de tagger."
+          }
       - name: Dépendances
         run: |
           pip install -r requirements.txt
@@ -67,6 +76,40 @@ jobs:
           Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
           if (-not $ok) { throw "Le binaire n'a pas répondu sur /api/status" }
           Write-Host "Réponse : $($r.Content)"
+      - name: Fumée — la dictée fonctionne dans le binaire gelé
+        shell: pwsh
+        run: |
+          # La classe de bug qui a cassé la dictée entre v1.2 et v1.4 (données
+          # faster-whisper absentes du build PyInstaller) n'est détectable
+          # qu'en exerçant /api/transcribe sur le binaire compilé.
+          $env:BILAN_ORTHO_DATA_DIR = "$env:TEMP\bilan-ortho-fumee-dictee"
+          $p = Start-Process -FilePath "dist\BilanOrtho\BilanOrtho.exe" -PassThru
+          try {
+            $ok = $false
+            foreach ($i in 1..90) {
+              try {
+                $r = Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/status" -UseBasicParsing -TimeoutSec 2
+                if ($r.StatusCode -eq 200) { $ok = $true; break }
+              } catch { Start-Sleep -Milliseconds 500 }
+            }
+            if (-not $ok) { throw "Le binaire n'a pas répondu sur /api/status" }
+            # Coffre de test + modèle Whisper « tiny » (léger) sur CPU.
+            Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/unlock" `
+              -ContentType "application/json" -Body '{"passphrase":"passphrase-de-fumee-ci"}' | Out-Null
+            Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:8000/api/config" `
+              -ContentType "application/json" -Body '{"overrides":{"stt":{"model":"tiny","device":"cpu"}}}' | Out-Null
+            # 1 s de silence WAV 16 kHz : exerce tout le pipeline (VAD compris).
+            python -c "import wave; w=wave.open(r'$env:TEMP\silence.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b'\x00\x00'*16000); w.close()"
+            $code = & curl.exe -s -o "$env:TEMP\transcribe.json" -w "%{http_code}" `
+              -F "audio=@$env:TEMP\silence.wav;type=audio/wav" http://127.0.0.1:8000/api/transcribe
+            if ($code -ne "200") {
+              Get-Content "$env:TEMP\transcribe.json" -ErrorAction SilentlyContinue
+              throw "La dictée a échoué dans le binaire gelé (HTTP $code)."
+            }
+            Write-Host "Dictée OK : $(Get-Content $env:TEMP\transcribe.json)"
+          } finally {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
       - name: Version
         id: version
         shell: pwsh
