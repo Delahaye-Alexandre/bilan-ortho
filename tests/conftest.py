@@ -52,7 +52,9 @@ def client(data_dir, monkeypatch):
 
     from app.main import app
 
-    with TestClient(app) as c:
+    # base_url 127.0.0.1 : le TrustedHostMiddleware (anti DNS rebinding)
+    # rejette tout autre en-tête Host, y compris le « testserver » par défaut.
+    with TestClient(app, base_url="http://127.0.0.1") as c:
         r = c.post("/api/unlock", json={"passphrase": PASSPHRASE})
         assert r.status_code == 200
         yield c

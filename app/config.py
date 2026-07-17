@@ -10,11 +10,14 @@ Deux niveaux :
 from __future__ import annotations
 
 import copy
+import ipaddress
 import json
 import os
+import socket
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from . import db as _db
 
@@ -42,6 +45,35 @@ def data_dir() -> Path:
 
 def db_path() -> Path:
     return data_dir() / "bilan.db"
+
+
+def hote_est_local(url: str) -> bool:
+    """True si l'URL pointe sur la machine locale (loopback).
+
+    Des données de santé transitent vers ``llm.host`` / ``embeddings.host`` :
+    en cohérence avec le registre RGPD (traitement 100 % local), ces hôtes
+    sont contraints à 127.0.0.0/8, ::1 ou localhost."""
+    if not url or not str(url).strip():
+        return True  # vide -> défaut local
+    try:
+        h = urlparse(url if "://" in str(url) else f"http://{url}").hostname
+    except ValueError:
+        return False
+    if not h:
+        return False
+    if h == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        pass  # nom d'hôte : on résout et on exige que TOUT pointe en local
+    try:
+        infos = socket.getaddrinfo(h, None)
+    except OSError:
+        return False
+    return bool(infos) and all(
+        ipaddress.ip_address(i[4][0]).is_loopback for i in infos
+    )
 
 
 def audio_dir() -> Path:

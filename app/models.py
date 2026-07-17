@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class BilanType(str, Enum):
@@ -47,11 +47,116 @@ class OkResponse(BaseModel):
 
 
 # --- Configuration -----------------------------------------------------------
+#
+# Les surcharges sont validées : une valeur mal typée (« 15 » au lieu de 15)
+# était fusionnée telle quelle et faisait planter toutes les routes protégées
+# au premier calcul (app « briquée »). Les clés connues sont typées (avec
+# coercition tolérante : "15" -> 15) ; les clés inconnues restent acceptées
+# pour ne pas casser les configurations avancées.
+
+def _exiger_hote_local(v: str | None) -> str | None:
+    from . import config
+
+    if v is not None and not config.hote_est_local(v):
+        raise ValueError(
+            "hôte non local refusé — les données de santé doivent rester "
+            "sur cette machine (127.0.0.1 / localhost)."
+        )
+    return v
+
+
+class _SectionPatch(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class LlmPatch(_SectionPatch):
+    model: str | None = None
+    temperature: float | None = Field(None, ge=0, le=2)
+    host: str | None = None
+    num_ctx: int | None = Field(None, ge=256)
+
+    _host_local = field_validator("host")(_exiger_hote_local)
+
+
+class EmbeddingsPatch(_SectionPatch):
+    model: str | None = None
+    host: str | None = None
+
+    _host_local = field_validator("host")(_exiger_hote_local)
+
+
+class SttPatch(_SectionPatch):
+    device: str | None = None
+    model: str | None = None
+    compute_type: str | None = None
+    language: str | None = None
+    vad: bool | None = None
+    beam_size: int | None = Field(None, ge=1, le=10)
+    hotwords: list[str] | None = None
+    corrections: dict[str, str] | None = None
+
+
+class RgpdPatch(_SectionPatch):
+    verrouillage_inactivite_minutes: float | None = Field(None, ge=0)
+    conservation_jours: int | None = Field(None, ge=0)
+
+
+class SauvegardePatch(_SectionPatch):
+    dossier: str | None = None
+    retention: int | None = Field(None, ge=0)
+    auto_jours: int | None = Field(None, ge=0)
+
+
+class StylePatch(_SectionPatch):
+    few_shot_k: int | None = Field(None, ge=0, le=20)
+    vouvoiement: bool | None = None
+    niveau_detail: str | None = None
+
+
+class SeuilsPatch(_SectionPatch):
+    fragilite_et: float | None = None
+    pathologique_et: float | None = None
+    severe_et: float | None = None
+
+
+class CotationPatch(_SectionPatch):
+    valeur_amo: float | None = Field(None, ge=0)
+    bilan_simple_coeff: float | None = Field(None, ge=0)
+    bilan_complexe_coeff: float | None = Field(None, ge=0)
+    renouvellement_coeff: float | None = Field(None, ge=0)
+
+
+class TrameSectionPatch(_SectionPatch):
+    cle: str
+    titre: str
+
+
+class TramePatch(_SectionPatch):
+    sections: list[TrameSectionPatch] | None = None
+
+
+class PromptsPatch(_SectionPatch):
+    structure_system: str | None = None
+
+
+class OverridesPatch(_SectionPatch):
+    llm: LlmPatch | None = None
+    stt: SttPatch | None = None
+    embeddings: EmbeddingsPatch | None = None
+    rgpd: RgpdPatch | None = None
+    sauvegarde: SauvegardePatch | None = None
+    style: StylePatch | None = None
+    seuils: SeuilsPatch | None = None
+    cotation: CotationPatch | None = None
+    trame: TramePatch | None = None
+    catalogues: dict | None = None
+    prompts: PromptsPatch | None = None
+
 
 class ConfigPatch(BaseModel):
     """Surcharges partielles de configuration (fusion profonde côté serveur)."""
 
-    overrides: dict
+    overrides: OverridesPatch
 
 
 # --- Bilans / structuration --------------------------------------------------

@@ -18,6 +18,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import (
     bilan,
@@ -55,6 +56,18 @@ from . import __version__
 
 app = FastAPI(title="Bilan Ortho", version=__version__)
 
+# Anti « DNS rebinding » : un site malveillant ouvert dans un autre onglet
+# peut faire pointer son domaine vers 127.0.0.1 et interroger ce serveur
+# depuis le navigateur. On rejette toute requête dont l'en-tête Host n'est
+# pas explicitement la machine locale.
+app.add_middleware(
+    TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"]
+)
+
+# La passphrase est l'unique rempart du chiffrement du coffre : longueur
+# minimale exigée à la création (les coffres existants restent ouvrables).
+PASSPHRASE_MIN = 12
+
 
 def require_unlock() -> None:
     """Dépendance : exige une session déverrouillée, applique l'auto-verrouillage."""
@@ -78,6 +91,12 @@ async def status() -> StatusResponse:
 async def unlock(req: UnlockRequest) -> OkResponse:
     if not req.passphrase.strip():
         raise HTTPException(400, "Passphrase vide.")
+    if not security.db_exists() and len(req.passphrase) < PASSPHRASE_MIN:
+        raise HTTPException(
+            400,
+            f"Passphrase trop courte : {PASSPHRASE_MIN} caractères minimum "
+            "pour protéger le coffre.",
+        )
     if security.unlock(req.passphrase):
         return OkResponse(ok=True)
     raise HTTPException(401, "Passphrase incorrecte.")
@@ -145,8 +164,9 @@ async def get_config() -> dict:
 
 @app.put("/api/config", dependencies=[Depends(require_unlock)])
 async def put_config(patch: ConfigPatch) -> dict:
+    overrides = patch.overrides.model_dump(exclude_unset=True)
     with security.transaction() as con:
-        return config.ConfigStore(con).set_overrides(patch.overrides)
+        return config.ConfigStore(con).set_overrides(overrides)
 
 
 @app.delete("/api/config", dependencies=[Depends(require_unlock)])
