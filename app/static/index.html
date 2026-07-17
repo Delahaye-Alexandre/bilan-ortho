@@ -368,8 +368,49 @@
 </div>
 
 <script>
-const api = (p, o) => fetch(p, o);
+// Wrapper unique de tous les appels au serveur : vérifie la réponse, ré-affiche
+// l'écran de verrouillage sur 423 (auto-verrouillage), traduit les erreurs
+// réseau/serveur en français. Lève une Error : les appelants intercepteront
+// e.message au lieu de manipuler une réponse d'erreur comme un résultat.
+async function api(p, o) {
+  let r;
+  try { r = await fetch(p, o); }
+  catch { throw new Error("serveur injoignable — l'application est-elle lancée ?"); }
+  if (r.status === 423) {
+    montrerVerrouillage();
+    throw new Error('session verrouillée (inactivité) — déverrouillez pour reprendre.');
+  }
+  if (!r.ok) {
+    let detail = '';
+    try {
+      const j = await r.json();
+      if (typeof j.detail === 'string') detail = j.detail;
+      else if (Array.isArray(j.detail) && j.detail.length) {
+        const d = j.detail[0];
+        detail = 'donnée invalide' + (d.loc ? ` (${d.loc.slice(1).join('.')})` : '') + (d.msg ? ` : ${d.msg}` : '');
+      }
+    } catch {}
+    throw new Error(detail || `erreur serveur (${r.status})`);
+  }
+  return r;
+}
+function montrerVerrouillage() {
+  if (!overlay.hidden) return;
+  lockMsg.textContent = 'Session verrouillée après inactivité. Déverrouillez pour reprendre — votre saisie en cours est conservée.';
+  lockErr.textContent = '';
+  overlay.hidden = false;
+  pass.focus();
+}
+// Anti double-clic : désactive le bouton le temps de l'action (une soumission
+// dupliquée créerait 2 bilans / 2 patients / une double indexation).
+async function avecBouton(btn, fn) {
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try { return await fn(); } finally { btn.disabled = false; }
+}
 let CUR = null;         // bilan courant
+let SEC_RENDERED = {};  // contenu serveur affiché par rubrique (détection des brouillons)
+let SEC_BILAN = null;   // bilan auquel appartiennent les brouillons de rubriques
 let QS = [];            // questions de clarification en cours (id stable par question)
 let QID = 0;            // compteur d'ids de questions
 let DISMISSED = new Map(); // questions écartées : clé normalisée → texte original (l'IA ne les repose pas)
@@ -386,19 +427,24 @@ const unlockBtn = document.getElementById('unlockBtn');
 let appStarted = false;
 
 async function gate() {
+  let s;
   try {
-    const st = await (await api('/api/status')).json();
-    if (st.version) document.getElementById('appVersion').textContent = 'v' + st.version;
-  } catch {}
+    s = await (await api('/api/status')).json();
+  } catch (e) {
+    overlay.hidden = false;
+    lockMsg.textContent = 'Le serveur ne répond pas.';
+    lockErr.textContent = e.message + ' Relancez l\'application, puis rechargez cette page (F5).';
+    return;
+  }
+  if (s.version) document.getElementById('appVersion').textContent = 'v' + s.version;
   try {
     const inst = await (await api('/api/installation')).json();
     if (!inst.pret) { showInstall(inst); return; }
   } catch {}
-  const s = await (await api('/api/status')).json();
   if (s.unlocked) { startApp(); return; }
   overlay.hidden = false;
   if (s.first_run) {
-    lockMsg.textContent = "Premier lancement : créez la passphrase de votre coffre. Notez-la : elle est irrécupérable.";
+    lockMsg.textContent = "Premier lancement : créez la passphrase de votre coffre (12 caractères minimum). Notez-la : elle est irrécupérable.";
     pass2.hidden = false; unlockBtn.textContent = 'Créer le coffre';
   }
   pass.focus();
@@ -502,15 +548,16 @@ async function doUnlock() {
   if (!pass2.hidden && p !== pass2.value) { lockErr.textContent = 'Les passphrases ne correspondent pas.'; return; }
   unlockBtn.disabled = true;
   try {
-    const r = await api('/api/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: p }) });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    await api('/api/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: p }) });
     pass.value = ''; pass2.value = ''; overlay.hidden = true; startApp();
   } catch (e) { lockErr.textContent = e.message; } finally { unlockBtn.disabled = false; }
 }
 unlockBtn.addEventListener('click', doUnlock);
 pass.addEventListener('keydown', e => { if (e.key === 'Enter' && pass2.hidden) doUnlock(); });
 pass2.addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); });
-document.getElementById('lockBtn').addEventListener('click', async () => { await api('/api/lock', { method: 'POST' }); location.reload(); });
+document.getElementById('lockBtn').addEventListener('click', async () => {
+  try { await api('/api/lock', { method: 'POST' }); } finally { location.reload(); }
+});
 
 // ---------- Démarrage ----------
 async function startApp() {
@@ -552,7 +599,8 @@ function renderPatList() {
     e.stopPropagation();
     const p = PATIENTS.find(q => q.id === +x.dataset.id);
     if (!confirm(`Supprimer ${patLabel(p)} et TOUS ses bilans (${p.nb_bilans}) ?\nAction définitive (effacement RGPD).`)) return;
-    await api('/api/patients/' + x.dataset.id, { method: 'DELETE' });
+    try { await api('/api/patients/' + x.dataset.id, { method: 'DELETE' }); }
+    catch (err) { $('patStatus').textContent = 'Erreur : ' + err.message; return; }
     if (CUR && CUR.patient_id === p.id) { CUR = null; renderBilan(); }
     resetPatForm(); loadPatients(); loadRecents();
   }));
@@ -574,7 +622,7 @@ document.getElementById('patientsBtn').addEventListener('click', () => {
   resetPatForm(); loadPatients(); document.getElementById('patientsOverlay').hidden = false;
 });
 document.getElementById('patCancel').addEventListener('click', resetPatForm);
-document.getElementById('patSave').addEventListener('click', async () => {
+document.getElementById('patSave').addEventListener('click', e => avecBouton(e.target, async () => {
   const st = $('patStatus');
   const body = {
     nom: $('patNom').value.trim(), prenom: $('patPrenom').value.trim(),
@@ -586,13 +634,12 @@ document.getElementById('patSave').addEventListener('click', async () => {
   try {
     const url = PAT_EDIT ? '/api/patients/' + PAT_EDIT : '/api/patients';
     const r = await api(url, { method: PAT_EDIT ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
     const saved = await r.json();
     resetPatForm(); await loadPatients(); loadRecents();
     if (!wasEdit) document.getElementById('patientSel').value = saved.id;
     st.textContent = '✓';
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
-});
+}));
 
 async function loadRefs() {
   try {
@@ -601,11 +648,14 @@ async function loadRefs() {
     el.innerHTML = list.length ? list.map(r =>
       `<a><span data-open>${escapeHtml(r.titre || 'extrait')} <span class="muted">(${r.section_cle})</span></span><span class="delref" data-id="${r.id}" style="float:right;cursor:pointer">✕</span></a>`).join('') : 'Aucun.';
     el.querySelectorAll('.delref').forEach(x => x.addEventListener('click', async e => {
-      e.stopPropagation(); await api('/api/references/' + x.dataset.id, { method: 'DELETE' }); loadRefs();
+      e.stopPropagation();
+      try { await api('/api/references/' + x.dataset.id, { method: 'DELETE' }); }
+      catch (err) { document.getElementById('refStatus').textContent = 'Erreur : ' + err.message; return; }
+      loadRefs();
     }));
   } catch {}
 }
-document.getElementById('refImport').addEventListener('click', async () => {
+document.getElementById('refImport').addEventListener('click', e => avecBouton(e.target, async () => {
   const f = document.getElementById('refFile').files[0];
   const st = document.getElementById('refStatus');
   if (!f) { st.textContent = 'Choisissez un fichier.'; return; }
@@ -613,17 +663,18 @@ document.getElementById('refImport').addEventListener('click', async () => {
   const fd = new FormData(); fd.append('file', f); fd.append('domaine', document.getElementById('domaine').value || '');
   try {
     const r = await api('/api/references', { method: 'POST', body: fd });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
     const s = await r.json(); st.textContent = `✓ ${s.n} extrait(s) indexé(s)`;
     document.getElementById('refFile').value = ''; loadRefs();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
-});
+}));
 
 async function loadDomaines() {
   const sel = document.getElementById('domaine');
-  const doms = await (await api('/api/domaines')).json();
-  sel.innerHTML = '<option value="">Générique (tronc commun)</option>' +
-    doms.map(d => `<option value="${d.cle}">${d.titre}</option>`).join('');
+  try {
+    const doms = await (await api('/api/domaines')).json();
+    sel.innerHTML = '<option value="">Générique (tronc commun)</option>' +
+      doms.map(d => `<option value="${d.cle}">${d.titre}</option>`).join('');
+  } catch { sel.innerHTML = '<option value="">Générique (tronc commun)</option>'; }
 }
 async function loadLLM() {
   const sel = document.getElementById('llmModel');
@@ -635,20 +686,26 @@ async function loadLLM() {
   } catch { sel.innerHTML = '<option>Ollama injoignable</option>'; }
 }
 document.getElementById('llmModel').addEventListener('change', async e => {
-  await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: { llm: { model: e.target.value } } }) });
+  try { await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: { llm: { model: e.target.value } } }) }); }
+  catch (err) { document.getElementById('sttInfo').textContent = 'Erreur : ' + err.message; }
 });
 
 // ---------- Bilan ----------
-document.getElementById('newBilan').addEventListener('click', async () => {
+document.getElementById('newBilan').addEventListener('click', e => avecBouton(e.target, async () => {
   const dom = document.getElementById('domaine').value;
   const type = document.getElementById('btype').value;
   const pid = +document.getElementById('patientSel').value || null;
   const body = { domaines: dom ? [dom] : [], type, patient_id: pid };
-  const r = await api('/api/bilans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  CUR = await r.json(); QS = []; DISMISSED.clear(); ANSWERED.clear(); renderBilan(); renderQuestions(); loadRecents(); loadPatients();
-});
+  try {
+    const r = await api('/api/bilans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    CUR = await r.json(); QS = []; DISMISSED.clear(); ANSWERED.clear(); renderBilan(); renderQuestions(); loadRecents(); loadPatients();
+  } catch (err) { document.getElementById('curBilan').textContent = 'Erreur : ' + err.message; }
+}));
 async function loadBilan(id) {
-  CUR = await (await api('/api/bilans/' + id)).json(); QS = []; DISMISSED.clear(); ANSWERED.clear(); renderBilan(); renderQuestions();
+  try {
+    CUR = await (await api('/api/bilans/' + id)).json();
+  } catch (e) { document.getElementById('curBilan').textContent = 'Erreur : ' + e.message; return; }
+  QS = []; DISMISSED.clear(); ANSWERED.clear(); renderBilan(); renderQuestions();
 }
 async function loadRecents() {
   try {
@@ -674,8 +731,10 @@ async function setStatut(statut) {
     if (d === null) return;
     body.destinataire = d.trim();
   }
-  const r = await api(`/api/bilans/${CUR.id}/statut`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (r.ok) { CUR = await r.json(); renderBilan(); loadRecents(); }
+  try {
+    const r = await api(`/api/bilans/${CUR.id}/statut`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    CUR = await r.json(); renderBilan(); loadRecents();
+  } catch (e) { document.getElementById('coteInfo').textContent = 'Erreur : ' + e.message; }
 }
 document.getElementById('valideBtn').addEventListener('click', () => setStatut('valide'));
 document.getElementById('envoyeBtn').addEventListener('click', () => setStatut('envoye'));
@@ -683,6 +742,18 @@ function renderBilan() {
   curLabel();
   const root = document.getElementById('bilanView');
   document.getElementById('actionsRow').style.display = CUR ? 'flex' : 'none';
+  // Même technique que les brouillons de questions : avant de reconstruire
+  // l'affichage, on met de côté les rubriques modifiées mais non enregistrées
+  // (sinon un re-rendu écraserait silencieusement une correction clinique).
+  const drafts = {};
+  if (CUR && SEC_BILAN === CUR.id) {
+    root.querySelectorAll('.sec[data-cle]').forEach(sec => {
+      const ta = sec.querySelector('.secText');
+      const ref = SEC_RENDERED[sec.dataset.cle];
+      if (ta && ref !== undefined && ta.value !== ref) drafts[sec.dataset.cle] = ta.value;
+    });
+  }
+  SEC_RENDERED = {}; SEC_BILAN = CUR ? CUR.id : null;
   if (!CUR) { root.innerHTML = '<div class="bilan-empty">Créez un nouveau bilan pour commencer.</div>'; return; }
   const sectionsHtml = CUR.sections.map(s => `
     <div class="sec" data-cle="${s.cle}">
@@ -699,10 +770,16 @@ function renderBilan() {
   root.querySelectorAll('.sec[data-cle]').forEach(sec => {
     const cle = sec.dataset.cle;
     const ta = sec.querySelector('.secText');
+    const s = CUR.sections.find(x => x.cle === cle);
+    SEC_RENDERED[cle] = (s && s.contenu) || '';
+    if (drafts[cle] !== undefined && drafts[cle] !== SEC_RENDERED[cle]) {
+      ta.value = drafts[cle];
+      sec.querySelector('.savest').textContent = '⚠️ modifications non enregistrées';
+    }
     sec.querySelector('.save').addEventListener('click', () => saveSection(cle, ta.value, null, sec));
     sec.querySelector('.valider').addEventListener('click', () => saveSection(cle, ta.value, 'valide', sec));
   });
-  document.getElementById('epAdd').addEventListener('click', addEpreuve);
+  document.getElementById('epAdd').addEventListener('click', e => avecBouton(e.target, addEpreuve));
   loadTestList();
   const cot = CUR.cotation;
   document.getElementById('coteInfo').textContent = cot ? `${cot.code_amo} · ${cot.montant} €` : '';
@@ -735,6 +812,7 @@ function epreuvesCardHtml() {
           </select>
           <input id="epVal" placeholder="Valeur (ex. -1,5)" style="flex:1 1 90px">
           <button id="epAdd">Ajouter</button>
+          <span class="status" id="epStatus"></span>
         </div>
         <div class="muted" style="margin-top:6px">Le drapeau (norme/fragilité/pathologique/sévère) est déduit automatiquement de l'étalonnage.</div>
         <datalist id="testList"></datalist>
@@ -763,19 +841,22 @@ async function addEpreuve() {
     etalonnage_valeur: document.getElementById('epVal').value.trim() || null,
   };
   const body = { test_nom: test, domaine: (CUR.domaines || [])[0] || '', resultats: [r] };
-  const resp = await api(`/api/bilans/${CUR.id}/epreuves`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (resp.ok) { CUR = await resp.json(); renderBilan(); }
+  try {
+    const resp = await api(`/api/bilans/${CUR.id}/epreuves`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    CUR = await resp.json(); renderBilan();
+  } catch (e) { const st = document.getElementById('epStatus'); if (st) st.textContent = 'Erreur : ' + e.message; }
 }
 function badgeLabel(s) { return s === 'valide' ? 'validé' : s === 'propose_ia' ? 'à valider' : 'vide'; }
 async function saveSection(cle, contenu, statut, sec) {
   const st = sec.querySelector('.savest'); st.textContent = '…';
   const body = { contenu }; if (statut) body.statut = statut;
-  const r = await api(`/api/bilans/${CUR.id}/sections/${cle}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (r.ok) {
+  try {
+    await api(`/api/bilans/${CUR.id}/sections/${cle}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const s = CUR.sections.find(x => x.cle === cle); s.contenu = contenu; if (statut) s.statut = statut;
+    SEC_RENDERED[cle] = contenu; // le contenu affiché est désormais celui du serveur
     const badge = sec.querySelector('.badge'); if (statut) { badge.className = 'badge ' + statut; badge.textContent = badgeLabel(statut); }
     st.textContent = '✓';
-  } else { st.textContent = 'erreur'; }
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }
 document.getElementById('copyBilan').addEventListener('click', () => {
   const txt = CUR.sections.filter(s => (s.contenu || '').trim())
@@ -785,9 +866,10 @@ document.getElementById('copyBilan').addEventListener('click', () => {
 document.getElementById('coteBtn').addEventListener('click', async () => {
   if (!CUR) return;
   const info = document.getElementById('coteInfo'); info.textContent = '…';
-  const r = await api(`/api/bilans/${CUR.id}/cotation`, { method: 'POST' });
-  if (r.ok) { const c = await r.json(); CUR.cotation = c; info.textContent = `${c.code_amo} · ${c.montant} €`; }
-  else info.textContent = 'erreur';
+  try {
+    const c = await (await api(`/api/bilans/${CUR.id}/cotation`, { method: 'POST' })).json();
+    CUR.cotation = c; info.textContent = `${c.code_amo} · ${c.montant} €`;
+  } catch (e) { info.textContent = 'Erreur : ' + e.message; }
 });
 document.getElementById('expDocx').addEventListener('click', () => { if (CUR) window.open(`/api/bilans/${CUR.id}/export?format=docx`); });
 document.getElementById('expMd').addEventListener('click', () => { if (CUR) window.open(`/api/bilans/${CUR.id}/export?format=md`); });
@@ -799,9 +881,13 @@ document.getElementById('structBtn').addEventListener('click', () => structure({
 // pour que l'IA route précisément et ne repose jamais les mêmes questions.
 // Les questions ouvertes persistent jusqu'à réponse ou écartement (✕) — y
 // compris après une nouvelle dictée, puisque l'IA a consigne de ne pas les répéter.
+let STRUCTURING = false; // une seule analyse à la fois (Entrée/clic répétés ignorés)
 async function structure({ transcription = '', reponses = [] }, fromDictee, answeredIds = []) {
+  if (STRUCTURING) return;
   if (!CUR) { document.getElementById('structStatus').textContent = 'Créez d\'abord un bilan.'; return; }
   if (!transcription.trim() && !reponses.length) { document.getElementById('structStatus').textContent = 'Rien à structurer.'; return; }
+  STRUCTURING = true;
+  const bilanId = CUR.id; // si on change de bilan pendant l'analyse, la réponse tardive n'écrase pas l'écran
   const st = document.getElementById('structStatus');
   const t0 = Date.now();
   st.textContent = 'Analyse en cours… (souvent 2-3 min selon la machine)';
@@ -814,14 +900,20 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
   setQuestionBtns(true);
   try {
     const pendingQ = QS.filter(q => !answeredIds.includes(q.id)).map(q => q.question);
-    const r = await api(`/api/bilans/${CUR.id}/structure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    const r = await api(`/api/bilans/${bilanId}/structure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       transcription, reponses,
       questions_en_attente: pendingQ,
       questions_ecartees: [...DISMISSED.values()],
       questions_repondues: [...ANSWERED.values()],
     }) });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
     const res = await r.json();
+    if (!CUR || CUR.id !== bilanId) {
+      // Réponse tardive après changement de bilan : le texte est bien enregistré
+      // dans le bilan d'origine, mais on ne touche pas à l'écran actuel.
+      if (fromDictee) document.getElementById('dicteeText').value = '';
+      st.textContent = `✓ analyse intégrée au bilan #${bilanId} (vous avez changé de bilan entre-temps).`;
+      return;
+    }
     CUR = res.bilan; renderBilan();
     // Les questions répondues ne sont retirées qu'ici, une fois l'analyse réussie
     // (en cas d'erreur, rien n'est perdu — et ANSWERED n'est enrichi qu'ici aussi).
@@ -839,7 +931,7 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
       : `✓ ${fresh.length} question(s) de clarification`;
     if (fromDictee) document.getElementById('dicteeText').value = '';
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
-  finally { clearInterval(chrono); document.getElementById('structBtn').disabled = false; setQuestionBtns(false); }
+  finally { STRUCTURING = false; clearInterval(chrono); document.getElementById('structBtn').disabled = false; setQuestionBtns(false); }
 }
 function setQuestionBtns(disabled) {
   document.querySelectorAll('#questions button').forEach(b => {
@@ -892,7 +984,6 @@ async function toggleAnsRec(qid) {
     try {
       const fd = new FormData(); fd.append('audio', blob, 'reponse.webm');
       const r = await api('/api/transcribe', { method: 'POST', body: fd });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
       const res = await r.json();
       const inp = micInp(qid);
       if (inp) {
@@ -991,7 +1082,6 @@ async function toggleRec() {
     try {
       const fd = new FormData(); fd.append('audio', blob, 'dictee.webm');
       const r = await api('/api/transcribe', { method: 'POST', body: fd });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
       const res = await r.json();
       dicteeText.value += (dicteeText.value ? ' ' : '') + res.text;
       recStatus.textContent = '✓ transcrit';
@@ -1105,7 +1195,6 @@ document.getElementById('cfgSave').addEventListener('click', async () => {
   const st = $('cfgStatus'); st.textContent = '…';
   try {
     const r = await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: collectSettings() }) });
-    if (!r.ok) throw new Error(r.statusText);
     fillSettings(await r.json()); st.textContent = '✓ enregistré';
     loadLLM(); initDictee();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
@@ -1115,10 +1204,29 @@ document.getElementById('cfgReset').addEventListener('click', async () => {
   const st = $('cfgStatus');
   try {
     const r = await api('/api/config', { method: 'DELETE' });
-    if (!r.ok) throw new Error(r.statusText);
     fillSettings(await r.json()); st.textContent = '✓ défauts rétablis';
     loadLLM(); initDictee();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+});
+
+// F5, fermeture d'onglet ou « Verrouiller » avec une saisie non enregistrée :
+// le navigateur demande confirmation (dictée transcrite non structurée,
+// rubrique modifiée, réponse en cours de saisie, micro actif).
+function saisieEnCours() {
+  if (recording || ansRec) return true;
+  if (dicteeText.value.trim()) return true;
+  for (const sec of document.querySelectorAll('#bilanView .sec[data-cle]')) {
+    const ta = sec.querySelector('.secText');
+    const ref = SEC_RENDERED[sec.dataset.cle];
+    if (ta && ref !== undefined && ta.value !== ref) return true;
+  }
+  for (const el of document.querySelectorAll('#questions .ans')) {
+    if (el.value.trim()) return true;
+  }
+  return false;
+}
+window.addEventListener('beforeunload', e => {
+  if (saisieEnCours()) { e.preventDefault(); e.returnValue = ''; }
 });
 
 gate();
