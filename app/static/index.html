@@ -142,7 +142,7 @@
 
     <label>Mes bilans de référence</label>
     <div class="muted">Importez vos propres bilans : l'IA s'inspire de votre style (100 % local).</div>
-    <input type="file" id="refFile" accept=".pdf,.txt,.md" style="margin-top:6px" />
+    <input type="file" id="refFile" accept=".pdf,.docx,.txt,.md" style="margin-top:6px" />
     <div class="row" style="margin-top:6px"><button id="refImport" class="ghost" style="width:100%">Importer</button></div>
     <div id="refStatus" class="status"></div>
     <div id="refList" class="reclist muted"></div>
@@ -359,7 +359,7 @@
       <h3>5. Relisez, validez, exportez</h3>
       <p>Chaque rubrique proposée par l'IA est marquée « à valider » : <b>vous relisez, corrigez et validez</b> — vous restez seul(e) responsable du contenu. Puis cotez (NGAP), exportez en Word ou Markdown, et marquez le bilan « validé » puis « envoyé » (le destinataire est tracé).</p>
       <h3>Vos bilans de référence (votre style)</h3>
-      <p>Importez vos propres bilans (PDF, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Les PDF scannés nécessitent Tesseract (<code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>).</p>
+      <p>Importez vos propres bilans (PDF, Word .docx, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Les PDF scannés nécessitent Tesseract (<code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>).</p>
       <h3>Confidentialité & sauvegardes</h3>
       <p>Tout est chiffré (SQLCipher) et tout tourne en local : aucune donnée ne quitte votre machine. L'application se verrouille seule après inactivité. Pensez à votre passphrase : elle est <b>irrécupérable</b>.</p>
       <p>Une <b>sauvegarde chiffrée</b> du coffre est créée automatiquement au déverrouillage (par défaut : au plus tous les 7 jours) ; configurez le dossier dans ⚙️ Paramètres — idéalement sur un autre support (clé USB). Supprimer un patient efface définitivement tous ses bilans (droit à l'effacement).</p>
@@ -707,15 +707,19 @@ async function loadBilan(id) {
   } catch (e) { document.getElementById('curBilan').textContent = 'Erreur : ' + e.message; return; }
   QS = []; DISMISSED.clear(); ANSWERED.clear(); renderBilan(); renderQuestions();
 }
+let RECENTS_LIMIT = 20; // pagination : « afficher plus » recharge la liste élargie
 async function loadRecents() {
   try {
-    const list = await (await api('/api/bilans')).json();
+    const list = await (await api('/api/bilans?limit=' + RECENTS_LIMIT)).json();
     const el = document.getElementById('recents');
-    el.innerHTML = list.length ? list.map(b => {
+    el.innerHTML = (list.length ? list.map(b => {
       const pat = b.patient_nom ? `${(b.patient_nom || '').toUpperCase()} ${b.patient_prenom || ''}`.trim() + ' · ' : '';
       return `<a data-id="${b.id}">#${b.id} · ${escapeHtml(pat)}${b.domaine_titres || 'Générique'} <span class="muted">(${b.statut})</span></a>`;
-    }).join('') : '—';
-    el.querySelectorAll('a').forEach(a => a.addEventListener('click', () => loadBilan(a.dataset.id)));
+    }).join('') : '—') +
+      (list.length >= RECENTS_LIMIT ? '<a data-plus>… afficher plus</a>' : '');
+    el.querySelectorAll('a[data-id]').forEach(a => a.addEventListener('click', () => loadBilan(a.dataset.id)));
+    const plus = el.querySelector('a[data-plus]');
+    if (plus) plus.addEventListener('click', () => { RECENTS_LIMIT += 20; loadRecents(); });
   } catch {}
 }
 function curLabel() {

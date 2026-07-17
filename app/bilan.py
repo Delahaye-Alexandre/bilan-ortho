@@ -100,14 +100,14 @@ def get(con, bilan_id: int) -> dict | None:
     return b
 
 
-def liste(con, limit: int = 20) -> list[dict]:
+def liste(con, limit: int = 20, offset: int = 0) -> list[dict]:
     rows = _dicts(
         con.execute(
             "SELECT b.id, b.domaines, b.type, b.statut, b.motif, b.created_at, "
             "b.patient_id, p.nom AS patient_nom, p.prenom AS patient_prenom "
             "FROM bilan b LEFT JOIN patient p ON p.id = b.patient_id "
-            "ORDER BY b.id DESC LIMIT ?",
-            (limit,),
+            "ORDER BY b.id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
         )
     )
     for r in rows:

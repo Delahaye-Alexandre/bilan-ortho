@@ -91,6 +91,20 @@ def _pdf_text(data: bytes) -> str:
     return "\n".join((page.extract_text() or "") for page in reader.pages)
 
 
+def _docx_text(data: bytes) -> str:
+    """Texte d'un .docx (format que l'app exporte elle-même)."""
+    from docx import Document
+
+    try:
+        doc = Document(io.BytesIO(data))
+    except Exception as exc:
+        raise ValueError("Fichier .docx illisible (corrompu ?).") from exc
+    return "\n".join(p.text for p in doc.paragraphs)
+
+
+_FORMATS_ACCEPTES = ".pdf, .docx, .txt, .md"
+
+
 def extract_text(data: bytes, filename: str) -> str:
     ext = os.path.splitext(filename or "")[1].lower()
     if ext == ".pdf":
@@ -98,8 +112,18 @@ def extract_text(data: bytes, filename: str) -> str:
         if len(text.strip()) < 20 and _ocr_available():
             text = _ocr_pdf(data)  # PDF scanné
         return text
-    # texte brut / markdown / autres
-    return data.decode("utf-8", errors="ignore")
+    if ext == ".docx":
+        return _docx_text(data)
+    if ext in ("", ".txt", ".md", ".markdown"):
+        # Un binaire décodé en errors="ignore" polluait la base RAG : rejet.
+        if b"\x00" in data:
+            raise ValueError(
+                f"Fichier binaire non pris en charge. Formats acceptés : {_FORMATS_ACCEPTES}."
+            )
+        return data.decode("utf-8", errors="ignore")
+    raise ValueError(
+        f"Format « {ext} » non pris en charge. Formats acceptés : {_FORMATS_ACCEPTES}."
+    )
 
 
 def _is_heading(s: str) -> str | None:

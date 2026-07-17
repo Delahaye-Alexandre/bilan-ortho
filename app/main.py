@@ -308,9 +308,13 @@ async def create_bilan(req: BilanCreate) -> dict:
 
 
 @app.get("/api/bilans", dependencies=[Depends(require_unlock)])
-async def list_bilans() -> list[dict]:
+async def list_bilans(limit: int = 20, offset: int = 0) -> list[dict]:
+    """Liste paginée : sans pagination, les bilans au-delà du plafond
+    disparaissaient purement et simplement de l'interface (audit)."""
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
     with security.transaction() as con:
-        return bilan.liste(con)
+        return bilan.liste(con, limit=limit, offset=offset)
 
 
 @app.get("/api/bilans/{bilan_id}", dependencies=[Depends(require_unlock)])

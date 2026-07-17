@@ -170,6 +170,61 @@ def test_references_import_liste_suppression(client, mock_embed):
     assert r.status_code == 400
 
 
+def test_import_docx(client, mock_embed):
+    """Le .docx — format que l'app exporte elle-même — doit s'importer en
+    texte lisible, pas en binaire ZIP vectorisé (audit)."""
+    import io
+
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Anamnèse")
+    doc.add_paragraph("Enfant né à terme, marche à 12 mois.")
+    buf = io.BytesIO()
+    doc.save(buf)
+    r = client.post(
+        "/api/references",
+        files={"file": ("bilan.docx", buf.getvalue(),
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        data={"domaine": "langage_oral"},
+    )
+    assert r.status_code == 200 and r.json()["n"] >= 1
+    refs = client.get("/api/references").json()
+    assert "anamnese" in {x["section_cle"] for x in refs}
+
+
+def test_export_docx_reimportable(client, mock_embed):
+    """Aller-retour complet : un bilan exporté en Word se réimporte tel quel."""
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    client.put(f"/api/bilans/{bid}/sections/anamnese",
+               json={"contenu": "Enfant né à terme."})
+    data = client.get(f"/api/bilans/{bid}/export?format=docx").content
+    r = client.post("/api/references", files={"file": ("bilan.docx", data, "application/octet-stream")})
+    assert r.status_code == 200 and r.json()["n"] >= 1
+
+
+def test_import_binaire_rejete(client, mock_embed):
+    # extension inconnue -> refus explicite
+    r = client.post("/api/references",
+                    files={"file": ("archive.zip", b"PK\x03\x04xxxx", "application/zip")})
+    assert r.status_code == 400 and "pris en charge" in r.json()["detail"]
+    # binaire déguisé en .txt -> refus (octet nul)
+    r = client.post("/api/references",
+                    files={"file": ("piege.txt", b"abc\x00def", "text/plain")})
+    assert r.status_code == 400
+
+
+def test_bilans_pagination(client):
+    ids = [client.post("/api/bilans", json={"domaines": []}).json()["id"] for _ in range(3)]
+    page1 = client.get("/api/bilans?limit=2").json()
+    assert [b["id"] for b in page1] == [ids[2], ids[1]]
+    page2 = client.get("/api/bilans?limit=2&offset=2").json()
+    assert [b["id"] for b in page2] == [ids[0]]
+    # bornes défensives
+    assert client.get("/api/bilans?limit=0").status_code == 200
+    assert client.get("/api/bilans?offset=-1").status_code == 200
+
+
 def test_references_embeddings_indisponibles(client, monkeypatch):
     def boom(text, cfg):
         raise rag.EmbeddingUnavailable("modèle absent")
