@@ -1,6 +1,6 @@
 # Avancement — bilan-ortho
 
-Plan validé : `~/.claude/plans/curious-exploring-squid.md`. Recherche : `docs/recherche-bilan-ortho.md`.
+Recherche : `docs/recherche-bilan-ortho.md`.
 Cible : production complète, générique & configurable, Python/FastAPI local, dictée auto-adaptative.
 
 ## Phases
@@ -19,7 +19,7 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - `/api/transcribe` (upload multipart, `python-multipart`) + `/api/stt/info` ; audit sans contenu.
   - UI : panneau « Dictée vocale » (MediaRecorder → transcription locale ajoutée au texte).
   - **Vérifié** : pipeline direct + HTTP end-to-end transcrivent une vraie parole (`"this is a spoken dictation test."`), audio non conservé, GET→405.
-  - Sur la machine d'Alexandre : le défaut télécharge `medium` (~1,5 Go) au 1er usage réel et transcrit en FR ; possibilité de pointer `stt.model` vers un modèle CT2 fine-tuné FR pour la qualité max.
+  - Possibilité de pointer `stt.model` vers un modèle CT2 fine-tuné FR pour la qualité max.
 - [x] **Phase 2 — Structuration IA + dialogue de clarification** *(fait, testé)*
   - `app/prompts.py` : prompt de structuration (JSON strict) + checklist de zones d'ombre (âge manquant, score sans étalonnage, test sans résultat, appréciation vague, diagnostic à étayer).
   - `app/llm.py` : `chat_json` (Ollama `/api/chat` format JSON) + `structure()` (routage dictée→rubriques + questions) avec parse tolérant, ne garde que des clés valides.
@@ -65,15 +65,14 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Vérifié** : exe copié sur le Bureau et exécuté depuis Windows — démarrage à froid OK (serveur up, 1 seul process), relance avec serveur déjà up → simple ouverture du navigateur, aucun doublon.
   - Distribution à d'autres orthophonistes (build natif Windows + installeur Ollama/Tesseract) : chantier séparé, non commencé (choix d'Alexandre : « mon PC d'abord »).
 
-- [~] **Chantier distribution (2026-07-05, plan validé `piped-pondering-hoare`)** — en cours
+- [~] **Chantier distribution (2026-07-05)** — en cours
   - [x] Phase A : dépôt GitHub **privé** `Delahaye-Alexandre/bilan-ortho`, tag v1.1.0.
   - [x] Phase B : portabilité Windows natif — `sqlcipher3` officiel (roues win_amd64, même format de coffre) via marqueurs de plateforme, `data_dir` → `%LOCALAPPDATA%`, Tesseract Windows détecté, `lanceur.py` (single-instance, ports 8000-8010).
   - [x] Phase C : premier lancement guidé — `app/systeme.py` (RAM, proposition **qwen3.5:9b** ≥16 Go / **qwen3.5:4b** 8-16 Go, recherche 07/2026), `GET /api/installation` + `POST /api/installation/pull` (NDJSON), écran UI avec progression, bascule du modèle après déverrouillage. OCR refactoré sur l'API Python ocrmypdf (compatible app compilée).
   - [x] Phase E (jalon 1) : **CI verte sur windows-latest + ubuntu-latest** (68 tests) — SQLCipher Windows validé en vrai.
   - [x] Phase D : spec PyInstaller onedir (DLL natives collectées), installeur Inno (par utilisateur, données préservées), job CI build + fumage du binaire + Release draft sur tag.
   - [x] Phase F (partie automatisable) : installeur du build CI **testé en réel sur le Windows d'Alexandre** — installation silencieuse OK, app native démarrée, coffre chiffré natif créé (`%LOCALAPPDATA%\bilan-ortho`, nettoyé après test), bilan + export docx OK, RAM détectée 31,7 Gio → proposition qwen3.5:9b. Découverte : un **Ollama Windows sans modèles** tourne en plus de l'Ollama WSL → l'app native passera par l'écran guidé pour tirer ses modèles côté Windows (comportement nominal attendu lors des tests). `docs/guide-test.md` (guide de test) rédigé et attaché à la release.
-  - **Release v1.2.0 (draft, privée)** : `BilanOrtho-Setup-1.2.0.exe` (70 Mo) + guide — https://github.com/Delahaye-Alexandre/bilan-ortho/releases . Reste humain : passe manuelle d'Alexandre (double-clic, écran guidé, pull des modèles Windows), envoi du lien aux personnes qui testent, retours.
-  - Note machine d'Alexandre : l'app native Windows verra l'Ollama de WSL via localhost (port forwarding) et utilisera un coffre séparé (`%LOCALAPPDATA%\bilan-ortho`) — les données WSL ne bougent pas. Arrêter le serveur WSL avant de tester le natif (sinon le lanceur s'attache à l'instance WSL existante).
+  - **Release v1.2.0 (draft, privée)** : `BilanOrtho-Setup-1.2.0.exe` (70 Mo) + guide — https://github.com/Delahaye-Alexandre/bilan-ortho/releases . Reste humain : passe manuelle (double-clic, écran guidé, pull des modèles Windows), envoi du lien aux personnes qui testent, retours.
 
 - [x] **v1.2.1 (2026-07-05) — Fenêtre d'app dédiée + installeur tout-en-un** *(fait, release draft)*
   - Fenêtre d'application dédiée (mode `--app` d'Edge/Chrome, 1280×860, favicon SVG) au lieu d'un onglet navigateur — `lanceur.py` + lanceur C# WSL, repli navigateur classique si absent.
@@ -106,10 +105,14 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Vocabulaire neutre** (demande d'Alexandre) : `guide-testeuse.md` → `guide-test.md`, plus aucune désignation genrée dans le dépôt (README, CI, installeur, guide) ; assets et notes des releases mis à jour.
   - Non testable hors Windows : la collecte du spec et l'installeur sont validés par la CI (garde-fou VAD + fumée) puis par la passe manuelle.
 
-## Environnement (machine d'Alexandre)
-- Python 3.12.3, venv `.venv`. Ollama WSL 0.30.10 : `qwen2.5:7b-instruct-q4_K_M` (défaut LLM), `qwen3.5:4b`, `qwen3.5:9b`, `nomic-embed-text` + `glm-5.2:cloud` (⚠️ jamais sur données patient).
-- GPU RTX 3050 Ti **4 Go VRAM** (partagé avec Ollama) → STT lean CPU/distillé.
-- OCR **installé et vérifié** (2026-07-04) : tesseract 5.3.4 + `fra`, ghostscript, ocrmypdf 17.8.0 (pip, venv). Import d'un PDF scanné testé de bout en bout via l'API (7,5 s). Correctif au passage : `importer._ocr_pdf` invoque `python -m ocrmypdf` (indépendant du PATH) au lieu du binaire.
+- [x] **Post-v1.4.1 (2026-07-17) — Remédiation complète de l'audit** *(fait, testé — voir `docs/audit-2026-07-17.md`)*
+  - **Lot 1 frontend** : wrapper `api()` (vérif. réponse, 423 → écran de verrouillage, erreurs en français), rubriques modifiées préservées au re-rendu (C2), garde anti-course et analyse unique dans `structure()`, anti double-clic, `beforeunload`. Test UI dédié (20 scénarios).
+  - **Lot 2 sécurité** : `TrustedHostMiddleware` anti DNS rebinding (C1), surcharges de config validées Pydantic (C5), hôtes LLM/embeddings contraints en loopback (RGPD), passphrase ≥ 12 caractères à la création.
+  - **Lot 3 fiabilité** : `embed()` asynchrone hors verrou (C3), timeout LLM borné, unlock/sauvegarde en threadpool, `enforce_inactivity` sous verrou, `updated_at` sur édition de rubrique (anti-purge RGPD), 423 explicites.
+  - **Lot 4 intégrité** : import `.docx` réel + rejet des binaires, pagination des bilans.
+  - **Lot 5 packaging** : purge `_internal` à la mise à jour, taskkill à la désinstallation, Ollama épinglé + SHA-256, garde-fou de version, fumée dictée sur binaire gelé.
+  - **Lot 6 outillage** : ruff + job lint, tests UI en CI, `requirements.lock`, matrice Python 3.11-3.13.
+  - **Lot 7 nettoyage** : endpoints legacy supprimés (`/api/generate`, `/api/sections` ; `/api/models` conservé pour l'UI mais verrouillé), `_dicts` factorisé, seuils percentile configurables, badges sévère/pathologique distincts, rotation de `serveur.log`, migrations de schéma (`PRAGMA user_version`), docs à jour.
 
 ## Lancer
 `./run.sh` → http://localhost:8000 (bind 127.0.0.1). Données : `~/.local/share/bilan-ortho/` (surchargeable via `BILAN_ORTHO_DATA_DIR`).

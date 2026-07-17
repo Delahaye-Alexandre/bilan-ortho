@@ -168,8 +168,11 @@ def decouper(data: bytes, filename: str) -> list[tuple[str, str, str]]:
     embeddings hors verrou puis insère via ``rag.add_reference``."""
     text = extract_text(data, filename)
     if not text.strip():
-        raise ValueError(
-            "Aucun texte extrait. PDF scanné ? Installez Tesseract "
-            "(apt install tesseract-ocr tesseract-ocr-fra ocrmypdf)."
-        )
+        if sys.platform == "win32":
+            aide = ("Installez Tesseract pour Windows (installeur UB-Mannheim : "
+                    "github.com/UB-Mannheim/tesseract) puis relancez l'import.")
+        else:
+            aide = ("Installez Tesseract "
+                    "(apt install tesseract-ocr tesseract-ocr-fra ocrmypdf).")
+        raise ValueError(f"Aucun texte extrait. PDF scanné ? {aide}")
     return [c for c in sectionize(text) if c[2].strip()]

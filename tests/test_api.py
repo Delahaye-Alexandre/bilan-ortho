@@ -434,6 +434,23 @@ def test_pull_nom_invalide(client):
 
 # --- dictée ----------------------------------------------------------------------------
 
+def test_endpoints_legacy_supprimes(client):
+    """Le trio legacy non verrouillé est retiré ; /api/models (utilisé par le
+    sélecteur de l'interface) est conservé mais exige le déverrouillage."""
+    assert client.post("/api/generate", json={"section": "anamnese", "notes": "x"}).status_code == 404
+    assert client.get("/api/sections").status_code == 404
+
+
+def test_models_exige_le_deverrouillage(client, monkeypatch):
+    async def fake_models():
+        return ["m1", "m2"]
+
+    monkeypatch.setattr(llm, "list_models", fake_models)
+    assert client.get("/api/models").json()["models"] == ["m1", "m2"]
+    client.post("/api/lock")
+    assert client.get("/api/models").status_code == 423
+
+
 def test_transcribe_audio_vide(client):
     r = client.post("/api/transcribe", files={"audio": ("d.webm", b"", "audio/webm")})
     assert r.status_code == 400

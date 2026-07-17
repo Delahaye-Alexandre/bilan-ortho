@@ -49,6 +49,8 @@
   .badge.vide { background: #eef1f4; color: #6b7280; }
   .badge.propose_ia { background: #fff7ed; color: #b45309; }
   .badge.valide { background: #ecfdf5; color: #047857; }
+  .badge.patho { background: #fee2e2; color: #b91c1c; }
+  .badge.severe { background: #b91c1c; color: #fff; }
   .q { border: 1px solid #fed7aa; background: #fff7ed; border-radius: 10px;
        padding: 10px 12px; margin-bottom: 10px; }
   .q .ans { margin-top: 8px; }
@@ -231,11 +233,18 @@
           <div class="muted">⚠️ En changer invalide l'index : les bilans de référence devront être réimportés.</div></div>
       </fieldset>
       <fieldset>
-        <legend>Seuils d'interprétation (écarts-types)</legend>
+        <legend>Seuils d'interprétation</legend>
+        <div class="muted">En écarts-types :</div>
         <div class="grid3">
           <div><label>Fragilité ≤</label><input id="cfgSeuilFrag" type="number" step="0.1"></div>
           <div><label>Pathologique ≤</label><input id="cfgSeuilPatho" type="number" step="0.1"></div>
           <div><label>Sévère ≤</label><input id="cfgSeuilSev" type="number" step="0.1"></div>
+        </div>
+        <div class="muted" style="margin-top:6px">En percentiles :</div>
+        <div class="grid3">
+          <div><label>Fragilité ≤</label><input id="cfgSeuilFragP" type="number" min="0" max="100"></div>
+          <div><label>Pathologique ≤</label><input id="cfgSeuilPathoP" type="number" min="0" max="100"></div>
+          <div><label>Sévère ≤</label><input id="cfgSeuilSevP" type="number" min="0" max="100"></div>
         </div>
       </fieldset>
       <fieldset>
@@ -823,7 +832,7 @@ function epreuvesCardHtml() {
       </div>
     </div>`;
 }
-function drap2cls(d) { return d === 'norme' ? 'valide' : d === 'fragilite' ? 'propose_ia' : 'propose_ia'; }
+function drap2cls(d) { return d === 'norme' ? 'valide' : d === 'fragilite' ? 'propose_ia' : d === 'pathologique' ? 'patho' : 'severe'; }
 
 async function loadTestList() {
   const dom = (CUR.domaines || [])[0];
@@ -1070,7 +1079,12 @@ async function initDictee() {
 }
 let keepAlive = null;
 async function toggleRec() {
-  if (recording) { mediaRecorder.stop(); return; }
+  if (recording) {
+    // Double-clic sur « Arrêter » : stop() sur un enregistreur déjà arrêté
+    // lève une DOMException — on ne stoppe que s'il tourne encore.
+    if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+    return;
+  }
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch { recStatus.textContent = 'Micro indisponible.'; return; }
@@ -1100,7 +1114,7 @@ async function toggleRec() {
 recBtn.addEventListener('click', toggleRec);
 document.getElementById('dicteeClear').addEventListener('click', () => { dicteeText.value = ''; });
 
-function escapeHtml(s) { return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 // ---------- Paramètres & aide ----------
 document.querySelectorAll('.close').forEach(b => b.addEventListener('click', () => {
@@ -1123,6 +1137,8 @@ function fillSettings(c) {
   $('cfgStyleVouv').checked = !!c.style.vouvoiement; $('cfgEmbModel').value = c.embeddings.model;
   $('cfgSeuilFrag').value = c.seuils.fragilite_et; $('cfgSeuilPatho').value = c.seuils.pathologique_et;
   $('cfgSeuilSev').value = c.seuils.severe_et;
+  $('cfgSeuilFragP').value = c.seuils.fragilite_percentile; $('cfgSeuilPathoP').value = c.seuils.pathologique_percentile;
+  $('cfgSeuilSevP').value = c.seuils.severe_percentile;
   $('cfgCotAmo').value = c.cotation.valeur_amo; $('cfgCotSimple').value = c.cotation.bilan_simple_coeff;
   $('cfgCotComplexe').value = c.cotation.bilan_complexe_coeff; $('cfgCotRenouv').value = c.cotation.renouvellement_coeff;
   $('cfgRgpdLock').value = c.rgpd.verrouillage_inactivite_minutes; $('cfgRgpdCons').value = c.rgpd.conservation_jours;
@@ -1178,6 +1194,8 @@ function collectSettings() {
     seuils: {
       fragilite_et: num($('cfgSeuilFrag').value), pathologique_et: num($('cfgSeuilPatho').value),
       severe_et: num($('cfgSeuilSev').value),
+      fragilite_percentile: num($('cfgSeuilFragP').value), pathologique_percentile: num($('cfgSeuilPathoP').value),
+      severe_percentile: num($('cfgSeuilSevP').value),
     },
     cotation: {
       valeur_amo: num($('cfgCotAmo').value), bilan_simple_coeff: num($('cfgCotSimple').value),

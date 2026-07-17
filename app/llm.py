@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import AsyncIterator
 
 import httpx
 
@@ -21,41 +20,6 @@ async def list_models() -> list[str]:
         resp.raise_for_status()
         data = resp.json()
     return [m["name"] for m in data.get("models", [])]
-
-
-async def generate_stream(
-    prompt: str,
-    system: str,
-    model: str | None = None,
-    temperature: float = 0.3,
-) -> AsyncIterator[str]:
-    """Génère du texte en streaming via l'API /api/generate d'Ollama.
-
-    Émet des fragments de texte au fur et à mesure. Une température basse
-    limite les « inventions » du modèle, ce qui est souhaitable en contexte
-    clinique.
-    """
-    payload = {
-        "model": model or OLLAMA_MODEL,
-        "prompt": prompt,
-        "system": system,
-        "stream": True,
-        "options": {"temperature": temperature},
-    }
-    async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream("POST", f"{OLLAMA_HOST}/api/generate", json=payload) as resp:
-            resp.raise_for_status()
-            async for line in resp.aiter_lines():
-                if not line.strip():
-                    continue
-                try:
-                    chunk = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if chunk.get("response"):
-                    yield chunk["response"]
-                if chunk.get("done"):
-                    break
 
 
 async def chat_json(

@@ -90,7 +90,15 @@ def main() -> None:
         # Mode fenêtré : pas de console -> journal dans le dossier de données.
         from app import config
 
-        log = open(config.data_dir() / "serveur.log", "a", buffering=1, encoding="utf-8")
+        chemin = config.data_dir() / "serveur.log"
+        # Rotation simple : au-delà de 5 Mo, l'ancien journal devient
+        # serveur.log.1 (écrasé) — le fichier ne grossit plus à l'infini.
+        try:
+            if chemin.exists() and chemin.stat().st_size > 5 * 1024 * 1024:
+                chemin.replace(chemin.with_suffix(".log.1"))
+        except OSError:
+            pass
+        log = open(chemin, "a", buffering=1, encoding="utf-8")
         sys.stdout = sys.stderr = log
 
     import uvicorn

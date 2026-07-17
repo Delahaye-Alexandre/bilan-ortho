@@ -42,6 +42,8 @@ def unlock(passphrase: str) -> bool:
         elif not db.verify(con):
             con.close()
             return False
+        else:
+            db.migrate(con)
         _state["con"] = con
         _state["last_activity"] = time.monotonic()
         audit("unlock", "app", None, "premier lancement" if first_run else "")

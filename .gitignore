@@ -22,5 +22,6 @@ bilans/
 # Artefacts de build (générés)
 packaging/windows/BilanOrtho.exe
 packaging/windows/icone.ico
+packaging/windows/Output/
 build/
 dist/

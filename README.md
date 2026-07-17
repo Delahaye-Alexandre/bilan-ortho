@@ -50,10 +50,14 @@ bilans**, puis vous **relisez, validez, cotez et exportez**.
 - Python 3.12+, [Ollama](https://ollama.com) lancé (`ollama serve`)
 - Modèles Ollama :
   ```bash
-  ollama pull qwen2.5:7b-instruct-q4_K_M   # LLM (défaut, ~4 Go VRAM/RAM)
+  ollama pull qwen2.5:7b-instruct-q4_K_M   # LLM (défaut de la config, ~4 Go)
   ollama pull nomic-embed-text             # embeddings (défaut, léger)
   # option qualité FR : ollama pull bge-m3  (embeddings, ~1,2 Go)
   ```
+  > Pourquoi deux familles de LLM ? `qwen2.5:7b` reste le **défaut de la
+  > config** ; l'écran « 🚀 Première installation » propose, lui, `qwen3.5:9b`
+  > (machines ≥ 16 Go de RAM) ou `qwen3.5:4b` (8 Go), de meilleure qualité en
+  > français. Le modèle se change à tout moment dans ⚙️ Paramètres.
 - **Optionnel — OCR des PDF scannés** :
   ```bash
   sudo apt install tesseract-ocr tesseract-ocr-fra
@@ -131,8 +135,11 @@ usage (~1,5 Go pour `medium`). Pour la meilleure qualité FR, pointez
 
 ```bash
 pip install pytest
-pytest tests/        # 60 tests, 100 % hors ligne (LLM/embeddings mockés ;
+pytest tests/        # 100 % hors ligne (LLM/embeddings mockés ;
                      # le test OCR est sauté si Tesseract n'est pas installé)
+bun tests/ui/test_questions_ui.mjs    # tests UI (happy-dom) : panneau questions
+bun tests/ui/test_robustesse_ui.mjs   # tests UI : brouillons, 423, anti double-clic
+pip install ruff && ruff check .      # lint (config dans pyproject.toml)
 ```
 
 ## Structure
@@ -140,12 +147,14 @@ pytest tests/        # 60 tests, 100 % hors ligne (LLM/embeddings mockés ;
 ```
 bilan-ortho/
 ├── app/
-│   ├── main.py         # API FastAPI (bind localhost)
+│   ├── main.py         # API FastAPI (bind localhost, TrustedHost)
 │   ├── security.py     # coffre, verrouillage, audit, purge RGPD
-│   ├── db.py           # schéma SQLCipher + sqlite-vec
+│   ├── db.py           # schéma SQLCipher + sqlite-vec + migrations
 │   ├── config.py       # défauts + surcharges praticien (en base)
+│   ├── models.py       # modèles Pydantic (validation des échanges)
+│   ├── systeme.py      # état machine (RAM, Ollama, modèles) — 1er lancement guidé
 │   ├── stt.py          # dictée locale (faster-whisper, auto-adaptative)
-│   ├── llm.py          # client Ollama (structuration JSON, génération)
+│   ├── llm.py          # client Ollama (structuration JSON, timeout borné)
 │   ├── prompts.py      # prompts (structuration, clarification, style)
 │   ├── bilan.py        # CRUD bilan, épreuves, interprétation étalonnages
 │   ├── patient.py      # patients, âge, effacement RGPD
@@ -153,13 +162,15 @@ bilan-ortho/
 │   ├── catalogues.py   # tests étalonnés par domaine
 │   ├── cotation.py     # NGAP paramétrable
 │   ├── rag.py          # embeddings + recherche « style du praticien »
-│   ├── importer.py     # import PDF/OCR/texte → découpage → indexation
+│   ├── importer.py     # import PDF/OCR/.docx/texte → découpage → indexation
 │   ├── export.py       # Word / Markdown / texte
 │   └── static/         # interface web (vanilla, servie par FastAPI)
 ├── data/reference/     # bilans fictifs d'amorce (style)
 ├── docs/               # recherche, notice médico-légale, registre RGPD, avancement
-├── tests/              # pytest (hors ligne)
-├── requirements.txt
+├── packaging/          # spec PyInstaller + installeur Inno Setup (Windows)
+├── tests/              # pytest (hors ligne) + tests UI happy-dom (bun) dans ui/
+├── lanceur.py          # point d'entrée natif (PyInstaller) : port, fenêtre, journal
+├── requirements.txt    # dépendances (souples) — versions figées : requirements.lock
 └── run.sh
 ```
 

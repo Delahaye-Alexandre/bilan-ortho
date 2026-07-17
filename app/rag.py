@@ -9,14 +9,11 @@ from __future__ import annotations
 import httpx
 import sqlite_vec
 
+from .db import dicts as _dicts
+
 
 class EmbeddingUnavailable(RuntimeError):
     """Modèle d'embeddings absent ou Ollama injoignable."""
-
-
-def _dicts(cur) -> list[dict]:
-    cols = [c[0] for c in cur.description]
-    return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
 async def embed(text: str, cfg: dict) -> list[float]:

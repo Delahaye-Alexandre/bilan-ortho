@@ -10,11 +10,7 @@ import json
 import re
 
 from . import config, db
-
-
-def _dicts(cur) -> list[dict]:
-    cols = [c[0] for c in cur.description]
-    return [dict(zip(cols, row)) for row in cur.fetchall()]
+from .db import dicts as _dicts
 
 
 def domaine_titres(domaines: list[str]) -> str:
@@ -171,7 +167,7 @@ DRAPEAU_LIBELLE = {
     "severe": "déficit sévère",
 }
 _ET_LBL = {
-    "ecart_type": "ET", "percentile": "e percentile", "note_standard": "NS",
+    "ecart_type": "ET", "note_standard": "NS",
     "age_dev": "(âge dév.)", "age_lecture": "(âge de lecture)",
 }
 
@@ -195,11 +191,12 @@ def interpret_drapeau(etalonnage_type: str | None, valeur, cfg: dict) -> str:
     elif etalonnage_type == "note_standard":  # moyenne 10, ET 3
         et = (n - 10) / 3.0
     elif etalonnage_type == "percentile":
-        if n <= 2:
+        # Seuils percentile configurables, comme leurs équivalents écart-type.
+        if n <= s.get("severe_percentile", 2):
             return "severe"
-        if n <= 7:
+        if n <= s.get("pathologique_percentile", 7):
             return "pathologique"
-        if n <= 16:
+        if n <= s.get("fragilite_percentile", 16):
             return "fragilite"
         return "norme"
     if et is None:
@@ -220,8 +217,12 @@ def resultat_phrase(test_nom: str, r: dict) -> str:
     if r.get("score_brut"):
         parts.append(f"score {r['score_brut']}")
     if r.get("etalonnage_valeur"):
-        lbl = _ET_LBL.get(r.get("etalonnage_type"), "")
-        parts.append(f"{r['etalonnage_valeur']} {lbl}".strip())
+        if r.get("etalonnage_type") == "percentile":
+            # collé à la valeur : « 25e percentile », pas « 25 e percentile »
+            parts.append(f"{r['etalonnage_valeur']}e percentile")
+        else:
+            lbl = _ET_LBL.get(r.get("etalonnage_type"), "")
+            parts.append(f"{r['etalonnage_valeur']} {lbl}".strip())
     line = tete + (" " + ", ".join(parts) if parts else "")
     drap = r.get("drapeau_seuil")
     if drap in DRAPEAU_LIBELLE:

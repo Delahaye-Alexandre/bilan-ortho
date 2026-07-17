@@ -6,6 +6,7 @@ de notes reste disponible (elle ne touche pas la base).
 """
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import httpx
@@ -40,7 +41,6 @@ from .models import (
     BilanCreate,
     ConfigPatch,
     EpreuveCreate,
-    GenerateRequest,
     OkResponse,
     PatientIn,
     SectionPut,
@@ -49,7 +49,6 @@ from .models import (
     StructureRequest,
     UnlockRequest,
 )
-from .prompts import SECTIONS, SYSTEM_PROMPT, build_prompt
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -125,7 +124,8 @@ def _cfg_courante() -> dict:
     if security.is_unlocked():
         with security.transaction() as con:
             return config.ConfigStore(con).effective()
-    return config.DEFAULTS
+    # Copie : renvoyer DEFAULTS lui-même exposerait le dict global mutable.
+    return copy.deepcopy(config.DEFAULTS)
 
 
 @app.get("/api/installation")
@@ -535,41 +535,15 @@ async def delete_reference(ref_id: int) -> OkResponse:
     return OkResponse(ok=True)
 
 
-# --- Génération de texte (existant) -----------------------------------------
+# --- Modèles disponibles (sélecteur de l'interface) --------------------------
 
-@app.get("/api/sections")
-async def get_sections() -> dict[str, str]:
-    return {key: titre for key, (titre, _) in SECTIONS.items()}
-
-
-@app.get("/api/models")
+@app.get("/api/models", dependencies=[Depends(require_unlock)])
 async def get_models() -> dict:
     try:
         models = await llm.list_models()
     except httpx.HTTPError:
         raise HTTPException(503, "Ollama injoignable. Lancez « ollama serve ».")
     return {"models": models, "default": llm.OLLAMA_MODEL}
-
-
-@app.post("/api/generate")
-async def generate(req: GenerateRequest) -> StreamingResponse:
-    if req.section not in SECTIONS:
-        raise HTTPException(400, f"Section inconnue : {req.section}")
-    if not req.notes.strip():
-        raise HTTPException(400, "Les notes cliniques sont vides.")
-
-    prompt = build_prompt(req.section, req.notes, req.contexte)
-
-    async def token_stream():
-        try:
-            async for token in llm.generate_stream(
-                prompt, SYSTEM_PROMPT, model=req.model, temperature=req.temperature
-            ):
-                yield token
-        except httpx.HTTPError as exc:  # pragma: no cover
-            yield f"\n\n[Erreur Ollama : {exc}]"
-
-    return StreamingResponse(token_stream(), media_type="text/plain; charset=utf-8")
 
 
 @app.get("/")

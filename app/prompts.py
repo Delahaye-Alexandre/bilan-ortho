@@ -1,67 +1,9 @@
-"""Gabarits de prompts pour la rédaction de bilans orthophoniques.
+"""Gabarits de prompts pour la structuration des bilans orthophoniques.
 
-Chaque section décrit ce que le LLM doit produire à partir des *notes libres*
-du praticien. Le style attendu est clinique, sobre, en français, sans invention.
+Le LLM répartit une dictée libre (et les réponses aux questions de
+clarification) dans les rubriques du bilan. Style attendu : clinique, sobre,
+en français, sans invention.
 """
-
-SYSTEM_PROMPT = """Tu es un assistant de rédaction destiné à un·e orthophoniste \
-diplômé·e. Ta tâche est de transformer des notes cliniques brutes en un texte \
-de bilan clair, professionnel et rédigé en français.
-
-Règles impératives :
-- N'INVENTE JAMAIS de données (résultats de tests, âges, scores, antécédents). \
-Utilise uniquement les informations présentes dans les notes. Si une information \
-manque, ne la mentionne pas ou écris « [à compléter] ».
-- Ne pose aucun diagnostic médical de ta propre initiative ; reformule ce que \
-l'orthophoniste a noté.
-- Style : phrases claires, vocabulaire clinique orthophonique, ton neutre et \
-factuel, à la 3e personne pour le patient.
-- N'ajoute pas de conclusion ou de recommandation qui ne découle pas des notes.
-- Réponds UNIQUEMENT avec le texte de la section demandée, sans préambule ni \
-commentaire de ta part."""
-
-
-# Sections proposées (clé -> (titre, consigne de rédaction))
-SECTIONS: dict[str, tuple[str, str]] = {
-    "anamnese": (
-        "Anamnèse",
-        "Rédige l'anamnèse : motif de consultation, développement, antécédents "
-        "médicaux et familiaux pertinents, contexte scolaire/professionnel et "
-        "environnemental, en te basant strictement sur les notes.",
-    ),
-    "plainte": (
-        "Motif et plaintes",
-        "Rédige le motif de la consultation et les plaintes rapportées "
-        "(par le patient, la famille ou les partenaires).",
-    ),
-    "observation": (
-        "Observations cliniques",
-        "Rédige les observations cliniques qualitatives (comportement, "
-        "attention, communication, versant expressif/réceptif, etc.).",
-    ),
-    "tests": (
-        "Épreuves et résultats",
-        "Présente de façon structurée les épreuves/tests administrés et leurs "
-        "résultats tels que notés (scores, écarts-types, percentiles). Ne "
-        "recalcule rien et ne modifie aucun chiffre.",
-    ),
-    "synthese": (
-        "Synthèse",
-        "Rédige une synthèse clinique reliant les observations et les résultats, "
-        "sans introduire d'élément absent des notes.",
-    ),
-    "conclusion": (
-        "Conclusion",
-        "Rédige la conclusion du bilan à partir de la synthèse fournie dans les "
-        "notes. Reste prudent et factuel.",
-    ),
-    "projet": (
-        "Projet thérapeutique",
-        "Rédige les propositions de prise en charge / projet thérapeutique "
-        "(objectifs, rythme, modalités) uniquement d'après les notes.",
-    ),
-}
-
 
 # --- Structuration d'une dictée libre + questions de clarification ----------
 
@@ -218,19 +160,4 @@ def build_structure_user(
         f"Rubriques et leur contenu actuel :\n{etat}"
         f"{dialogue}{nouveaux}\n\n"
         "Propose les ajouts par rubrique et les éventuelles NOUVELLES questions de clarification, en JSON."
-    )
-
-
-def build_prompt(section: str, notes: str, contexte: str = "") -> str:
-    """Construit le prompt utilisateur pour une section donnée."""
-    if section not in SECTIONS:
-        raise ValueError(f"Section inconnue : {section}")
-    titre, consigne = SECTIONS[section]
-    contexte_bloc = f"\n\nContexte global du patient :\n{contexte.strip()}" if contexte.strip() else ""
-    return (
-        f"Section à rédiger : {titre}\n"
-        f"Consigne : {consigne}"
-        f"{contexte_bloc}\n\n"
-        f"Notes cliniques brutes :\n---\n{notes.strip()}\n---\n\n"
-        f"Rédige la section « {titre} » en français."
     )

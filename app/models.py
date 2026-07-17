@@ -118,6 +118,9 @@ class SeuilsPatch(_SectionPatch):
     fragilite_et: float | None = None
     pathologique_et: float | None = None
     severe_et: float | None = None
+    fragilite_percentile: float | None = Field(None, ge=0, le=100)
+    pathologique_percentile: float | None = Field(None, ge=0, le=100)
+    severe_percentile: float | None = Field(None, ge=0, le=100)
 
 
 class CotationPatch(_SectionPatch):
@@ -233,11 +236,3 @@ class EpreuveCreate(BaseModel):
     resultats: list[ResultatIn] = []
 
 
-# --- Génération (existant, conservé) ----------------------------------------
-
-class GenerateRequest(BaseModel):
-    section: str
-    notes: str
-    contexte: str = ""
-    model: str | None = None
-    temperature: float = 0.3

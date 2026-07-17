@@ -42,9 +42,9 @@ Au premier double-clic, la fenêtre Bilan Ortho s'ouvre sur l'écran
    (3 à 6 Go — la barre de progression vous accompagne).
 3. Cliquez « Continuer → ».
 
-Ensuite, créez la **passphrase de votre coffre** : elle chiffre toutes vos
-données. **Notez-la précieusement : elle est irrécupérable** (personne, pas
-même Alexandre, ne peut la retrouver).
+Ensuite, créez la **passphrase de votre coffre** (12 caractères minimum) :
+elle chiffre toutes vos données. **Notez-la précieusement : elle est
+irrécupérable** (personne, pas même Alexandre, ne peut la retrouver).
 
 À noter : à la **première dictée**, le modèle de reconnaissance vocale
 (~1,5 Go) se télécharge aussi — une seule fois.
@@ -87,4 +87,7 @@ de l'horloge), puis relancez Bilan Ortho.
   aucun diagnostic ; vous restez entièrement responsable du contenu validé.
 - **Désinstallation** : via les Paramètres Windows, comme toute application.
   Vos données (coffre chiffré) sont conservées dans
-  `%LOCALAPPDATA%\bilan-ortho` — supprimez ce dossier pour tout effacer.
+  `%LOCALAPPDATA%\bilan-ortho` — supprimez ce dossier pour effacer vos
+  données. Le moteur d'IA est installé à part : pour le retirer aussi,
+  désinstallez « Ollama » (Paramètres Windows) et supprimez le dossier de
+  ses modèles (`%USERPROFILE%\.ollama`).

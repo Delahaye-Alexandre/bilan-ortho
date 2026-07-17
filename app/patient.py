@@ -9,11 +9,7 @@ from __future__ import annotations
 import re
 from datetime import date
 
-
-def _dicts(cur) -> list[dict]:
-    cols = [c[0] for c in cur.description]
-    return [dict(zip(cols, row)) for row in cur.fetchall()]
-
+from .db import dicts as _dicts
 
 # --- dates & âge --------------------------------------------------------------
 

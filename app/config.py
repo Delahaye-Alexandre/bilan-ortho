@@ -170,6 +170,10 @@ DEFAULTS: dict[str, Any] = {
         "fragilite_et": -1.0,
         "pathologique_et": -1.5,
         "severe_et": -2.0,
+        # Équivalents percentile (mêmes zones, autre étalonnage).
+        "fragilite_percentile": 16,
+        "pathologique_percentile": 7,
+        "severe_percentile": 2,
     },
     "cotation": {
         # NGAP — évolue par avenants (source de vérité : ameli.fr). Paramétrable.

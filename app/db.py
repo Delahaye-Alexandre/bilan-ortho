@@ -201,6 +201,12 @@ CREATE TABLE IF NOT EXISTS dictee (
 """
 
 
+def dicts(cur) -> list[dict]:
+    """Lignes d'un curseur en dictionnaires {colonne: valeur}."""
+    cols = [c[0] for c in cur.description]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
 def connect(path, passphrase: str):
     """Ouvre une connexion SQLCipher chiffrée avec sqlite-vec chargé.
 
@@ -242,4 +248,24 @@ def init_schema(con) -> None:
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (str(SCHEMA_VERSION),),
     )
+    con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    con.commit()
+
+
+def migrate(con) -> None:
+    """Migrations incrémentales des coffres existants (``PRAGMA user_version``).
+
+    Appelée à chaque déverrouillage d'une base existante. Chaque évolution
+    future du schéma ajoute ici son étape ``if v < N: ... ; v = N`` — les
+    coffres des utilisateurs suivent sans réinstallation."""
+    v = con.execute("PRAGMA user_version").fetchone()[0]
+    if v < 1:
+        # Bases créées avant l'introduction du versionnage : schéma identique,
+        # on estampille simplement.
+        v = 1
+    if v != SCHEMA_VERSION:  # pragma: no cover - garde-fou futur
+        raise RuntimeError(
+            f"Schéma de coffre version {v} inattendu (application : {SCHEMA_VERSION})."
+        )
+    con.execute(f"PRAGMA user_version = {v}")
     con.commit()

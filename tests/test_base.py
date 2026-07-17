@@ -257,6 +257,38 @@ def test_fake_vec_est_stable():
     assert fake_vec("abc") != fake_vec("abd")
 
 
+def test_schema_versionne(con):
+    assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
+
+
+def test_migration_base_anterieure(data_dir):
+    """Un coffre créé avant le versionnage (user_version 0) est estampillé
+    au déverrouillage — les évolutions futures du schéma passeront par
+    db.migrate() sans réinstallation."""
+    c = db.connect(config.db_path(), PASSPHRASE)
+    db.init_schema(c)
+    c.execute("PRAGMA user_version = 0")
+    c.commit()
+    c.close()
+    assert security.unlock(PASSPHRASE)
+    with security.transaction() as con:
+        assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
+
+
+def test_resultat_phrase_percentile_sans_espace():
+    ligne = bilan.resultat_phrase(
+        "Alouette", {"etalonnage_type": "percentile", "etalonnage_valeur": "25"}
+    )
+    assert "25e percentile" in ligne and "25 e percentile" not in ligne
+
+
+def test_seuils_percentile_configurables():
+    assert bilan.interpret_drapeau("percentile", "5", config.DEFAULTS) == "pathologique"
+    assert bilan.interpret_drapeau("percentile", "20", config.DEFAULTS) == "norme"
+    cfg = config._deep_merge(config.DEFAULTS, {"seuils": {"fragilite_percentile": 25}})
+    assert bilan.interpret_drapeau("percentile", "20", cfg) == "fragilite"
+
+
 def test_update_section_rafraichit_updated_at_du_bilan(con):
     """Un bilan édité uniquement rubrique par rubrique ne doit pas être
     considéré comme inactif par la purge de conservation RGPD (audit)."""
