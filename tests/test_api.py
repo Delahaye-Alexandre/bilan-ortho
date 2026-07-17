@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 
 from app import config, llm, rag, security
-from tests.conftest import PASSPHRASE, fake_embed
+from tests.conftest import PASSPHRASE
 
 BILAN_TXT = (
     "Anamnèse\nEnfant né à terme, marche à 12 mois.\n\n"

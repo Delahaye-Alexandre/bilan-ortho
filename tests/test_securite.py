@@ -14,7 +14,6 @@ from app import config, db
 from app.main import PASSPHRASE_MIN, app
 from tests.conftest import PASSPHRASE
 
-
 # --- C1 : DNS rebinding -------------------------------------------------------
 
 def test_host_etranger_rejete(client):

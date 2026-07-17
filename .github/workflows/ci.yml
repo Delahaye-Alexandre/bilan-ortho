@@ -10,27 +10,53 @@ permissions:
   contents: write
 
 jobs:
-  tests:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+  lint:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-      - name: Dépendances
+      - name: Ruff (config dans pyproject.toml)
         run: |
-          pip install -r requirements.txt
+          pip install ruff
+          ruff check .
+
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.11", "3.12", "3.13"]
+        include:
+          - os: windows-latest
+            python: "3.12"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Dépendances (verrouillées)
+        run: |
+          pip install -r requirements.lock
           pip install pytest
       - name: Tests (hors ligne — LLM/embeddings mockés)
         run: pytest tests/ -q
 
+  tests-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Tests UI (happy-dom — seule couverture du frontend)
+        run: |
+          bun tests/ui/test_questions_ui.mjs
+          bun tests/ui/test_robustesse_ui.mjs
+
   build-windows:
-    needs: tests
+    needs: [tests, tests-ui, lint]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,9 +73,9 @@ jobs:
           if ($tag -ne $ver) {
             throw "Tag v$tag mais app.__version__ = $ver — bumpez app/__init__.py avant de tagger."
           }
-      - name: Dépendances
+      - name: Dépendances (verrouillées — build reproductible)
         run: |
-          pip install -r requirements.txt
+          pip install -r requirements.lock
           pip install pyinstaller pillow
       - name: Icône
         run: python packaging/windows/genere_icone.py packaging/windows/icone.ico

@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import (
+    __version__,
     bilan,
     catalogues,
     config,
@@ -51,8 +52,6 @@ from .models import (
 from .prompts import SECTIONS, SYSTEM_PROMPT, build_prompt
 
 STATIC_DIR = Path(__file__).parent / "static"
-
-from . import __version__
 
 app = FastAPI(title="Bilan Ortho", version=__version__)
 

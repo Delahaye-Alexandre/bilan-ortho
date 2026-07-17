@@ -93,9 +93,9 @@ def main() -> None:
         log = open(config.data_dir() / "serveur.log", "a", buffering=1, encoding="utf-8")
         sys.stdout = sys.stderr = log
 
-    from app.main import app  # import direct : compatible PyInstaller
-
     import uvicorn
+
+    from app.main import app  # import direct : compatible PyInstaller
 
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
 

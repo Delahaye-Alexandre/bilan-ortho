@@ -111,7 +111,7 @@ def test_is_heading_rejette_les_phrases():
 
 
 def test_extract_text_txt():
-    assert "bonjour" in importer.extract_text("bonjour".encode(), "notes.txt")
+    assert "bonjour" in importer.extract_text(b"bonjour", "notes.txt")
 
 
 def _pil_disponible() -> bool:

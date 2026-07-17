@@ -6,7 +6,6 @@ import pytest
 from app import bilan, config, db, patient, rag, sauvegarde, security
 from tests.conftest import PASSPHRASE, fake_vec
 
-
 # --- chiffrement / verrouillage ------------------------------------------------
 
 def test_mauvaise_passphrase_refusee(data_dir):

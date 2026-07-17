@@ -1,3 +1,20 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+# Version minimale de Python supportée (matrice CI : 3.11 -> 3.13).
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# Défauts (E4/E7/E9, F) + imports triés (I), pièges classiques (B),
+# modernisation (UP) et style pycodestyle complet (E, W).
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",   # lignes longues : commentaires français assumés
+    "B008",   # File(...) / Form(...) en défaut d'argument : idiome FastAPI
+    "B904",   # raise HTTPException dans except sans from : idiome FastAPI
+    "B905",   # zip sans strict= : longueurs garanties par construction
+    "UP042",  # (str, Enum) -> StrEnum : sérialisation à ne pas changer à l'aveugle
+]
