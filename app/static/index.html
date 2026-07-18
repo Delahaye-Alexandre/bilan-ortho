@@ -88,8 +88,9 @@
   .check input { width: auto; }
   .help-body h3 { font-size: 14px; margin: 16px 0 4px; }
   .help-body p, .help-body li { font-size: 13.5px; }
-  .reclist a { display:block; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px; }
-  .reclist a:hover { background:#f1f5f9; }
+  .reclist a { display:block; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px;
+               color:inherit; text-decoration:none; }
+  .reclist a:hover, .reclist a:focus-visible { background:#f1f5f9; }
 </style>
 </head>
 <body>
@@ -167,7 +168,7 @@
       </div>
       <div class="body">
         <div class="muted">Parlez librement ; à l'arrêt, la transcription <b>locale</b> s'ajoute ci-dessous. L'audio n'est jamais conservé.</div>
-        <textarea id="dicteeText" class="out" rows="5" placeholder="Votre dictée transcrite apparaîtra ici — vous pouvez aussi taper directement…"></textarea>
+        <textarea id="dicteeText" class="out" rows="5" aria-label="Dictée transcrite" placeholder="Votre dictée transcrite apparaîtra ici — vous pouvez aussi taper directement…"></textarea>
         <div class="row" style="margin-top:8px">
           <button id="structBtn">➡️ Structurer dans le bilan</button>
           <button class="ghost" id="dicteeClear">Effacer</button>
@@ -198,36 +199,36 @@
       <fieldset>
         <legend>Assistant IA (Ollama)</legend>
         <div class="grid2">
-          <div><label>Modèle LLM</label><input id="cfgLlmModel" placeholder="qwen2.5:7b-instruct-q4_K_M"></div>
-          <div><label>Température (0 = factuel)</label><input id="cfgLlmTemp" type="number" step="0.1" min="0" max="1"></div>
+          <div><label for="cfgLlmModel">Modèle LLM</label><input id="cfgLlmModel" placeholder="qwen2.5:7b-instruct-q4_K_M"></div>
+          <div><label for="cfgLlmTemp">Température (0 = factuel)</label><input id="cfgLlmTemp" type="number" step="0.1" min="0" max="1"></div>
         </div>
       </fieldset>
       <fieldset>
         <legend>Dictée vocale (locale)</legend>
         <div class="grid3">
-          <div><label>Matériel</label>
+          <div><label for="cfgSttDevice">Matériel</label>
             <select id="cfgSttDevice"><option value="auto">auto</option><option value="cpu">cpu</option><option value="cuda">cuda (GPU)</option></select></div>
-          <div><label>Modèle Whisper</label>
+          <div><label for="cfgSttModel">Modèle Whisper</label>
             <input id="cfgSttModel" list="sttModels" placeholder="auto">
             <datalist id="sttModels"><option value="auto"><option value="tiny"><option value="base"><option value="small"><option value="medium"><option value="large-v3"></datalist></div>
-          <div><label>Faisceau (beam)</label><input id="cfgSttBeam" type="number" min="1" max="10"></div>
-          <div><label>Langue</label><input id="cfgSttLang" placeholder="fr"></div>
+          <div><label for="cfgSttBeam">Faisceau (beam)</label><input id="cfgSttBeam" type="number" min="1" max="10"></div>
+          <div><label for="cfgSttLang">Langue</label><input id="cfgSttLang" placeholder="fr"></div>
         </div>
         <label class="check"><input type="checkbox" id="cfgSttVad"> Filtrer les silences (VAD)</label>
-        <label>Vocabulaire métier (un terme par ligne — aide la reconnaissance)</label>
+        <label for="cfgSttHotwords">Vocabulaire métier (un terme par ligne — aide la reconnaissance)</label>
         <textarea id="cfgSttHotwords" rows="4"></textarea>
-        <label>Corrections automatiques (une par ligne : <code>motif =&gt; remplacement</code>, regex)</label>
+        <label for="cfgSttCorr">Corrections automatiques (une par ligne : <code>motif =&gt; remplacement</code>, regex)</label>
         <textarea id="cfgSttCorr" rows="3" placeholder="ortofonie => orthophonie"></textarea>
       </fieldset>
       <fieldset>
         <legend>Style de rédaction</legend>
         <div class="grid3">
-          <div><label>Extraits de mes bilans injectés</label><input id="cfgStyleK" type="number" min="0" max="10"></div>
-          <div><label>Niveau de détail</label>
+          <div><label for="cfgStyleK">Extraits de mes bilans injectés</label><input id="cfgStyleK" type="number" min="0" max="10"></div>
+          <div><label for="cfgStyleDetail">Niveau de détail</label>
             <select id="cfgStyleDetail"><option value="concis">concis</option><option value="standard">standard</option><option value="detaille">détaillé</option></select></div>
           <div><label class="check" style="margin-top:30px"><input type="checkbox" id="cfgStyleVouv"> Vouvoiement</label></div>
         </div>
-        <div><label>Modèle d'embeddings (indexation de mes bilans)</label>
+        <div><label for="cfgEmbModel">Modèle d'embeddings (indexation de mes bilans)</label>
           <input id="cfgEmbModel" list="embModels">
           <datalist id="embModels"><option value="nomic-embed-text"><option value="bge-m3"></datalist>
           <div class="muted">⚠️ En changer invalide l'index : les bilans de référence devront être réimportés.</div></div>
@@ -236,40 +237,40 @@
         <legend>Seuils d'interprétation</legend>
         <div class="muted">En écarts-types :</div>
         <div class="grid3">
-          <div><label>Fragilité ≤</label><input id="cfgSeuilFrag" type="number" step="0.1"></div>
-          <div><label>Pathologique ≤</label><input id="cfgSeuilPatho" type="number" step="0.1"></div>
-          <div><label>Sévère ≤</label><input id="cfgSeuilSev" type="number" step="0.1"></div>
+          <div><label for="cfgSeuilFrag">Fragilité ≤</label><input id="cfgSeuilFrag" type="number" step="0.1"></div>
+          <div><label for="cfgSeuilPatho">Pathologique ≤</label><input id="cfgSeuilPatho" type="number" step="0.1"></div>
+          <div><label for="cfgSeuilSev">Sévère ≤</label><input id="cfgSeuilSev" type="number" step="0.1"></div>
         </div>
         <div class="muted" style="margin-top:6px">En percentiles :</div>
         <div class="grid3">
-          <div><label>Fragilité ≤</label><input id="cfgSeuilFragP" type="number" min="0" max="100"></div>
-          <div><label>Pathologique ≤</label><input id="cfgSeuilPathoP" type="number" min="0" max="100"></div>
-          <div><label>Sévère ≤</label><input id="cfgSeuilSevP" type="number" min="0" max="100"></div>
+          <div><label for="cfgSeuilFragP">Fragilité ≤ (percentile)</label><input id="cfgSeuilFragP" type="number" min="0" max="100"></div>
+          <div><label for="cfgSeuilPathoP">Pathologique ≤ (percentile)</label><input id="cfgSeuilPathoP" type="number" min="0" max="100"></div>
+          <div><label for="cfgSeuilSevP">Sévère ≤ (percentile)</label><input id="cfgSeuilSevP" type="number" min="0" max="100"></div>
         </div>
       </fieldset>
       <fieldset>
         <legend>Cotation NGAP (évolue par avenants — source : ameli.fr)</legend>
         <div class="grid2">
-          <div><label>Valeur AMO (€)</label><input id="cfgCotAmo" type="number" step="0.01"></div>
-          <div><label>Coeff. bilan simple</label><input id="cfgCotSimple" type="number"></div>
-          <div><label>Coeff. bilan complexe</label><input id="cfgCotComplexe" type="number"></div>
-          <div><label>Coeff. renouvellement</label><input id="cfgCotRenouv" type="number"></div>
+          <div><label for="cfgCotAmo">Valeur AMO (€)</label><input id="cfgCotAmo" type="number" step="0.01"></div>
+          <div><label for="cfgCotSimple">Coeff. bilan simple</label><input id="cfgCotSimple" type="number"></div>
+          <div><label for="cfgCotComplexe">Coeff. bilan complexe</label><input id="cfgCotComplexe" type="number"></div>
+          <div><label for="cfgCotRenouv">Coeff. renouvellement</label><input id="cfgCotRenouv" type="number"></div>
         </div>
       </fieldset>
       <fieldset>
         <legend>Confidentialité (RGPD)</legend>
         <div class="grid2">
-          <div><label>Verrouillage après inactivité (min, 0 = jamais)</label><input id="cfgRgpdLock" type="number" min="0"></div>
-          <div><label>Conservation des bilans (jours, 0 = illimitée)</label><input id="cfgRgpdCons" type="number" min="0"></div>
+          <div><label for="cfgRgpdLock">Verrouillage après inactivité (min, 0 = jamais)</label><input id="cfgRgpdLock" type="number" min="0"></div>
+          <div><label for="cfgRgpdCons">Conservation des bilans (jours, 0 = illimitée)</label><input id="cfgRgpdCons" type="number" min="0"></div>
         </div>
         <div class="muted" style="margin-top:8px">L'audio de dictée est toujours supprimé après transcription (non désactivable).</div>
       </fieldset>
       <fieldset>
         <legend>Sauvegarde du coffre (chiffrée)</legend>
         <div class="grid3">
-          <div><label>Dossier (vide = données/sauvegardes)</label><input id="cfgSauvDossier" placeholder="ex. /mnt/usb/bilan-ortho"></div>
-          <div><label>Copies conservées</label><input id="cfgSauvRet" type="number" min="1"></div>
-          <div><label>Auto au déverrouillage (jours, 0 = off)</label><input id="cfgSauvAuto" type="number" min="0"></div>
+          <div><label for="cfgSauvDossier">Dossier (vide = données/sauvegardes)</label><input id="cfgSauvDossier" placeholder="ex. /mnt/usb/bilan-ortho"></div>
+          <div><label for="cfgSauvRet">Copies conservées</label><input id="cfgSauvRet" type="number" min="1"></div>
+          <div><label for="cfgSauvAuto">Auto au déverrouillage (jours, 0 = off)</label><input id="cfgSauvAuto" type="number" min="0"></div>
         </div>
         <div class="row" style="margin-top:10px">
           <button id="sauvBtn" class="ghost">💾 Sauvegarder maintenant</button>
@@ -279,8 +280,8 @@
       </fieldset>
       <fieldset>
         <legend>Avancé — trame, catalogues de tests, prompt (JSON)</legend>
-        <div class="muted">Rubriques des nouveaux bilans : <code>trame.sections</code> · tests par domaine : <code>catalogues.&lt;domaine&gt;</code> · prompt de structuration : <code>prompts.structure_system</code> (<code>{cles}</code> y est remplacé par les rubriques valides).</div>
-        <textarea id="cfgAdvanced" rows="8" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:12px"></textarea>
+        <div class="muted">Seules <b>vos surcharges</b> apparaissent ici (<code>{}</code> = tout aux défauts, qui suivent les mises à jour de l'application). Rubriques des nouveaux bilans : <code>trame.sections</code> · tests par domaine : <code>catalogues.&lt;domaine&gt;</code> · prompt de structuration : <code>prompts.structure_system</code> (<code>{cles}</code> y est remplacé par les rubriques valides).</div>
+        <textarea id="cfgAdvanced" rows="8" spellcheck="false" aria-label="Surcharges avancées (JSON)" style="font-family:ui-monospace,monospace;font-size:12px"></textarea>
       </fieldset>
     </div>
     <div class="mfoot">
@@ -331,14 +332,14 @@
       <fieldset>
         <legend id="patFormTitle">Nouveau patient</legend>
         <div class="grid3">
-          <div><label>Nom</label><input id="patNom"></div>
-          <div><label>Prénom</label><input id="patPrenom"></div>
-          <div><label>Date de naissance</label><input id="patDdn" type="date"></div>
+          <div><label for="patNom">Nom</label><input id="patNom"></div>
+          <div><label for="patPrenom">Prénom</label><input id="patPrenom"></div>
+          <div><label for="patDdn">Date de naissance</label><input id="patDdn" type="date"></div>
         </div>
         <div class="grid2">
-          <div><label>Sexe</label>
+          <div><label for="patSexe">Sexe</label>
             <select id="patSexe"><option value="">—</option><option value="F">F</option><option value="M">M</option><option value="autre">autre</option></select></div>
-          <div><label>Notes (contexte, précautions…)</label><input id="patNotes"></div>
+          <div><label for="patNotes">Notes (contexte, précautions…)</label><input id="patNotes"></div>
         </div>
         <div class="row" style="margin-top:10px">
           <button id="patSave">Enregistrer</button>
@@ -601,11 +602,12 @@ function renderPatList() {
   const el = document.getElementById('patList');
   if (!el) return;
   el.innerHTML = PATIENTS.length ? PATIENTS.map(p =>
-    `<a data-id="${p.id}"><span>${escapeHtml(patLabel(p))}${p.date_naissance ? ` <span class="muted">· ${escapeHtml(p.date_naissance)}</span>` : ''} <span class="muted">(${p.nb_bilans} bilan${p.nb_bilans > 1 ? 's' : ''})</span></span><span class="delpat" data-id="${p.id}" style="float:right;cursor:pointer">✕</span></a>`
+    `<a href="#" data-id="${p.id}"><span>${escapeHtml(patLabel(p))}${p.date_naissance ? ` <span class="muted">· ${escapeHtml(p.date_naissance)}</span>` : ''} <span class="muted">(${p.nb_bilans} bilan${p.nb_bilans > 1 ? 's' : ''})</span></span><span class="delpat" data-id="${p.id}" role="button" tabindex="0" aria-label="Supprimer ${escapeHtml(patLabel(p))} et tous ses bilans" style="float:right;cursor:pointer">✕</span></a>`
   ).join('') : 'Aucun.';
-  el.querySelectorAll('a').forEach(a => a.addEventListener('click', () => editPatient(+a.dataset.id)));
+  el.querySelectorAll('a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); editPatient(+a.dataset.id); }));
+  activerBoutonsClavier(el);
   el.querySelectorAll('.delpat').forEach(x => x.addEventListener('click', async e => {
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     const p = PATIENTS.find(q => q.id === +x.dataset.id);
     if (!confirm(`Supprimer ${patLabel(p)} et TOUS ses bilans (${p.nb_bilans}) ?\nAction définitive (effacement RGPD).`)) return;
     try { await api('/api/patients/' + x.dataset.id, { method: 'DELETE' }); }
@@ -629,6 +631,7 @@ function resetPatForm() {
 }
 document.getElementById('patientsBtn').addEventListener('click', () => {
   resetPatForm(); loadPatients(); document.getElementById('patientsOverlay').hidden = false;
+  $('patNom').focus();
 });
 document.getElementById('patCancel').addEventListener('click', resetPatForm);
 document.getElementById('patSave').addEventListener('click', e => avecBouton(e.target, async () => {
@@ -655,13 +658,15 @@ async function loadRefs() {
     const list = await (await api('/api/references')).json();
     const el = document.getElementById('refList');
     el.innerHTML = list.length ? list.map(r =>
-      `<a><span data-open>${escapeHtml(r.titre || 'extrait')} <span class="muted">(${r.section_cle})</span></span><span class="delref" data-id="${r.id}" style="float:right;cursor:pointer">✕</span></a>`).join('') : 'Aucun.';
+      `<a href="#"><span data-open>${escapeHtml(r.titre || 'extrait')} <span class="muted">(${r.section_cle})</span></span><span class="delref" data-id="${r.id}" role="button" tabindex="0" aria-label="Supprimer la référence ${escapeHtml(r.titre || 'extrait')}" style="float:right;cursor:pointer">✕</span></a>`).join('') : 'Aucun.';
+    el.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.preventDefault()));
     el.querySelectorAll('.delref').forEach(x => x.addEventListener('click', async e => {
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       try { await api('/api/references/' + x.dataset.id, { method: 'DELETE' }); }
       catch (err) { document.getElementById('refStatus').textContent = 'Erreur : ' + err.message; return; }
       loadRefs();
     }));
+    activerBoutonsClavier(el);
   } catch {}
 }
 document.getElementById('refImport').addEventListener('click', e => avecBouton(e.target, async () => {
@@ -723,12 +728,12 @@ async function loadRecents() {
     const el = document.getElementById('recents');
     el.innerHTML = (list.length ? list.map(b => {
       const pat = b.patient_nom ? `${(b.patient_nom || '').toUpperCase()} ${b.patient_prenom || ''}`.trim() + ' · ' : '';
-      return `<a data-id="${b.id}">#${b.id} · ${escapeHtml(pat)}${b.domaine_titres || 'Générique'} <span class="muted">(${b.statut})</span></a>`;
+      return `<a href="#" data-id="${b.id}">#${b.id} · ${escapeHtml(pat)}${b.domaine_titres || 'Générique'} <span class="muted">(${b.statut})</span></a>`;
     }).join('') : '—') +
-      (list.length >= RECENTS_LIMIT ? '<a data-plus>… afficher plus</a>' : '');
-    el.querySelectorAll('a[data-id]').forEach(a => a.addEventListener('click', () => loadBilan(a.dataset.id)));
+      (list.length >= RECENTS_LIMIT ? '<a href="#" data-plus>… afficher plus</a>' : '');
+    el.querySelectorAll('a[data-id]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); loadBilan(a.dataset.id); }));
     const plus = el.querySelector('a[data-plus]');
-    if (plus) plus.addEventListener('click', () => { RECENTS_LIMIT += 20; loadRecents(); });
+    if (plus) plus.addEventListener('click', e => { e.preventDefault(); RECENTS_LIMIT += 20; loadRecents(); });
   } catch {}
 }
 function curLabel() {
@@ -793,6 +798,7 @@ function renderBilan() {
     sec.querySelector('.valider').addEventListener('click', () => saveSection(cle, ta.value, 'valide', sec));
   });
   document.getElementById('epAdd').addEventListener('click', e => avecBouton(e.target, addEpreuve));
+  marquerStatuts(); // les statuts recréés (savest, epStatus) restent annoncés
   loadTestList();
   const cot = CUR.cotation;
   document.getElementById('coteInfo').textContent = cot ? `${cot.code_amo} · ${cot.montant} €` : '';
@@ -812,10 +818,10 @@ function epreuvesCardHtml() {
       <div class="body">
         <div id="epList">${list || '<span class="muted">Aucune épreuve saisie.</span>'}</div>
         <div class="row" style="flex-wrap:wrap; gap:6px; margin-top:10px">
-          <input id="epTest" list="testList" placeholder="Test (ex. Alouette-R)" style="flex:2 1 140px">
-          <input id="epSub" placeholder="Sous-épreuve" style="flex:2 1 120px">
-          <input id="epScore" placeholder="Score brut" style="flex:1 1 90px">
-          <select id="epType" style="flex:1 1 120px">
+          <input id="epTest" list="testList" aria-label="Nom du test" placeholder="Test (ex. Alouette-R)" style="flex:2 1 140px">
+          <input id="epSub" aria-label="Sous-épreuve" placeholder="Sous-épreuve" style="flex:2 1 120px">
+          <input id="epScore" aria-label="Score brut" placeholder="Score brut" style="flex:1 1 90px">
+          <select id="epType" aria-label="Type d'étalonnage" style="flex:1 1 120px">
             <option value="">étalonnage…</option>
             <option value="ecart_type">Écart-type</option>
             <option value="percentile">Percentile</option>
@@ -823,7 +829,7 @@ function epreuvesCardHtml() {
             <option value="age_dev">Âge dév.</option>
             <option value="age_lecture">Âge de lecture</option>
           </select>
-          <input id="epVal" placeholder="Valeur (ex. -1,5)" style="flex:1 1 90px">
+          <input id="epVal" aria-label="Valeur d'étalonnage" placeholder="Valeur (ex. -1,5)" style="flex:1 1 90px">
           <button id="epAdd">Ajouter</button>
           <span class="status" id="epStatus"></span>
         </div>
@@ -1026,9 +1032,9 @@ function renderQuestions() {
     <div class="q" data-id="${q.id}">
       <div class="row" style="align-items:flex-start">
         <div class="grow"><b>${escapeHtml(q.question)}</b>${q.pourquoi ? `<div class="muted">${escapeHtml(q.pourquoi)}</div>` : ''}</div>
-        <button class="ghost qDrop" title="Écarter cette question sans y répondre" style="padding:2px 9px; font-size:12px">✕</button>
+        <button class="ghost qDrop" title="Écarter cette question sans y répondre" aria-label="Écarter cette question sans y répondre" style="padding:2px 9px; font-size:12px">✕</button>
       </div>
-      <div class="row"><input class="ans" placeholder="Votre réponse…"><button class="ghost qMic" title="Dicter la réponse au micro">🎤</button><button class="ansBtn">Répondre</button></div>
+      <div class="row"><input class="ans" aria-label="Votre réponse" placeholder="Votre réponse…"><button class="ghost qMic" title="Dicter la réponse au micro" aria-label="Dicter la réponse au micro">🎤</button><button class="ansBtn">Répondre</button></div>
     </div>`).join('') +
     '<div class="row" id="qAllRow" style="display:none"><button id="qSendAll"></button><span class="muted">un seul passage de l\'IA pour toutes les réponses</span></div>';
   const filled = () => QS.map(q => {
@@ -1116,6 +1122,30 @@ document.getElementById('dicteeClear').addEventListener('click', () => { dicteeT
 
 function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+// ---------- Accessibilité ----------
+// Les zones de statut sont annoncées aux lecteurs d'écran (aria-live implicite
+// de role="status") ; les ✕ de suppression (role="button") répondent à
+// Entrée/Espace comme au clic.
+function marquerStatuts() {
+  document.querySelectorAll('.status').forEach(el => el.setAttribute('role', 'status'));
+}
+function activerBoutonsClavier(racine) {
+  racine.querySelectorAll('[role="button"]').forEach(b => {
+    if (b.dataset.kb) return;
+    b.dataset.kb = '1';
+    b.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); b.click(); }
+    });
+  });
+}
+// Échap ferme la modale ouverte (sauf l'installation guidée, bloquante par design).
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('.modal-overlay:not([hidden])').forEach(o => {
+    if (o.id !== 'installOverlay') o.hidden = true;
+  });
+});
+
 // ---------- Paramètres & aide ----------
 document.querySelectorAll('.close').forEach(b => b.addEventListener('click', () => {
   document.getElementById(b.dataset.close).hidden = true;
@@ -1123,7 +1153,10 @@ document.querySelectorAll('.close').forEach(b => b.addEventListener('click', () 
 document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => {
   if (e.target === o) o.hidden = true;
 }));
-document.getElementById('helpBtn').addEventListener('click', () => { document.getElementById('helpOverlay').hidden = false; });
+document.getElementById('helpBtn').addEventListener('click', () => {
+  document.getElementById('helpOverlay').hidden = false;
+  document.querySelector('#helpOverlay .close').focus();
+});
 
 const $ = id => document.getElementById(id);
 function fillSettings(c) {
@@ -1144,8 +1177,6 @@ function fillSettings(c) {
   $('cfgRgpdLock').value = c.rgpd.verrouillage_inactivite_minutes; $('cfgRgpdCons').value = c.rgpd.conservation_jours;
   $('cfgSauvDossier').value = c.sauvegarde.dossier || ''; $('cfgSauvRet').value = c.sauvegarde.retention;
   $('cfgSauvAuto').value = c.sauvegarde.auto_jours;
-  $('cfgAdvanced').value = JSON.stringify(
-    { trame: c.trame, catalogues: c.catalogues, prompts: c.prompts }, null, 2);
   api('/api/sauvegardes').then(r => r.json()).then(s => {
     $('sauvStatus').textContent = s.derniere
       ? `Dernière : ${s.derniere} UTC (${s.fichiers.length} copie${s.fichiers.length > 1 ? 's' : ''})`
@@ -1161,9 +1192,26 @@ document.getElementById('sauvBtn').addEventListener('click', async () => {
     st.textContent = `✓ ${s.fichier.split('/').pop()} (${Math.round(s.octets / 1024)} Ko)`;
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 });
+// L'éditeur « Avancé » n'affiche que les SURCHARGES du praticien (jamais la
+// config effective) : réenregistrer les défauts les figeait en surcharges et
+// les mises à jour de l'application n'atteignaient plus l'utilisateur (audit).
+async function fillAdvanced() {
+  try {
+    const ov = await (await api('/api/config/overrides')).json();
+    const adv = {};
+    for (const k of ['trame', 'catalogues', 'prompts']) {
+      if (ov[k] !== undefined) adv[k] = ov[k];
+    }
+    $('cfgAdvanced').value = JSON.stringify(adv, null, 2);
+  } catch {}
+}
 document.getElementById('settingsBtn').addEventListener('click', async () => {
-  try { fillSettings(await (await api('/api/config')).json()); } catch { return; }
+  try {
+    fillSettings(await (await api('/api/config')).json());
+    await fillAdvanced();
+  } catch { return; }
   $('cfgStatus').textContent = ''; $('settingsOverlay').hidden = false;
+  $('cfgLlmModel').focus();
 });
 function collectSettings() {
   const corrections = {};
@@ -1217,7 +1265,7 @@ document.getElementById('cfgSave').addEventListener('click', async () => {
   const st = $('cfgStatus'); st.textContent = '…';
   try {
     const r = await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: collectSettings() }) });
-    fillSettings(await r.json()); st.textContent = '✓ enregistré';
+    fillSettings(await r.json()); await fillAdvanced(); st.textContent = '✓ enregistré';
     loadLLM(); initDictee();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 });
@@ -1226,7 +1274,7 @@ document.getElementById('cfgReset').addEventListener('click', async () => {
   const st = $('cfgStatus');
   try {
     const r = await api('/api/config', { method: 'DELETE' });
-    fillSettings(await r.json()); st.textContent = '✓ défauts rétablis';
+    fillSettings(await r.json()); await fillAdvanced(); st.textContent = '✓ défauts rétablis';
     loadLLM(); initDictee();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 });
@@ -1251,6 +1299,7 @@ window.addEventListener('beforeunload', e => {
   if (saisieEnCours()) { e.preventDefault(); e.returnValue = ''; }
 });
 
+marquerStatuts();
 gate();
 </script>
 </body>

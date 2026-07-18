@@ -113,6 +113,7 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Lot 5 packaging** : purge `_internal` à la mise à jour, taskkill à la désinstallation, Ollama épinglé + SHA-256, garde-fou de version, fumée dictée sur binaire gelé.
   - **Lot 6 outillage** : ruff + job lint, tests UI en CI, `requirements.lock`, matrice Python 3.11-3.13.
   - **Lot 7 nettoyage** : endpoints legacy supprimés (`/api/generate`, `/api/sections` ; `/api/models` conservé pour l'UI mais verrouillé), `_dicts` factorisé, seuils percentile configurables, badges sévère/pathologique distincts, rotation de `serveur.log`, migrations de schéma (`PRAGMA user_version`), docs à jour.
+  - **Lot 8 — les 3 constats absents du plan par lots de l'audit** : éditeur « Avancé » branché sur `/api/config/overrides` (les défauts ne sont plus figés en surcharges — les mises à jour atteignent de nouveau l'utilisateur) ; accessibilité (listes navigables au clavier, ✕ = vrais boutons Entrée/Espace, Échap ferme les modales + focus à l'ouverture, labels associés, `role="status"` sur les zones de statut) ; dépendances OCR installées en CI Linux + `pytest -rs` (plus de test sauté en silence).
 
 ## Lancer
 `./run.sh` → http://localhost:8000 (bind 127.0.0.1). Données : `~/.local/share/bilan-ortho/` (surchargeable via `BILAN_ORTHO_DATA_DIR`).

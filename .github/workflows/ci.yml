@@ -42,8 +42,14 @@ jobs:
         run: |
           pip install -r requirements.lock
           pip install pytest
-      - name: Tests (hors ligne — LLM/embeddings mockés)
-        run: pytest tests/ -q
+      - name: Dépendances OCR (Linux — le test OCR ne doit plus être sauté)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q tesseract-ocr tesseract-ocr-fra ghostscript
+          pip install ocrmypdf pillow
+      - name: Tests (hors ligne — LLM/embeddings mockés ; -rs affiche tout skip)
+        run: pytest tests/ -q -rs
 
   tests-ui:
     runs-on: ubuntu-latest

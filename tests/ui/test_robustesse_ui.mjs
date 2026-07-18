@@ -52,6 +52,23 @@ const rep = (r) => r && r.__status
   ? { ok: false, status: r.__status, statusText: "ERR", json: async () => ({ detail: r.detail }) }
   : { ok: true, status: 200, json: async () => r };
 
+// Config effective complète (pour fillSettings) et surcharges partielles
+// (pour l'éditeur Avancé — il ne doit afficher QUE les surcharges).
+const CFG = {
+  llm: { model: "qwen2.5:7b", temperature: 0.3 },
+  stt: { device: "auto", model: "auto", beam_size: 5, vad: true, language: "fr", hotwords: [], corrections: {} },
+  style: { few_shot_k: 4, niveau_detail: "standard", vouvoiement: true },
+  embeddings: { model: "nomic-embed-text" },
+  seuils: { fragilite_et: -1, pathologique_et: -1.5, severe_et: -2,
+            fragilite_percentile: 16, pathologique_percentile: 7, severe_percentile: 2 },
+  cotation: { valeur_amo: 2.6, bilan_simple_coeff: 24, bilan_complexe_coeff: 34, renouvellement_coeff: 30 },
+  rgpd: { verrouillage_inactivite_minutes: 15, conservation_jours: 0 },
+  sauvegarde: { dossier: "", retention: 10, auto_jours: 7 },
+  trame: { sections: [{ cle: "anamnese", titre: "Anamnèse" }] },
+  catalogues: {}, prompts: { structure_system: "" },
+};
+const OVERRIDES = { prompts: { structure_system: "MON PROMPT PERSO" } };
+
 globalThis.fetch = async (p, o = {}) => {
   if (reseauCoupe) throw new TypeError("Failed to fetch");
   const url = String(p);
@@ -65,10 +82,15 @@ globalThis.fetch = async (p, o = {}) => {
     if (holdNext) await holdNext;
     return rep(bilanCreator());
   }
+  if (url.includes("/api/bilans?limit")) {
+    return rep([{ id: 7, statut: "brouillon", domaine_titres: "Générique" }]);
+  }
   if (url.includes("/sections/")) {
     sectionPuts.push({ url, body: JSON.parse(o.body) });
     return rep(sectionResponder());
   }
+  if (url.includes("/api/config/overrides")) return rep(structuredClone(OVERRIDES));
+  if (url.includes("/api/config")) return rep(structuredClone(CFG));
   return { ok: true, status: 200, json: async () => ({}) };
 };
 
@@ -77,7 +99,7 @@ const body = scriptBody.replace(/gate\(\);\s*$/, "") + `
 ;globalThis.__t = {
   get QS() { return QS; }, set QS(v) { QS = v; },
   get CUR() { return CUR; }, set CUR(v) { CUR = v; },
-  renderQuestions, renderBilan, structure, saisieEnCours,
+  renderQuestions, renderBilan, structure, saisieEnCours, loadRecents,
 };`;
 new Function(body)();
 
@@ -220,6 +242,29 @@ check("saisieEnCours : dictée transcrite non structurée → true", __t.saisieE
 document.getElementById("dicteeText").value = "";
 secTa("anamnese").value = "modif non enregistrée";
 check("saisieEnCours : rubrique modifiée non enregistrée → true", __t.saisieEnCours() === true);
+
+// === 9. Éditeur Avancé : surcharges seules, jamais les défauts ===============
+document.getElementById("settingsBtn").click();
+await settle();
+check("modale Paramètres ouverte", document.getElementById("settingsOverlay").hidden === false);
+const adv = document.getElementById("cfgAdvanced").value;
+check("Avancé : la surcharge du praticien est affichée", adv.includes("MON PROMPT PERSO"));
+check("Avancé : les défauts (trame…) ne sont PAS figés dans l'éditeur",
+  !adv.includes("Anamnèse") && !adv.includes("trame"));
+check("modale : focus posé à l'ouverture",
+  document.activeElement === document.getElementById("cfgLlmModel"));
+
+// === 10. Échap ferme la modale ===============================================
+document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+check("Échap : modale fermée", document.getElementById("settingsOverlay").hidden === true);
+
+// === 11. Accessibilité : statuts annoncés, listes au clavier =================
+check("a11y : zone de statut annoncée (role=status)",
+  document.getElementById("structStatus").getAttribute("role") === "status");
+await __t.loadRecents();
+const lien = document.querySelector("#recents a[data-id]");
+check("a11y : lien de bilan récent focusable au clavier (href)",
+  lien !== null && lien.getAttribute("href") === "#");
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);
