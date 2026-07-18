@@ -11,6 +11,16 @@ bilans**, puis vous **relisez, validez, cotez et exportez**.
 > d'obligation HDS ; RGPD par conception). Voir `docs/notice-medico-legale.md`
 > et `docs/RGPD-registre-traitements.md`.
 
+## ⬇️ Télécharger (Windows)
+
+**[Télécharger Bilan Ortho — installeur Windows](https://github.com/Delahaye-Alexandre/bilan-ortho/releases/latest)**
+(Windows 10/11 · installation par utilisateur, sans droits administrateur · le
+moteur d'IA local Ollama est installé automatiquement). Guide pas à pas :
+[docs/guide-test.md](docs/guide-test.md).
+
+Sous Linux/WSL : voir [Installation & lancement](#installation--lancement)
+ci-dessous.
+
 ## Fonctionnalités
 
 - **Coffre chiffré** (SQLCipher, AES-256) déverrouillé par passphrase ;

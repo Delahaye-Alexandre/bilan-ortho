@@ -18,8 +18,9 @@ donnée ne part sur internet, tout est chiffré sur votre machine.
 
 ## 1. Installer l'application
 
-1. Téléchargez `BilanOrtho-Setup-x.y.z.exe` depuis le lien privé qu'Alexandre
-   vous a envoyé.
+1. Téléchargez `BilanOrtho-Setup-x.y.z.exe` depuis la page des
+   téléchargements — <https://github.com/Delahaye-Alexandre/bilan-ortho/releases/latest> —
+   ou depuis le lien qu'Alexandre vous a envoyé.
 2. Double-cliquez. **Windows affichera un avertissement bleu « Windows a
    protégé votre ordinateur »** : c'est normal — l'application n'est pas
    encore « signée » auprès de Microsoft (procédure payante), pas dangereuse.
