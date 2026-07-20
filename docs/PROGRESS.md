@@ -115,5 +115,14 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Lot 7 nettoyage** : endpoints legacy supprimés (`/api/generate`, `/api/sections` ; `/api/models` conservé pour l'UI mais verrouillé), `_dicts` factorisé, seuils percentile configurables, badges sévère/pathologique distincts, rotation de `serveur.log`, migrations de schéma (`PRAGMA user_version`), docs à jour.
   - **Lot 8 — les 3 constats absents du plan par lots de l'audit** : éditeur « Avancé » branché sur `/api/config/overrides` (les défauts ne sont plus figés en surcharges — les mises à jour atteignent de nouveau l'utilisateur) ; accessibilité (listes navigables au clavier, ✕ = vrais boutons Entrée/Espace, Échap ferme les modales + focus à l'ouverture, labels associés, `role="status"` sur les zones de statut) ; dépendances OCR installées en CI Linux + `pytest -rs` (plus de test sauté en silence).
 
+- [x] **Post-v1.5.0 (2026-07-18) — Préparation de la publication open source** *(fait — documentation seule, aucun code touché)*
+  - `LICENSE` : AGPL v3, texte officiel intégral.
+  - `SECURITY.md` : signalement privé (mail, puis GitHub Security Advisories une fois le dépôt public), seule la dernière release supportée, correctif visé sous 30 jours pour les vulnérabilités critiques, périmètre et modèle de menace explicites (100 % local ; poste compromis et passphrase oubliée assumés hors périmètre).
+  - `docs/charte-engagements.md` : 6 engagements publics adossés au fonctionnement réel (données locales, aucune IA entraînée sur les données, l'IA propose / le praticien signe, gratuité garantie par l'AGPL, limites documentées, chemin gratuit pérenne).
+  - `docs/conformite/` : auto-évaluation AI Act (conclusion : pas un système d'IA à haut risque — hors annexe III, subsidiairement dérogation art. 6 §3) + déclaration de finalité MDR (pas un dispositif médical, argumentaire MDCG 2019-11). Les deux marquées « projet de document — à faire relire par un juriste avant publication ».
+  - README : section « Licence & engagements » ; le dépôt n'est plus décrit comme privé.
+  - `.gitignore` : documents internes (business plan, audit) exclus du versionnage — décision d'Alexandre du 17/07.
+  - **Reste humain** : relecture juridique des deux documents de conformité, passage du dépôt GitHub en public, activation de Dependabot et des Security Advisories, dépôt éventuel de la marque.
+
 ## Lancer
 `./run.sh` → http://localhost:8000 (bind 127.0.0.1). Données : `~/.local/share/bilan-ortho/` (surchargeable via `BILAN_ORTHO_DATA_DIR`).

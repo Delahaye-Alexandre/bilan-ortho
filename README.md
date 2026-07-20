@@ -186,7 +186,7 @@ bilan-ortho/
 
 ## Distribution (Windows natif)
 
-Le dépôt GitHub privé (`Delahaye-Alexandre/bilan-ortho`) construit tout via
+Le dépôt GitHub (`Delahaye-Alexandre/bilan-ortho`) construit tout via
 Actions : tests sur Windows + Linux, binaire PyInstaller (`lanceur.py` →
 `dist/BilanOrtho/`), fumage du binaire, installeur Inno Setup
 (`packaging/windows/installeur.iss`, installation par utilisateur sans
@@ -195,6 +195,17 @@ droits admin). Un tag `v*` publie une **Release draft** avec l'installeur —
 accompagné de `docs/guide-test.md` (SmartScreen, premier lancement guidé,
 parcours d'essai). Les données vivent dans `%LOCALAPPDATA%\bilan-ortho` (préservées à
 la désinstallation).
+
+## Licence & engagements
+
+Bilan Ortho est un logiciel libre publié sous licence **AGPL v3** (fichier
+[LICENSE](LICENSE)). Les engagements publics du projet — données locales, IA
+jamais entraînée sur vos données, validation humaine systématique, gratuité
+pérenne — sont détaillés dans la
+[charte d'engagements](docs/charte-engagements.md). Voir aussi la
+[politique de sécurité](SECURITY.md) et les documents de conformité dans
+[docs/conformite/](docs/conformite/) (auto-évaluation AI Act et déclaration de
+finalité MDR).
 
 ## Avertissement médico-légal
 

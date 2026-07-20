@@ -1,0 +1,44 @@
+# Politique de sécurité
+
+> **EN — Security policy:** report vulnerabilities privately to alexandre-delahaye@outlook.fr (or via GitHub Security Advisories once the repository is public); do not open a public issue. Only the latest release is supported.
+
+## Versions supportées
+
+Seule la **dernière release** publiée est supportée (actuellement **v1.5.0**). Les versions antérieures ne reçoivent pas de correctifs : mettez à jour vers la dernière release avant de signaler un problème.
+
+| Version | Supportée |
+|---|---|
+| Dernière release (v1.5.0) | Oui |
+| Versions antérieures | Non |
+
+## Signaler une vulnérabilité
+
+- **N'ouvrez pas d'issue publique** pour une faille de sécurité.
+- Écrivez en privé à **alexandre-delahaye@outlook.fr**, ou utilisez **GitHub Security Advisories** (« Report a vulnerability ») une fois le dépôt public.
+- Décrivez si possible : version concernée, étapes de reproduction, impact estimé.
+- **Accusé de réception sous 7 jours.**
+
+## Engagement de correction
+
+- **Vulnérabilités critiques : correctif visé sous 30 jours.** C'est un engagement propre au projet, non une exigence réglementaire chiffrée ; la CNIL recommande, elle, d'appliquer les correctifs de sécurité critiques sans délai — ces 30 jours sont donc un plafond, pas une cible.
+- Le reste est traité en **best effort**, et ce terme est assumé : le projet est maintenu bénévolement, avec un **tri mensuel des issues**. Ce rythme est annoncé honnêtement plutôt que promis puis non tenu.
+
+## Périmètre et modèle de menace
+
+L'application fonctionne **100 % en local** : serveur lié à `127.0.0.1` uniquement, protégé par `TrustedHostMiddleware` (hôtes autorisés : `127.0.0.1`, `localhost`), données chiffrées dans une base SQLCipher unique dont la passphrase n'est jamais écrite sur disque.
+
+En trois points :
+
+1. **Couvert** : un poste de travail individuel — pas d'exposition réseau (loopback seul, protection anti-DNS-rebinding), aucune télémétrie, base et sauvegardes chiffrées, verrouillage automatique après inactivité. Aucune donnée patient n'est transmise en ligne : les hôtes LLM et embeddings sont contraints à la boucle locale par validation de la configuration (`app/models.py`). Seul le téléchargement initial des modèles (Ollama, dictée) nécessite une connexion internet, sans qu'aucune donnée patient n'y transite.
+2. **Non couvert** : la compromission du poste lui-même (malware, accès physique, session ouverte) — si la machine est compromise pendant que le coffre est déverrouillé, le chiffrement ne protège plus.
+3. **Non couvert** : l'oubli de la passphrase — il n'existe **aucun mécanisme de récupération** ; sans passphrase, les données sont définitivement irrécupérables. C'est un choix de conception, pas un oubli.
+
+## Mises à jour de dépendances
+
+- Les versions sont figées dans `requirements.lock`, utilisé par la CI et le build.
+- La **CI s'exécute sur chaque pull request** (lint, tests Python multi-versions et multi-OS, tests UI).
+- **Dependabot sera activé à la publication du dépôt** pour surveiller les dépendances.
+
+## Remerciements
+
+Merci aux personnes qui prennent le temps de signaler une vulnérabilité de façon responsable : ce projet manipule des données de santé, et chaque signalement privé protège directement les praticiens et praticiennes qui l'utilisent, ainsi que leurs patients et patientes. Sauf demande contraire, les personnes à l'origine d'un signalement seront créditées dans les notes de version du correctif.

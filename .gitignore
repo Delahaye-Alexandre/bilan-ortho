@@ -19,6 +19,10 @@ bilans/
 # Journaux locaux
 *.log
 
+# Documents internes — volontairement hors dépôt (décision 2026-07-17)
+docs/business-plan.md
+docs/audit-2026-07-17.md
+
 # Artefacts de build (générés)
 packaging/windows/BilanOrtho.exe
 packaging/windows/icone.ico
