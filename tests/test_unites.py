@@ -161,11 +161,56 @@ def test_parse_structure_json_noye_dans_du_texte():
     assert llm._parse_structure(raw)["updates"][0]["section"] == "projet"
 
 
-def test_parse_structure_tolere_l_invalide():
-    assert llm._parse_structure("pas du json") == {"updates": [], "questions": []}
+def test_parse_structure_illisible_leve_une_erreur():
+    """Une réponse non vide sans JSON lisible n'est plus un succès silencieux
+    à 0 mise à jour : erreur explicite (audit BUG-11)."""
+    with pytest.raises(llm.ReponseIllisible):
+        llm._parse_structure("blabla sans json")
+    # réponse vide : rien à signaler, résultat vide légitime
+    assert llm._parse_structure("") == {"updates": [], "questions": []}
+    # JSON valide avec listes vides : succès légitime (« rien à ajouter »)
+    assert llm._parse_structure('{"updates":[],"questions":[]}') == {
+        "updates": [], "questions": [],
+    }
     # updates sans texte ou sans section sont écartés
     r = llm._parse_structure('{"updates":[{"section":"a"},{"texte":"b"}],"questions":[{}]}')
     assert r["updates"] == [] and r["questions"] == []
+
+
+def test_chat_json_modele_absent(monkeypatch):
+    """Un 404 d'Ollama (modèle non téléchargé) doit devenir ModeleIntrouvable,
+    pas un « Ollama injoignable » trompeur (audit BUG-02)."""
+    import asyncio
+
+    import httpx
+
+    class FauxClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json=None):
+            return httpx.Response(
+                404, request=httpx.Request("POST", url),
+                text='{"error": "model not found"}',
+            )
+
+    monkeypatch.setattr(llm.httpx, "AsyncClient", FauxClient)
+    with pytest.raises(llm.ModeleIntrouvable) as exc:
+        asyncio.run(llm.chat_json("système", "utilisateur", model="fantome:1b"))
+    assert "fantome:1b" in str(exc.value)
+
+
+def test_extract_text_pdf_corrompu():
+    """Les exceptions pypdf doivent devenir des ValueError (→ 400 explicite),
+    pas remonter en 500 opaque (audit BUG-03)."""
+    with pytest.raises(ValueError, match="PDF illisible"):
+        importer.extract_text(b"%PDF-1.4 corrompu", "bilan.pdf")
 
 
 # --- système : RAM, proposition de modèle, installation ---------------------------

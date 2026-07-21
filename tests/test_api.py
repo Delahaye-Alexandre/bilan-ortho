@@ -42,6 +42,45 @@ def test_keepalive_rafraichit(client):
     assert client.post("/api/keepalive").status_code == 200
 
 
+def test_verrou_entre_dependance_et_transaction(client, monkeypatch):
+    """Coffre verrouillé APRÈS require_unlock mais AVANT transaction() (course
+    multi-onglets via POST /api/lock) : 423 partout, plus jamais 500 (BUG-05)."""
+    vrai_touch = security.touch
+
+    def touch_puis_verrou():
+        vrai_touch()
+        security.lock()
+
+    monkeypatch.setattr(security, "touch", touch_puis_verrou)
+    r = client.get("/api/patients")
+    assert r.status_code == 423
+    assert "verrouillée" in r.json()["detail"]
+
+
+def test_disque_plein_au_commit(client):
+    """Un commit qui échoue (disque plein) doit donner un message actionnable,
+    pas un 500 opaque (BUG-06)."""
+    import sqlcipher3
+
+    vrai_con = security._state["con"]
+
+    class ConDisquePlein:
+        def __getattr__(self, nom):
+            return getattr(vrai_con, nom)
+
+        def commit(self):
+            # La classe de la base chiffrée réelle (≠ sqlite3.OperationalError).
+            raise sqlcipher3.OperationalError("database or disk is full")
+
+    security._state["con"] = ConDisquePlein()
+    try:
+        r = client.get("/api/patients")
+    finally:
+        security._state["con"] = vrai_con
+    assert r.status_code == 503
+    assert "espace disque" in r.json()["detail"]
+
+
 def test_verrouillage_survit_config_corrompue(client):
     """Une vieille surcharge mal typée déjà stockée (avant la validation
     Pydantic) ne doit plus bloquer toutes les routes protégées (audit C5)."""
@@ -105,6 +144,14 @@ def test_statut_valide_puis_envoye(client):
 
 
 # --- bilans -----------------------------------------------------------------------
+
+def test_bilan_patient_inexistant(client):
+    """Créer un bilan pour un patient inconnu → 404 clair, pas un 500 sur la
+    contrainte de clé étrangère (BUG-01)."""
+    r = client.post("/api/bilans", json={"domaines": [], "patient_id": 99999})
+    assert r.status_code == 404
+    assert "Patient introuvable" in r.json()["detail"]
+
 
 def test_parcours_bilan_complet(client):
     b = client.post(
@@ -212,6 +259,16 @@ def test_import_binaire_rejete(client, mock_embed):
     r = client.post("/api/references",
                     files={"file": ("piege.txt", b"abc\x00def", "text/plain")})
     assert r.status_code == 400
+
+
+def test_import_pdf_corrompu(client, mock_embed):
+    """PDF corrompu ou protégé : 400 explicite au lieu d'un 500 pypdf (BUG-03)."""
+    r = client.post(
+        "/api/references",
+        files={"file": ("bilan.pdf", b"%PDF-1.4 corrompu", "application/pdf")},
+    )
+    assert r.status_code == 400
+    assert "PDF illisible" in r.json()["detail"]
 
 
 def test_bilans_pagination(client):
@@ -391,6 +448,52 @@ def test_structure_reponses_sans_dictee(client, monkeypatch, mock_embed):
     assert "« Le patient est âgé de 7 ans. »" in captured["user"]
 
 
+def test_structure_modele_absent(client, monkeypatch, mock_embed):
+    """Modèle non téléchargé : message qui pointe vers Paramètres → Modèles,
+    pas un « Ollama injoignable » faux (BUG-02, UX-02)."""
+    import httpx as _httpx
+
+    async def chat_404(*a, **k):
+        raise llm.ModeleIntrouvable("fantome:1b")
+
+    monkeypatch.setattr(llm, "chat_json", chat_404)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.status_code == 503
+    assert "fantome:1b" in r.json()["detail"]
+    assert "n'est pas téléchargé" in r.json()["detail"]
+
+    async def chat_refuse(*a, **k):
+        raise _httpx.ConnectError("connexion refusée")
+
+    monkeypatch.setattr(llm, "chat_json", chat_refuse)
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.status_code == 503
+    assert "ne répond pas" in r.json()["detail"]
+
+
+def test_structure_reponse_illisible(client, monkeypatch, mock_embed):
+    """Réponse LLM sans JSON lisible : erreur explicite, pas un succès vide
+    indistinguable d'un « rien à ajouter » (BUG-11)."""
+    async def chat_blabla(*a, **k):
+        return "blabla sans json"
+
+    monkeypatch.setattr(llm, "chat_json", chat_blabla)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.status_code == 502
+    assert "n'a pas pu être lue" in r.json()["detail"]
+
+    # JSON valide avec listes vides : succès légitime (0 mise à jour)
+    async def chat_vide(*a, **k):
+        return '{"updates": [], "questions": []}'
+
+    monkeypatch.setattr(llm, "chat_json", chat_vide)
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.status_code == 200
+    assert r.json()["questions"] == []
+
+
 def test_structure_verrouillage_pendant_analyse(client, monkeypatch, mock_embed):
     """Si le coffre se verrouille pendant l'analyse LLM, le résultat n'est
     plus jeté en 500 opaque : 423 explicite (l'UI ré-affiche l'écran de
@@ -454,6 +557,22 @@ def test_models_exige_le_deverrouillage(client, monkeypatch):
 def test_transcribe_audio_vide(client):
     r = client.post("/api/transcribe", files={"audio": ("d.webm", b"", "audio/webm")})
     assert r.status_code == 400
+
+
+def test_transcribe_echec_message_simple(client, monkeypatch):
+    """La trace technique (ffmpeg, HuggingFace…) part dans le journal, jamais
+    dans l'interface (UX-03)."""
+    from app import stt
+
+    def boom(data, filename, cfg):
+        raise RuntimeError("ffmpeg error: /usr/lib/libavcodec.so introuvable")
+
+    monkeypatch.setattr(stt, "transcribe", boom)
+    r = client.post("/api/transcribe", files={"audio": ("d.webm", b"abc", "audio/webm")})
+    assert r.status_code == 500
+    detail = r.json()["detail"]
+    assert "ffmpeg" not in detail and "libavcodec" not in detail
+    assert "transcription a échoué" in detail
 
 
 def test_stt_info(client):

@@ -17,6 +17,12 @@ _lock = threading.RLock()
 _state: dict = {"con": None, "last_activity": 0.0}
 
 
+class CoffreVerrouille(RuntimeError):
+    """Le coffre s'est verrouillé entre la vérification d'accès et l'usage de
+    la connexion (course réelle en multi-onglets via POST /api/lock). Mappée
+    globalement en 423 par le serveur."""
+
+
 def db_exists() -> bool:
     return config.db_path().exists()
 
@@ -37,13 +43,19 @@ def unlock(passphrase: str) -> bool:
         except Exception:
             # Base illisible : mauvaise passphrase (ou fichier corrompu).
             return False
-        if first_run:
-            db.init_schema(con)
-        elif not db.verify(con):
+        try:
+            if first_run:
+                db.init_schema(con)
+            elif not db.verify(con):
+                con.close()
+                return False
+            else:
+                db.migrate(con)
+        except Exception:
+            # Migration/initialisation KO : fermer la connexion chiffrée avant
+            # de propager, sinon elle fuit (l'app reste verrouillée).
             con.close()
-            return False
-        else:
-            db.migrate(con)
+            raise
         _state["con"] = con
         _state["last_activity"] = time.monotonic()
         audit("unlock", "app", None, "premier lancement" if first_run else "")
@@ -67,7 +79,7 @@ def lock() -> None:
 def _con():
     con = _state["con"]
     if con is None:
-        raise RuntimeError("Application verrouillée.")
+        raise CoffreVerrouille("Application verrouillée.")
     return con
 
 

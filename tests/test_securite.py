@@ -106,3 +106,39 @@ def test_passphrase_courte_acceptee_sur_coffre_existant(data_dir):
     con.close()
     with TestClient(app, base_url="http://127.0.0.1") as c:
         assert c.post("/api/unlock", json={"passphrase": "court"}).status_code == 200
+
+
+# --- Déverrouillage : pas de fuite de connexion -------------------------------
+
+def test_migration_echec_ferme_la_connexion(data_dir, monkeypatch):
+    """Si la migration échoue au déverrouillage, la connexion chiffrée doit
+    être fermée avant de propager — pas de fuite (BUG-07)."""
+    import pytest
+    import sqlcipher3
+
+    from app import security
+    from tests.conftest import PASSPHRASE as PP
+
+    # Coffre existant : le déverrouillage suivant passera par db.migrate.
+    assert security.unlock(PP)
+    security.lock()
+
+    ouvertes = []
+    vraie_connect = db.connect
+
+    def connect_espionne(path, passphrase):
+        con = vraie_connect(path, passphrase)
+        ouvertes.append(con)
+        return con
+
+    def migration_ko(con):
+        raise RuntimeError("migration KO")
+
+    monkeypatch.setattr(db, "connect", connect_espionne)
+    monkeypatch.setattr(db, "migrate", migration_ko)
+    with pytest.raises(RuntimeError, match="migration KO"):
+        security.unlock(PP)
+    assert not security.is_unlocked()
+    # La connexion ouverte a bien été fermée : tout usage lève ProgrammingError.
+    with pytest.raises(sqlcipher3.ProgrammingError):
+        ouvertes[-1].execute("SELECT 1")

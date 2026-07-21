@@ -13,6 +13,16 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
 
 
+class ModeleIntrouvable(RuntimeError):
+    """Le modèle demandé n'est pas téléchargé dans Ollama (404 « model not
+    found »). Le message est le nom du modèle."""
+
+
+class ReponseIllisible(RuntimeError):
+    """La réponse non vide du modèle n'a pas pu être lue comme du JSON
+    (les deux tentatives de parsing ont échoué)."""
+
+
 async def list_models() -> list[str]:
     """Retourne la liste des modèles disponibles localement."""
     async with httpx.AsyncClient(timeout=10) as client:
@@ -63,21 +73,36 @@ async def chat_json(
             # Vieil Ollama qui rejette le champ `think` : réessai sans.
             payload.pop("think", None)
             resp = await client.post(url, json=payload)
+        if resp.status_code == 404:
+            # Ollama tourne mais le modèle n'est pas téléchargé : à distinguer
+            # d'un Ollama injoignable (le diagnostic et le remède diffèrent).
+            raise ModeleIntrouvable(payload["model"])
         resp.raise_for_status()
         data = resp.json()
     return data["message"]["content"]
 
 
 def _parse_structure(raw: str) -> dict:
-    """Parse tolérant de la réponse JSON du modèle (récupère le 1er objet)."""
+    """Parse tolérant de la réponse JSON du modèle (récupère le 1er objet).
+
+    Une réponse non vide dont aucune tentative ne donne un objet JSON lève
+    ``ReponseIllisible`` : un succès silencieux avec 0 mise à jour serait
+    indistinguable d'un légitime « rien à ajouter »."""
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         m = re.search(r"\{.*\}", raw, re.S)
         try:
-            data = json.loads(m.group(0)) if m else {}
+            data = json.loads(m.group(0)) if m else None
         except json.JSONDecodeError:
-            data = {}
+            data = None
+    if not isinstance(data, dict):
+        if raw.strip():
+            raise ReponseIllisible(
+                "La réponse du modèle n'a pas pu être lue. Relancez l'analyse ; "
+                "si cela se reproduit, essayez un autre modèle (⚙️ Paramètres)."
+            )
+        data = {}
     updates = [
         {"section": u.get("section"), "texte": (u.get("texte") or "").strip()}
         for u in (data.get("updates") or [])

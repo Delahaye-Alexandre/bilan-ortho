@@ -7,13 +7,17 @@ de notes reste disponible (elle ne touche pas la base).
 from __future__ import annotations
 
 import copy
+import logging
+import sqlite3
 from pathlib import Path
 
 import httpx
+import sqlcipher3
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import (
     FileResponse,
+    JSONResponse,
     PlainTextResponse,
     Response,
     StreamingResponse,
@@ -52,7 +56,32 @@ from .models import (
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Bilan Ortho", version=__version__)
+
+
+@app.exception_handler(security.CoffreVerrouille)
+async def coffre_verrouille_handler(request, exc: security.CoffreVerrouille):
+    """Le coffre s'est verrouillé entre ``require_unlock`` et ``transaction()``
+    (course multi-onglets via POST /api/lock) : 423 sur TOUTES les routes,
+    plutôt qu'un 500 opaque — l'interface ré-affiche l'écran de verrouillage."""
+    return JSONResponse(status_code=423, content={"detail": "Application verrouillée."})
+
+
+# La base chiffrée lève les exceptions de sqlcipher3, distinctes de celles du
+# module sqlite3 standard : les deux classes sont mappées.
+@app.exception_handler(sqlite3.OperationalError)
+@app.exception_handler(sqlcipher3.OperationalError)
+async def sqlite_operationnel_handler(request, exc):
+    """Échec d'écriture SQLite (disque plein, typiquement) : message
+    actionnable plutôt qu'un 500 opaque."""
+    logger.error("Erreur SQLite : %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Écriture impossible (espace disque insuffisant ?). "
+                           "Libérez de l'espace puis réessayez."},
+    )
 
 # Anti « DNS rebinding » : un site malveillant ouvert dans un autre onglet
 # peut faire pointer son domaine vers 127.0.0.1 et interroger ce serveur
@@ -212,16 +241,18 @@ async def transcribe(audio: UploadFile = File(...)) -> dict:
         result = await run_in_threadpool(stt.transcribe, data, audio.filename or "", cfg)
     except stt.STTUnavailable as exc:
         raise HTTPException(503, str(exc))
-    except Exception as exc:  # pragma: no cover - erreurs modèle/audio
-        raise HTTPException(500, f"Échec de la transcription : {exc}")
-    try:
-        with security.transaction() as con:
-            # Journalise l'acte, jamais le contenu.
-            security.audit("transcribe", "dictee", None, f"{len(result['text'])} car.")
-    except RuntimeError:
-        # Coffre verrouillé pendant la transcription : 423 explicite plutôt
-        # qu'un 500 opaque (l'UI ré-affiche l'écran de verrouillage).
-        raise HTTPException(423, "Application verrouillée pendant la transcription.")
+    except Exception as exc:
+        # Jamais la trace technique (HuggingFace, ffmpeg…) dans l'interface :
+        # elle part dans le journal, l'UI reçoit un message simple.
+        logger.exception("Échec de la transcription : %s", exc)
+        raise HTTPException(
+            500,
+            "La transcription a échoué. Réessayez ; au premier usage, le modèle "
+            "de dictée doit d'abord finir de s'installer.",
+        )
+    with security.transaction() as con:
+        # Journalise l'acte, jamais le contenu.
+        security.audit("transcribe", "dictee", None, f"{len(result['text'])} car.")
     return result
 
 
@@ -280,8 +311,10 @@ async def creer_sauvegarde() -> dict:
     # base — le verrou est tenu dans un thread, l'event loop reste libre.
     try:
         return await run_in_threadpool(_creer)
-    except RuntimeError:
-        raise HTTPException(423, "Application verrouillée.")
+    except security.CoffreVerrouille:
+        raise  # géré globalement en 423
+    except (sqlite3.OperationalError, sqlcipher3.OperationalError):
+        raise  # géré globalement en 503 (disque plein ?)
     except Exception as exc:
         raise HTTPException(500, f"Échec de la sauvegarde : {exc}")
 
@@ -298,6 +331,8 @@ async def list_sauvegardes() -> dict:
 @app.post("/api/bilans", dependencies=[Depends(require_unlock)])
 async def create_bilan(req: BilanCreate) -> dict:
     with security.transaction() as con:
+        if req.patient_id is not None and not patient.get(con, req.patient_id):
+            raise HTTPException(404, "Patient introuvable.")
         cfg = config.ConfigStore(con).effective()
         bid = bilan.create(
             con, req.domaines, req.type.value, req.patient_id, req.motif, cfg
@@ -372,6 +407,12 @@ async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
             questions_ecartees=req.questions_ecartees,
             questions_repondues=req.questions_repondues,
         )
+    except llm.ModeleIntrouvable as exc:
+        raise HTTPException(
+            503,
+            f"Le modèle « {exc} » n'est pas téléchargé. Ouvrez ⚙️ Paramètres → "
+            "Modèles pour le télécharger.",
+        )
     except httpx.TimeoutException:
         raise HTTPException(
             504,
@@ -379,20 +420,21 @@ async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
             "choisissez un modèle plus léger (⚙️ Paramètres).",
         )
     except httpx.HTTPError:
-        raise HTTPException(503, "Ollama injoignable. Lancez « ollama serve ».")
-    try:
-        with security.transaction() as con:
-            bilan.apply_updates(con, bilan_id, result["updates"])
-            security.audit(
-                "structure", "bilan", bilan_id,
-                f"{len(result['updates'])} maj, {len(result['questions'])} questions"
-                + (f", {len(req.reponses)} réponse(s) intégrée(s)" if req.reponses else ""),
-            )
-            b2 = bilan.get(con, bilan_id)
-    except RuntimeError:
-        # Coffre verrouillé pendant l'analyse : 423 explicite, résultat non
-        # appliqué (la dictée reste dans l'interface, rien n'est perdu).
-        raise HTTPException(423, "Application verrouillée pendant l'analyse.")
+        raise HTTPException(
+            503,
+            "Le moteur d'IA local (Ollama) ne répond pas. Vérifiez qu'il est "
+            "bien démarré, puis réessayez.",
+        )
+    except llm.ReponseIllisible as exc:
+        raise HTTPException(502, str(exc))
+    with security.transaction() as con:
+        bilan.apply_updates(con, bilan_id, result["updates"])
+        security.audit(
+            "structure", "bilan", bilan_id,
+            f"{len(result['updates'])} maj, {len(result['questions'])} questions"
+            + (f", {len(req.reponses)} réponse(s) intégrée(s)" if req.reponses else ""),
+        )
+        b2 = bilan.get(con, bilan_id)
     return {"bilan": b2, "questions": result["questions"]}
 
 
@@ -504,16 +546,13 @@ async def import_reference(
     except rag.EmbeddingUnavailable as exc:
         raise HTTPException(503, str(exc))
     # 3. Insertion rapide sous verrou.
-    try:
-        with security.transaction() as con:
-            for (cle, titre, contenu), emb in zip(chunks, embs):
-                rag.add_reference(con, None, "import", domaine, cle, titre, contenu, emb)
-            security.audit(
-                "import_reference", "reference", None,
-                f"{len(chunks)} extraits · {file.filename}",
-            )
-    except RuntimeError:
-        raise HTTPException(423, "Application verrouillée pendant l'import.")
+    with security.transaction() as con:
+        for (cle, titre, contenu), emb in zip(chunks, embs):
+            rag.add_reference(con, None, "import", domaine, cle, titre, contenu, emb)
+        security.audit(
+            "import_reference", "reference", None,
+            f"{len(chunks)} extraits · {file.filename}",
+        )
     return {
         "n": len(chunks),
         "sections": [c[0] for c in chunks],
@@ -542,7 +581,11 @@ async def get_models() -> dict:
     try:
         models = await llm.list_models()
     except httpx.HTTPError:
-        raise HTTPException(503, "Ollama injoignable. Lancez « ollama serve ».")
+        raise HTTPException(
+            503,
+            "Le moteur d'IA local (Ollama) ne répond pas. Vérifiez qu'il est "
+            "bien démarré, puis réessayez.",
+        )
     return {"models": models, "default": llm.OLLAMA_MODEL}
 
 

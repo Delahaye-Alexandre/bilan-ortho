@@ -84,11 +84,23 @@ def _ocr_pdf(data: bytes) -> str:
                     pass
 
 
+_PDF_ILLISIBLE = (
+    "PDF illisible ou protégé par mot de passe. Réexportez-le sans protection, "
+    "ou importez le document en .docx ou .txt."
+)
+
+
 def _pdf_text(data: bytes) -> str:
     from pypdf import PdfReader
 
-    reader = PdfReader(io.BytesIO(data))
-    return "\n".join((page.extract_text() or "") for page in reader.pages)
+    # Les exceptions pypdf (PdfReadError, FileNotDecryptedError…) ne sont pas
+    # des ValueError : sans traduction, elles remontent en 500 opaque au lieu
+    # du 400 explicite de la route d'import.
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        return "\n".join((page.extract_text() or "") for page in reader.pages)
+    except Exception as exc:
+        raise ValueError(_PDF_ILLISIBLE) from exc
 
 
 def _docx_text(data: bytes) -> str:
@@ -110,7 +122,12 @@ def extract_text(data: bytes, filename: str) -> str:
     if ext == ".pdf":
         text = _pdf_text(data)
         if len(text.strip()) < 20 and _ocr_available():
-            text = _ocr_pdf(data)  # PDF scanné
+            try:
+                text = _ocr_pdf(data)  # PDF scanné
+            except ValueError:
+                raise
+            except Exception as exc:
+                raise ValueError(_PDF_ILLISIBLE) from exc
         return text
     if ext == ".docx":
         return _docx_text(data)
