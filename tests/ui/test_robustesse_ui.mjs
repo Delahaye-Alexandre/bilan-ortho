@@ -48,6 +48,9 @@ let sectionResponder = () => ({});
 let holdNext = null;    // promesse pour tester l'état « en vol »
 let reseauCoupe = false; // simule un serveur injoignable
 let sauvegardeCalls = 0;
+let recentsRequests = [];
+let recentsResponder = () => [{ id: 7, statut: "brouillon", domaine_titres: "Générique" }];
+let exportResponder = null;
 
 const rep = (r) => r && r.__status
   ? { ok: false, status: r.__status, statusText: "ERR", json: async () => ({ detail: r.detail }) }
@@ -83,8 +86,11 @@ globalThis.fetch = async (p, o = {}) => {
     if (holdNext) await holdNext;
     return rep(bilanCreator());
   }
-  if (url.includes("/api/bilans?limit")) {
-    return rep([{ id: 7, statut: "brouillon", domaine_titres: "Générique" }]);
+  if (url.includes("/export")) return rep(exportResponder ? exportResponder() : {});
+  if (url.includes("/api/bilans?")) {
+    const q = Object.fromEntries(url.split("?")[1].split("&").map((kv) => kv.split("=")));
+    recentsRequests.push({ limit: +q.limit, offset: +q.offset });
+    return rep(recentsResponder(+q.limit, +q.offset));
   }
   if (url.includes("/sections/")) {
     sectionPuts.push({ url, body: JSON.parse(o.body) });
@@ -338,6 +344,40 @@ check("échappement : le titre est affiché tel quel",
     .textContent.includes('Anamnèse"<b>piège</b>'));
 check("échappement : data-cle reste exploitable (rubrique retrouvée)",
   secTa("anamnese") !== null && secTa("anamnese").value === "Texte initial.");
+
+// === 16. Export : un 423 ré-affiche l'écran de verrouillage ==================
+overlay().hidden = true;
+__t.CUR = structuredClone(CUR0);
+exportResponder = () => ({ __status: 423, detail: "Application verrouillée." });
+document.getElementById("expMd").click();
+await settle();
+check("export sur coffre verrouillé : overlay ré-affiché", overlay().hidden === false);
+check("export sur coffre verrouillé : message français",
+  document.getElementById("copyStatus").textContent.includes("verrouillée"));
+overlay().hidden = true;
+exportResponder = null;
+
+// === 17. « Afficher plus » : offset envoyé, pages empilées sans doublon ======
+recentsResponder = (limit, offset) => offset === 0
+  ? Array.from({ length: 20 }, (_, i) =>
+      ({ id: 40 - i, statut: "brouillon", domaine_titres: "Générique" }))
+  // recouvrement volontaire : l'id 21 figure déjà en fin de page 1
+  : [{ id: 21, statut: "brouillon", domaine_titres: "Générique" },
+     { id: 20, statut: "brouillon", domaine_titres: "Générique" },
+     { id: 19, statut: "brouillon", domaine_titres: "Générique" }];
+recentsRequests = [];
+await __t.loadRecents();
+check("pagination : première page pleine + lien « afficher plus »",
+  document.querySelectorAll("#recents a[data-id]").length === 20
+  && document.querySelector("#recents a[data-plus]") !== null);
+document.querySelector("#recents a[data-plus]").click();
+await settle();
+check("pagination : la requête suivante envoie offset=20",
+  recentsRequests.length === 2 && recentsRequests[1].offset === 20);
+check("pagination : pages empilées sans doublon",
+  document.querySelectorAll("#recents a[data-id]").length === 22);
+check("pagination : lien masqué quand la page reçue n'est pas pleine",
+  document.querySelector("#recents a[data-plus]") === null);
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

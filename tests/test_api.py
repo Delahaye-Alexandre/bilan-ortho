@@ -111,6 +111,18 @@ def test_config_overrides_expose_les_surcharges_seules(client):
     assert client.get("/api/config/overrides").json() == {"llm": {"model": "x"}}
 
 
+def test_config_dictee_max_minutes(client):
+    """La borne de durée de dictée (BUG-04) existe, se configure et est validée."""
+    assert client.get("/api/config").json()["rgpd"]["dictee_max_minutes"] == 30
+    eff = client.put(
+        "/api/config", json={"overrides": {"rgpd": {"dictee_max_minutes": 10}}}
+    ).json()
+    assert eff["rgpd"]["dictee_max_minutes"] == 10
+    assert client.put(
+        "/api/config", json={"overrides": {"rgpd": {"dictee_max_minutes": -1}}}
+    ).status_code == 422
+
+
 def test_domaines_publics(client):
     doms = client.get("/api/domaines").json()
     assert {"cle": "voix", "titre": "Voix"} in doms

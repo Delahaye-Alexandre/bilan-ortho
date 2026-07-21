@@ -265,6 +265,7 @@
         <legend>Confidentialité (RGPD)</legend>
         <div class="grid2">
           <div><label for="cfgRgpdLock">Verrouillage après inactivité (min, 0 = jamais)</label><input id="cfgRgpdLock" type="number" min="0"></div>
+          <div><label for="cfgRgpdDictee">Durée max d'une dictée (min, 0 = sans limite)</label><input id="cfgRgpdDictee" type="number" min="0"></div>
           <div><label for="cfgRgpdCons">Conservation des bilans (jours, 0 = illimitée)</label><input id="cfgRgpdCons" type="number" min="0"></div>
         </div>
         <div class="muted" style="margin-top:8px">L'audio de dictée est toujours supprimé après transcription (non désactivable).</div>
@@ -752,19 +753,31 @@ async function loadBilan(id) {
   } catch (e) { document.getElementById('curBilan').textContent = 'Erreur : ' + e.message; return; }
   QS = []; DISMISSED.clear(); ANSWERED.clear(); renderBilan(); renderQuestions();
 }
-let RECENTS_LIMIT = 20; // pagination : « afficher plus » recharge la liste élargie
-async function loadRecents() {
+// Vraie pagination par offset : le serveur plafonne limit à 200 — recharger
+// une liste toujours plus large rendait les bilans au-delà du plafond
+// inaccessibles. « Afficher plus » empile les pages suivantes.
+const RECENTS_PAGE = 20;
+let RECENTS = []; // pages déjà chargées (réinitialisées à chaque rafraîchissement)
+async function loadRecents(ajouter = false) {
   try {
-    const list = await (await api('/api/bilans?limit=' + RECENTS_LIMIT)).json();
+    const offset = ajouter ? RECENTS.length : 0;
+    const page = await (await api(`/api/bilans?limit=${RECENTS_PAGE}&offset=${offset}`)).json();
+    if (ajouter) {
+      // Dédoublonnage : une création entre deux pages décale les offsets.
+      const vus = new Set(RECENTS.map(b => b.id));
+      RECENTS = RECENTS.concat(page.filter(b => !vus.has(b.id)));
+    } else {
+      RECENTS = page;
+    }
     const el = document.getElementById('recents');
-    el.innerHTML = (list.length ? list.map(b => {
+    el.innerHTML = (RECENTS.length ? RECENTS.map(b => {
       const pat = b.patient_nom ? `${(b.patient_nom || '').toUpperCase()} ${b.patient_prenom || ''}`.trim() + ' · ' : '';
       return `<a href="#" data-id="${b.id}">#${b.id} · ${escapeHtml(pat)}${escapeHtml(b.domaine_titres || 'Générique')} <span class="muted">(${escapeHtml(b.statut || '')})</span></a>`;
     }).join('') : '—') +
-      (list.length >= RECENTS_LIMIT ? '<a href="#" data-plus>… afficher plus</a>' : '');
+      (page.length === RECENTS_PAGE ? '<a href="#" data-plus>… afficher plus</a>' : '');
     el.querySelectorAll('a[data-id]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); loadBilan(a.dataset.id); }));
     const plus = el.querySelector('a[data-plus]');
-    if (plus) plus.addEventListener('click', e => { e.preventDefault(); RECENTS_LIMIT += 20; loadRecents(); });
+    if (plus) plus.addEventListener('click', e => { e.preventDefault(); loadRecents(true); });
   } catch {}
 }
 function curLabel() {
@@ -931,8 +944,24 @@ document.getElementById('coteBtn').addEventListener('click', e => avecBouton(e.t
     CUR.cotation = c; info.textContent = `${c.code_amo} · ${c.montant} €`;
   } catch (e) { info.textContent = 'Erreur : ' + e.message; }
 }));
-document.getElementById('expDocx').addEventListener('click', () => { if (CUR) window.open(`/api/bilans/${CUR.id}/export?format=docx`); });
-document.getElementById('expMd').addEventListener('click', () => { if (CUR) window.open(`/api/bilans/${CUR.id}/export?format=md`); });
+// Export via le portier api() (et non window.open) : un 423 ré-affiche
+// l'écran de déverrouillage et les erreurs sont traduites en français,
+// au lieu d'un onglet d'erreur brute.
+async function telechargerExport(format) {
+  if (!CUR) return;
+  const st = document.getElementById('copyStatus');
+  try {
+    const r = await api(`/api/bilans/${CUR.id}/export?format=${format}`);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `bilan-${CUR.id}.${format}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+}
+document.getElementById('expDocx').addEventListener('click', e => avecBouton(e.target, () => telechargerExport('docx')));
+document.getElementById('expMd').addEventListener('click', e => avecBouton(e.target, () => telechargerExport('md')));
 
 // ---------- Structuration ----------
 document.getElementById('structBtn').addEventListener('click', () => structure({ transcription: document.getElementById('dicteeText').value }, true));
@@ -1124,7 +1153,7 @@ const recStatus = document.getElementById('recStatus');
 async function initDictee() {
   try { const i = await (await api('/api/stt/info')).json(); document.getElementById('sttInfo').textContent = `Dictée : ${i.model} · ${i.device}`; } catch {}
 }
-let keepAlive = null;
+let keepAlive = null, dicteeTimer = null;
 async function toggleRec() {
   if (recording) {
     // Double-clic sur « Arrêter » : stop() sur un enregistreur déjà arrêté
@@ -1135,15 +1164,27 @@ async function toggleRec() {
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch { recStatus.textContent = 'Micro indisponible.'; return; }
+  // Borne de la dictée : le ping keepalive maintient le coffre déverrouillé —
+  // sans limite, un micro oublié neutraliserait le verrouillage d'inactivité.
+  let maxMin = 30;
+  try {
+    const v = Number((await (await api('/api/config')).json()).rgpd.dictee_max_minutes);
+    if (!isNaN(v)) maxMin = v;
+  } catch {}
+  let autoArret = false;
   chunks = []; mediaRecorder = new MediaRecorder(stream);
   mediaRecorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   mediaRecorder.onstop = async () => {
     clearInterval(keepAlive); keepAlive = null;
+    clearTimeout(dicteeTimer); dicteeTimer = null;
     stream.getTracks().forEach(t => t.stop());
     recording = false; recBtn.textContent = '● Démarrer la dictée'; recBtn.classList.remove('rec');
     const blob = new Blob(chunks, { type: 'audio/webm' });
     if (!blob.size) { recStatus.textContent = 'Rien enregistré.'; return; }
-    recStatus.textContent = 'Transcription locale… (1er lancement : téléchargement du modèle)'; recBtn.disabled = true;
+    recStatus.textContent = autoArret
+      ? `Dictée arrêtée automatiquement après ${maxMin} min — la transcription démarre.`
+      : 'Transcription locale… (1er lancement : téléchargement du modèle)';
+    recBtn.disabled = true;
     try {
       const fd = new FormData(); fd.append('audio', blob, 'dictee.webm');
       const r = await api('/api/transcribe', { method: 'POST', body: fd });
@@ -1156,6 +1197,15 @@ async function toggleRec() {
   mediaRecorder.start();
   // Ping périodique : garde le coffre déverrouillé tant que la dictée tourne (évite un 423 au moment de transcrire).
   keepAlive = setInterval(() => api('/api/keepalive', { method: 'POST' }).catch(() => {}), 60000);
+  if (maxMin > 0) {
+    dicteeTimer = setTimeout(() => {
+      // Même chemin que le clic « Arrêter » : onstop transcrit ce qui a été dit.
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        autoArret = true;
+        mediaRecorder.stop();
+      }
+    }, maxMin * 60000);
+  }
   recording = true; recBtn.textContent = '■ Arrêter'; recBtn.classList.add('rec'); recStatus.textContent = 'Enregistrement…';
 }
 recBtn.addEventListener('click', toggleRec);
@@ -1220,6 +1270,7 @@ function fillSettings(c) {
   $('cfgCotAmo').value = c.cotation.valeur_amo; $('cfgCotSimple').value = c.cotation.bilan_simple_coeff;
   $('cfgCotComplexe').value = c.cotation.bilan_complexe_coeff; $('cfgCotRenouv').value = c.cotation.renouvellement_coeff;
   $('cfgRgpdLock').value = c.rgpd.verrouillage_inactivite_minutes; $('cfgRgpdCons').value = c.rgpd.conservation_jours;
+  $('cfgRgpdDictee').value = c.rgpd.dictee_max_minutes;
   $('cfgSauvDossier').value = c.sauvegarde.dossier || ''; $('cfgSauvRet').value = c.sauvegarde.retention;
   $('cfgSauvAuto').value = c.sauvegarde.auto_jours;
   api('/api/sauvegardes').then(r => r.json()).then(s => {
@@ -1301,6 +1352,7 @@ function collectSettings() {
     rgpd: {
       verrouillage_inactivite_minutes: num($('cfgRgpdLock').value),
       conservation_jours: num($('cfgRgpdCons').value),
+      dictee_max_minutes: num($('cfgRgpdDictee').value),
     },
     sauvegarde: {
       dossier: $('cfgSauvDossier').value.trim(),

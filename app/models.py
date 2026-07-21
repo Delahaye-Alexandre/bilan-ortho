@@ -100,6 +100,7 @@ class SttPatch(_SectionPatch):
 class RgpdPatch(_SectionPatch):
     verrouillage_inactivite_minutes: float | None = Field(None, ge=0)
     conservation_jours: int | None = Field(None, ge=0)
+    dictee_max_minutes: float | None = Field(None, ge=0)
 
 
 class SauvegardePatch(_SectionPatch):

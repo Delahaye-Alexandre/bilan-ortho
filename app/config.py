@@ -153,6 +153,10 @@ DEFAULTS: dict[str, Any] = {
         # (stt.py) — ce n'est volontairement pas un réglage.
         "verrouillage_inactivite_minutes": 15,
         "conservation_jours": 0,   # 0 = pas de purge automatique
+        # Durée maximale d'une dictée (le ping de dictée maintient le coffre
+        # déverrouillé : sans borne, un micro oublié neutraliserait le
+        # verrouillage d'inactivité). 0 = sans limite.
+        "dictee_max_minutes": 30,
     },
     "sauvegarde": {
         # Copie chiffrée du coffre (même passphrase). Vide = <données>/sauvegardes.
