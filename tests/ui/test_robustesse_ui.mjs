@@ -379,5 +379,43 @@ check("pagination : pages empilées sans doublon",
 check("pagination : lien masqué quand la page reçue n'est pas pleine",
   document.querySelector("#recents a[data-plus]") === null);
 
+// === 18. Modales : role=dialog, aria-modal, piège de focus ===================
+document.getElementById("settingsBtn").click();
+await settle();
+const modal = document.querySelector("#settingsOverlay .modal");
+check("a11y : role=dialog + aria-modal sur la modale ouverte",
+  modal.getAttribute("role") === "dialog" && modal.getAttribute("aria-modal") === "true");
+const titreId = modal.getAttribute("aria-labelledby");
+check("a11y : aria-labelledby pointe le titre existant",
+  titreId !== null && document.getElementById(titreId).textContent.includes("Paramètres"));
+const focusables = [...modal.querySelectorAll("button, input, select, textarea, a[href]")]
+  .filter((el) => !el.disabled && !el.hidden);
+focusables[focusables.length - 1].focus();
+document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+check("a11y : Tab depuis le dernier élément revient au premier (piège)",
+  document.activeElement === focusables[0]);
+document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }));
+check("a11y : Shift+Tab depuis le premier va au dernier",
+  document.activeElement === focusables[focusables.length - 1]);
+document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+// === 19. Analyse depuis le panneau de questions : statut près du bouton ======
+__t.CUR = structuredClone(CUR0);
+__t.renderBilan();
+__t.QS = [{ id: 991, section: "", question: "Question du panneau ?", pourquoi: "" }];
+__t.renderQuestions();
+structureResponder = () => ({ bilan: structuredClone(CUR0), questions: [] });
+holdNext = new Promise((r) => setTimeout(r, 60));
+const qel = document.querySelector('#questions .q[data-id="991"]');
+qel.querySelector(".ans").value = "ma réponse";
+qel.querySelector(".ansBtn").click();
+await new Promise((r) => setTimeout(r, 20));
+check("analyse depuis le panneau : statut visible près des questions",
+  document.querySelector("#questions .qStatus").textContent.includes("Analyse en cours"));
+check("analyse : spinner affiché dans le statut principal",
+  document.querySelector("#structStatus .spin") !== null);
+holdNext = null;
+await new Promise((r) => setTimeout(r, 80));
+
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

@@ -12,14 +12,17 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.5 system-ui, "Segoe UI", sans-serif;
-         color: var(--text); background: var(--bg); }
+         color: var(--text); background: var(--bg);
+         display: flex; flex-direction: column; min-height: 100vh; }
   header { background: var(--panel); border-bottom: 1px solid var(--border);
            padding: 12px 20px; display: flex; align-items: baseline; gap: 12px; }
   header h1 { font-size: 18px; margin: 0; }
   header .tag { font-size: 12px; color: var(--muted); }
   .banner { background: #fff7ed; color: var(--warn); border-bottom: 1px solid #fed7aa;
             padding: 8px 20px; font-size: 13px; }
-  main { display: grid; grid-template-columns: 300px 1fr; gap: 0; height: calc(100vh - 98px); }
+  /* flex:1 (et non une hauteur calculée) : la bannière peut passer sur
+     plusieurs lignes sans rogner le contenu. */
+  main { display: grid; grid-template-columns: 300px 1fr; gap: 0; flex: 1; min-height: 0; }
   .side { border-right: 1px solid var(--border); background: var(--panel);
           padding: 16px; overflow-y: auto; }
   .content { padding: 20px; overflow-y: auto; }
@@ -46,7 +49,7 @@
   .status { font-size: 12px; color: var(--muted); }
   .grow { flex: 1; }
   .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
-  .badge.vide { background: #eef1f4; color: #6b7280; }
+  .badge.vide { background: #eef1f4; color: #4b5563; } /* ratio ≥ 4,5:1 sur #eef1f4 */
   .badge.propose_ia { background: #fff7ed; color: #b45309; }
   .badge.valide { background: #ecfdf5; color: #047857; }
   .badge.patho { background: #fee2e2; color: #b91c1c; }
@@ -91,12 +94,22 @@
   .reclist a { display:block; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px;
                color:inherit; text-decoration:none; }
   .reclist a:hover, .reclist a:focus-visible { background:#f1f5f9; }
+  .spin { display:inline-block; width:13px; height:13px; border:2px solid var(--border);
+          border-top-color: var(--accent); border-radius:50%; vertical-align:-2px;
+          animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Petits écrans : panneau latéral au-dessus du contenu, grilles en 1 colonne. */
+  @media (max-width: 900px) {
+    main { display: block; }
+    .side { border-right: 0; border-bottom: 1px solid var(--border); }
+    .grid2, .grid3 { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 <div class="lock-overlay" id="lockOverlay" hidden>
-  <div class="lock-card">
-    <h2>🔒 Bilan Ortho</h2>
+  <div class="lock-card" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
+    <h2 id="lockTitle">🔒 Bilan Ortho</h2>
     <p class="muted" id="lockMsg">Déverrouillez votre coffre chiffré.</p>
     <div class="row" style="gap:6px">
       <input type="password" id="passphrase" class="grow" placeholder="Passphrase" autocomplete="current-password" aria-label="Passphrase" />
@@ -197,8 +210,8 @@
 </main>
 
 <div class="modal-overlay" id="settingsOverlay" hidden>
-  <div class="modal">
-    <div class="mhead"><h2>⚙️ Paramètres</h2><button class="close" data-close="settingsOverlay">✕</button></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="mhead"><h2 id="settingsTitle">⚙️ Paramètres</h2><button class="close" data-close="settingsOverlay">✕</button></div>
     <div class="mbody">
       <fieldset>
         <legend>Assistant IA (Ollama)</legend>
@@ -299,8 +312,8 @@
 </div>
 
 <div class="modal-overlay" id="installOverlay" hidden style="z-index:60">
-  <div class="modal">
-    <div class="mhead"><h2>🚀 Première installation</h2></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="installTitle">
+    <div class="mhead"><h2 id="installTitle">🚀 Première installation</h2></div>
     <div class="mbody">
       <p class="muted">Bilan Ortho fonctionne 100 % sur votre machine : il lui faut le moteur d'IA local <b>Ollama</b> et deux modèles (téléchargés une seule fois).</p>
       <fieldset>
@@ -331,8 +344,8 @@
 </div>
 
 <div class="modal-overlay" id="patientsOverlay" hidden>
-  <div class="modal">
-    <div class="mhead"><h2>👤 Patients</h2><button class="close" data-close="patientsOverlay">✕</button></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="patientsTitle">
+    <div class="mhead"><h2 id="patientsTitle">👤 Patients</h2><button class="close" data-close="patientsOverlay">✕</button></div>
     <div class="mbody">
       <fieldset>
         <legend id="patFormTitle">Nouveau patient</legend>
@@ -360,8 +373,8 @@
 </div>
 
 <div class="modal-overlay" id="helpOverlay" hidden>
-  <div class="modal">
-    <div class="mhead"><h2>❓ Comment ça marche</h2><button class="close" data-close="helpOverlay">✕</button></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="mhead"><h2 id="helpTitle">❓ Comment ça marche</h2><button class="close" data-close="helpOverlay">✕</button></div>
     <div class="mbody help-body">
       <h3>1. Créez le patient puis le bilan</h3>
       <p>Bouton 👤 : enregistrez le patient (nom, date de naissance — elle permet à l'assistant de calculer l'âge et d'interpréter les étalonnages sans vous le redemander). Sélectionnez-le, choisissez le domaine et le type, puis « + Nouveau bilan ». La trame réglementaire (tronc commun) est créée automatiquement.</p>
@@ -422,6 +435,10 @@ async function avecBouton(btn, fn) {
   if (btn.disabled) return;
   btn.disabled = true;
   try { return await fn(); } finally { btn.disabled = false; }
+}
+// Statut « occupé » : petit spinner + texte, près du bouton concerné.
+function statutOccupe(el, texte) {
+  el.innerHTML = '<span class="spin" aria-hidden="true"></span> ' + escapeHtml(texte);
 }
 let CUR = null;         // bilan courant
 let SEC_RENDERED = {};  // contenu serveur affiché par rubrique (détection des brouillons)
@@ -978,12 +995,24 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
   STRUCTURING = true;
   const bilanId = CUR.id; // si on change de bilan pendant l'analyse, la réponse tardive n'écrase pas l'écran
   const st = document.getElementById('structStatus');
+  // Analyse lancée depuis le panneau de questions : le statut/chrono s'affiche
+  // aussi près du bouton cliqué (le panneau peut être re-rendu : re-résolu à
+  // chaque mise à jour).
+  const enPanneau = answeredIds.length > 0;
+  const majStatut = (texte, occupe) => {
+    const cibles = [st];
+    if (enPanneau) {
+      const sp = document.querySelector('#questions .qStatus');
+      if (sp) cibles.push(sp);
+    }
+    cibles.forEach(c => occupe ? statutOccupe(c, texte) : (c.textContent = texte));
+  };
   const t0 = Date.now();
-  st.textContent = 'Analyse en cours… (souvent 2-3 min selon la machine)';
+  majStatut('Analyse en cours… (souvent 2-3 min selon la machine)', true);
   const chrono = setInterval(() => {
     const s = Math.round((Date.now() - t0) / 1000);
     const el = s >= 60 ? `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')}` : `${s} s`;
-    st.textContent = `Analyse en cours… ${el} (souvent 2-3 min selon la machine)`;
+    majStatut(`Analyse en cours… ${el} (souvent 2-3 min selon la machine)`, true);
   }, 1000);
   document.getElementById('structBtn').disabled = true;
   setQuestionBtns(true);
@@ -1000,7 +1029,7 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
       // Réponse tardive après changement de bilan : le texte est bien enregistré
       // dans le bilan d'origine, mais on ne touche pas à l'écran actuel.
       if (fromDictee) document.getElementById('dicteeText').value = '';
-      st.textContent = `✓ analyse intégrée au bilan #${bilanId} (vous avez changé de bilan entre-temps).`;
+      majStatut(`✓ analyse intégrée au bilan #${bilanId} (vous avez changé de bilan entre-temps).`);
       return;
     }
     CUR = res.bilan; renderBilan();
@@ -1015,11 +1044,11 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
       .filter(q => !seen.has(normQ(q.question)));
     QS = pending.concat(fresh);
     renderQuestions();
-    st.textContent = answeredIds.length
+    majStatut(answeredIds.length
       ? `✓ réponse(s) intégrée(s)${fresh.length ? ` — ${fresh.length} nouvelle(s) question(s)` : ''}`
-      : `✓ ${fresh.length} question(s) de clarification`;
+      : `✓ ${fresh.length} question(s) de clarification`);
     if (fromDictee) document.getElementById('dicteeText').value = '';
-  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+  } catch (e) { majStatut('Erreur : ' + e.message); }
   finally { STRUCTURING = false; clearInterval(chrono); document.getElementById('structBtn').disabled = false; setQuestionBtns(false); }
 }
 function setQuestionBtns(disabled) {
@@ -1106,7 +1135,8 @@ function renderQuestions() {
       </div>
       <div class="row"><input class="ans" aria-label="Votre réponse" placeholder="Votre réponse…"><button class="ghost qMic" title="Dicter la réponse au micro" aria-label="Dicter la réponse au micro">🎤</button><button class="ansBtn">Répondre</button></div>
     </div>`).join('') +
-    '<div class="row" id="qAllRow" style="display:none"><button id="qSendAll"></button><span class="muted">un seul passage de l\'IA pour toutes les réponses</span></div>';
+    '<div class="row" id="qAllRow" style="display:none"><button id="qSendAll"></button><span class="muted">un seul passage de l\'IA pour toutes les réponses</span></div>' +
+    '<div class="status qStatus" role="status"></div>';
   const filled = () => QS.map(q => {
     const el = body.querySelector(`.q[data-id="${q.id}"] .ans`);
     return { q, v: (el ? el.value : '').trim() };
@@ -1181,9 +1211,9 @@ async function toggleRec() {
     recording = false; recBtn.textContent = '● Démarrer la dictée'; recBtn.classList.remove('rec');
     const blob = new Blob(chunks, { type: 'audio/webm' });
     if (!blob.size) { recStatus.textContent = 'Rien enregistré.'; return; }
-    recStatus.textContent = autoArret
+    statutOccupe(recStatus, autoArret
       ? `Dictée arrêtée automatiquement après ${maxMin} min — la transcription démarre.`
-      : 'Transcription locale… (1er lancement : téléchargement du modèle)';
+      : 'Transcription locale… (1er lancement : téléchargement du modèle)');
     recBtn.disabled = true;
     try {
       const fd = new FormData(); fd.append('audio', blob, 'dictee.webm');
@@ -1234,7 +1264,28 @@ function activerBoutonsClavier(racine) {
   });
 }
 // Échap ferme la modale ouverte (sauf l'installation guidée, bloquante par design).
+// Tab est piégé dans la boîte de dialogue ouverte : le focus ne s'échappe pas
+// vers la page recouverte (role="dialog" + aria-modal).
+function dialogueOuvert() {
+  // L'écran de verrouillage (1er dans le DOM) prime : il recouvre les modales.
+  return document.querySelector(
+    '.lock-overlay:not([hidden]) .lock-card, .modal-overlay:not([hidden]) .modal'
+  );
+}
 document.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    const dlg = dialogueOuvert();
+    if (!dlg) return;
+    const focusables = [...dlg.querySelectorAll(
+      'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'
+    )].filter(el => !el.disabled && !el.hidden && !el.closest('[hidden]'));
+    if (!focusables.length) return;
+    const premier = focusables[0], dernier = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === premier) { e.preventDefault(); dernier.focus(); }
+    else if (!e.shiftKey && document.activeElement === dernier) { e.preventDefault(); premier.focus(); }
+    else if (!dlg.contains(document.activeElement)) { e.preventDefault(); premier.focus(); }
+    return;
+  }
   if (e.key !== 'Escape') return;
   document.querySelectorAll('.modal-overlay:not([hidden])').forEach(o => {
     if (o.id !== 'installOverlay') o.hidden = true;
@@ -1282,7 +1333,7 @@ function fillSettings(c) {
 document.getElementById('sauvBtn').addEventListener('click', e => avecBouton(e.target, async () => {
   // avecBouton : chaque clic crée un fichier de sauvegarde — un double-clic
   // en créerait deux.
-  const st = $('sauvStatus'); st.textContent = 'Sauvegarde…';
+  const st = $('sauvStatus'); statutOccupe(st, 'Sauvegarde…');
   try {
     const r = await api('/api/sauvegarde', { method: 'POST' });
     const s = await r.json();
