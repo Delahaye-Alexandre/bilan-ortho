@@ -134,12 +134,18 @@ async def structure(
     ``domaines`` = liste de clés de domaine (pour injecter repères + tests connus).
     Les listes de questions (en attente/écartées/répondues) donnent au LLM la
     mémoire du dialogue pour qu'il ne repose pas les mêmes questions.
-    Retourne ``{"updates": [{section, texte}], "questions": [{section, question, pourquoi}]}``.
-    Ne conserve que des clés de section valides.
+    Retourne ``{"updates": [...], "questions": [...], "rubriques_tronquees":
+    [clés]}`` — cette dernière liste signale les rubriques trop longues,
+    transmises seulement en partie au modèle. Ne conserve que des clés de
+    section valides.
     """
     from . import config as _config
 
     llmcfg = cfg["llm"]
+    try:
+        max_car = int(llmcfg.get("max_car_section") or prompts.MAX_CAR_SECTION)
+    except (TypeError, ValueError):
+        max_car = prompts.MAX_CAR_SECTION
     valid = {s["cle"] for s in sections}
     titres_map = {d["cle"]: d["titre"] for d in _config.DOMAINES}
     domaine_titres = ", ".join(titres_map.get(c, c) for c in domaines)
@@ -160,6 +166,7 @@ async def structure(
         questions_en_attente=questions_en_attente,
         questions_ecartees=questions_ecartees,
         questions_repondues=questions_repondues,
+        max_car_section=max_car,
     )
     raw = await chat_json(
         system, user,
@@ -174,4 +181,5 @@ async def structure(
     result["questions"] = [
         q for q in result["questions"] if (not q["section"] or q["section"] in valid)
     ]
+    result["rubriques_tronquees"] = prompts.sections_tronquees(sections, max_car)
     return result

@@ -506,6 +506,75 @@ def test_structure_reponse_illisible(client, monkeypatch, mock_embed):
     assert r.json()["questions"] == []
 
 
+def test_structure_analyse_deja_en_cours(client, mock_embed):
+    """Une analyse déjà en cours sur le même bilan → 409 explicite (BUG-09)."""
+    from app import main as main_mod
+
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    main_mod._analyses_en_cours.add(bid)
+    try:
+        r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    finally:
+        main_mod._analyses_en_cours.discard(bid)
+    assert r.status_code == 409
+    assert "déjà en cours" in r.json()["detail"]
+
+
+def test_structure_concurrente_appliquee_une_fois(client, monkeypatch, mock_embed):
+    """Deux analyses simultanées sur le même bilan : une seule passe (l'autre
+    reçoit 409) et le contenu n'est appliqué qu'une fois — apply_updates fait
+    un append, un doublon dupliquerait le texte (BUG-09)."""
+    import asyncio
+    import threading as th
+
+    async def structure_lente(*a, **k):
+        await asyncio.sleep(0.3)
+        return {"updates": [{"section": "anamnese", "texte": "Ajout unique."}],
+                "questions": []}
+
+    monkeypatch.setattr(llm, "structure", structure_lente)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    codes = []
+
+    def poster():
+        codes.append(client.post(
+            f"/api/bilans/{bid}/structure", json={"transcription": "Texte."}
+        ).status_code)
+
+    threads = [th.Thread(target=poster) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(codes) == [200, 409]
+    contenu = next(
+        s["contenu"] for s in client.get(f"/api/bilans/{bid}").json()["sections"]
+        if s["cle"] == "anamnese"
+    )
+    assert contenu.count("Ajout unique.") == 1
+
+
+def test_structure_signale_rubriques_tronquees(client, monkeypatch, mock_embed):
+    """Rubrique plus longue que llm.max_car_section : transmise partiellement
+    au modèle ET signalée dans la réponse ; rien à signaler sinon (BUG-14)."""
+    captured = {}
+
+    async def fake_chat(system, user, **kw):
+        captured["user"] = user
+        return '{"updates": [], "questions": []}'
+
+    monkeypatch.setattr(llm, "chat_json", fake_chat)
+    client.put("/api/config", json={"overrides": {"llm": {"max_car_section": 120}}})
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Court."})
+    assert r.status_code == 200 and r.json()["rubriques_tronquees"] == []
+    client.put(f"/api/bilans/{bid}/sections/anamnese", json={"contenu": "long " * 100})
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.json()["rubriques_tronquees"] == ["anamnese"]
+    # la troncature est bien effective dans le prompt (début conservé + […])
+    assert "[…]" in captured["user"]
+
+
 def test_structure_verrouillage_pendant_analyse(client, monkeypatch, mock_embed):
     """Si le coffre se verrouille pendant l'analyse LLM, le résultat n'est
     plus jeté en 500 opaque : 423 explicite (l'UI ré-affiche l'écran de

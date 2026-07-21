@@ -75,6 +75,7 @@ class LlmPatch(_SectionPatch):
     host: str | None = None
     num_ctx: int | None = Field(None, ge=256)
     timeout_s: float | None = Field(None, ge=10)
+    max_car_section: int | None = Field(None, ge=100)
 
     _host_local = field_validator("host")(_exiger_hote_local)
 

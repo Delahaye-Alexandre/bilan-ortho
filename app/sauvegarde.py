@@ -7,6 +7,7 @@ consiste à remplacer ``bilan.db`` par la copie, application arrêtée.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -44,7 +45,20 @@ def creer(con, cfg: dict) -> dict:
         n += 1
         cible = d / f"{base}-{n}.db"
     con.commit()  # VACUUM refuse de tourner dans une transaction ouverte
-    con.execute("VACUUM INTO ?", (str(cible),))
+    # Écriture atomique : VACUUM INTO vers un .tmp puis os.replace — un échec
+    # en cours de route (disque plein, coupure) ne laisse jamais une sauvegarde
+    # partielle qui passerait pour valide. Les .tmp sont invisibles de liste()
+    # et de la rotation (motif « *.db »).
+    tmp = cible.parent / (cible.name + ".tmp")
+    try:
+        con.execute("VACUUM INTO ?", (str(tmp),))
+        os.replace(tmp, cible)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
     con.execute(
         "INSERT INTO meta(key, value) VALUES(?, datetime('now')) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",

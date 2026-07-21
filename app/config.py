@@ -115,6 +115,10 @@ DEFAULTS: dict[str, Any] = {
         # Attente maximale d'une structuration (secondes). Sans borne, un
         # Ollama gelé suspendait l'interface à l'infini.
         "timeout_s": 600,
+        # Au-delà de ce nombre de caractères, le contenu d'une rubrique n'est
+        # transmis que partiellement au modèle (début conservé) ; la réponse
+        # de /structure signale les rubriques concernées.
+        "max_car_section": 1500,
     },
     "stt": {
         # "auto" -> stt.py détecte GPU/VRAM et choisit le modèle adapté.

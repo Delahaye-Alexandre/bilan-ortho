@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import logging
 import sqlite3
+import threading
 from pathlib import Path
 
 import httpx
@@ -309,6 +310,10 @@ async def creer_sauvegarde() -> dict:
 
     # Threadpool : VACUUM INTO peut durer plusieurs secondes sur une grosse
     # base — le verrou est tenu dans un thread, l'event loop reste libre.
+    # Limite assumée : pendant ce VACUUM, le verrou global bloque les AUTRES
+    # requêtes à la base (gel borné et rare). L'alternative — une connexion
+    # SQLCipher dédiée hors verrou — exigerait de conserver la clé en clair
+    # hors de security._state : compromis de sécurité refusé.
     try:
         return await run_in_threadpool(_creer)
     except security.CoffreVerrouille:
@@ -360,6 +365,14 @@ async def get_bilan(bilan_id: int) -> dict:
     return b
 
 
+# Garde anti-concurrence : une seule analyse à la fois par bilan. Deux analyses
+# simultanées appliqueraient chacune leur append (apply_updates) — contenu
+# dupliqué. Le frontend a son propre anti-rebond, mais un second onglet ou un
+# client direct de l'API n'en bénéficie pas.
+_analyses_en_cours: set[int] = set()
+_analyses_lock = threading.Lock()
+
+
 @app.post("/api/bilans/{bilan_id}/structure", dependencies=[Depends(require_unlock)])
 async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
     if not req.transcription.strip() and not req.reponses:
@@ -369,6 +382,18 @@ async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
         cfg = config.ConfigStore(con).effective()
     if not b:
         raise HTTPException(404, "Bilan introuvable.")
+    with _analyses_lock:
+        if bilan_id in _analyses_en_cours:
+            raise HTTPException(409, "Une analyse est déjà en cours pour ce bilan.")
+        _analyses_en_cours.add(bilan_id)
+    try:
+        return await _structurer(bilan_id, req, b, cfg)
+    finally:
+        with _analyses_lock:
+            _analyses_en_cours.discard(bilan_id)
+
+
+async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) -> dict:
     # Texte de ce tour (dictée + réponses) : sert à retrouver des extraits proches.
     texte_tour = " ".join(
         [req.transcription.strip()]
@@ -435,7 +460,13 @@ async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
             + (f", {len(req.reponses)} réponse(s) intégrée(s)" if req.reponses else ""),
         )
         b2 = bilan.get(con, bilan_id)
-    return {"bilan": b2, "questions": result["questions"]}
+    return {
+        "bilan": b2,
+        "questions": result["questions"],
+        # Rubriques trop longues, transmises seulement en partie au modèle :
+        # l'interface le signale discrètement (l'anti-répétition en pâtit).
+        "rubriques_tronquees": result.get("rubriques_tronquees", []),
+    }
 
 
 @app.put(

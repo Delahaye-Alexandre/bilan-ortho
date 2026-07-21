@@ -53,14 +53,18 @@ def create(
 def set_statut(con, bilan_id: int, statut: str, destinataire: str = "") -> bool:
     """Fait évoluer le statut du bilan (brouillon → validé → envoyé).
 
-    Un passage à « envoye » trace l'envoi au prescripteur (table envoi)."""
-    cur = con.execute(
+    Un passage à « envoye » trace l'envoi au prescripteur (table envoi) —
+    seulement au premier passage : re-cliquer « envoyé » ne doit pas dupliquer
+    la trace."""
+    row = con.execute("SELECT statut FROM bilan WHERE id=?", (bilan_id,)).fetchone()
+    if row is None:
+        return False
+    ancien = row[0]
+    con.execute(
         "UPDATE bilan SET statut=?, updated_at=datetime('now') WHERE id=?",
         (statut, bilan_id),
     )
-    if not cur.rowcount:
-        return False
-    if statut == "envoye":
+    if statut == "envoye" and ancien != "envoye":
         con.execute(
             "INSERT INTO envoi(bilan_id, destinataire, horodatage, canal) "
             "VALUES(?,?,datetime('now'),'manuel')",

@@ -213,6 +213,33 @@ def test_extract_text_pdf_corrompu():
         importer.extract_text(b"%PDF-1.4 corrompu", "bilan.pdf")
 
 
+# --- lanceur : décision d'ouverture du navigateur ---------------------------------
+
+def test_lanceur_sonde_ko_nouvre_pas(data_dir, monkeypatch):
+    """Serveur jamais prêt : PAS d'ouverture du navigateur sur une page morte,
+    mais une boîte d'erreur qui pointe le journal serveur.log (BUG-13)."""
+    import lanceur
+
+    ouvertures, erreurs = [], []
+    monkeypatch.setattr(lanceur, "_attendre_pret", lambda url, essais=240: False)
+    monkeypatch.setattr(lanceur, "_ouvrir_fenetre", ouvertures.append)
+    monkeypatch.setattr(lanceur, "_boite_erreur", erreurs.append)
+    lanceur._ouvrir_quand_pret("http://127.0.0.1:8000")
+    assert ouvertures == []
+    assert len(erreurs) == 1 and "serveur.log" in erreurs[0]
+
+
+def test_lanceur_sonde_ok_ouvre(monkeypatch):
+    import lanceur
+
+    ouvertures, erreurs = [], []
+    monkeypatch.setattr(lanceur, "_attendre_pret", lambda url, essais=240: True)
+    monkeypatch.setattr(lanceur, "_ouvrir_fenetre", ouvertures.append)
+    monkeypatch.setattr(lanceur, "_boite_erreur", erreurs.append)
+    lanceur._ouvrir_quand_pret("http://127.0.0.1:8000")
+    assert ouvertures == ["http://127.0.0.1:8000"] and erreurs == []
+
+
 # --- système : RAM, proposition de modèle, installation ---------------------------
 
 def test_proposition_modele_par_ram():

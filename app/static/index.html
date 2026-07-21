@@ -1044,9 +1044,12 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
       .filter(q => !seen.has(normQ(q.question)));
     QS = pending.concat(fresh);
     renderQuestions();
-    majStatut(answeredIds.length
+    const tronque = (res.rubriques_tronquees || []).length
+      ? ' — Certaines rubriques longues n\'ont été transmises que partiellement au modèle.'
+      : '';
+    majStatut((answeredIds.length
       ? `✓ réponse(s) intégrée(s)${fresh.length ? ` — ${fresh.length} nouvelle(s) question(s)` : ''}`
-      : `✓ ${fresh.length} question(s) de clarification`);
+      : `✓ ${fresh.length} question(s) de clarification`) + tronque);
     if (fromDictee) document.getElementById('dicteeText').value = '';
   } catch (e) { majStatut('Erreur : ' + e.message); }
   finally { STRUCTURING = false; clearInterval(chrono); document.getElementById('structBtn').disabled = false; setQuestionBtns(false); }

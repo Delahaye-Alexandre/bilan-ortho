@@ -65,10 +65,21 @@ _NIVEAU_DETAIL = {
 }
 
 
-MAX_CAR_SECTION = 1500  # au-delà, le contenu envoyé au LLM est tronqué (début conservé)
+# Repli si la config ne fournit pas de seuil (la valeur de référence vit dans
+# les défauts de config : llm.max_car_section).
+MAX_CAR_SECTION = 1500
 
 
-def _etat_sections(sections: list[dict]) -> str:
+def sections_tronquees(sections: list[dict], max_car: int = MAX_CAR_SECTION) -> list[str]:
+    """Clés des rubriques dont le contenu dépasse le seuil : elles ne seront
+    transmises que partiellement au modèle — l'appelant doit le signaler."""
+    return [
+        s["cle"] for s in sections
+        if len((s.get("contenu") or "").strip()) > max_car
+    ]
+
+
+def _etat_sections(sections: list[dict], max_car: int = MAX_CAR_SECTION) -> str:
     """Contenu réel des rubriques (tronqué au besoin) : le LLM doit savoir ce
     qui est déjà connu pour ne pas le redemander ni le répéter."""
     lignes = []
@@ -77,8 +88,8 @@ def _etat_sections(sections: list[dict]) -> str:
         if not c:
             lignes.append(f"- {s['cle']} ({s['titre']}) : (vide)")
             continue
-        if len(c) > MAX_CAR_SECTION:
-            c = c[:MAX_CAR_SECTION].rstrip() + " […]"
+        if len(c) > max_car:
+            c = c[:max_car].rstrip() + " […]"
         lignes.append(f"- {s['cle']} ({s['titre']}) :\n« {c} »")
     return "\n".join(lignes)
 
@@ -102,10 +113,11 @@ def build_structure_user(
     questions_en_attente: list[str] | None = None,
     questions_ecartees: list[str] | None = None,
     questions_repondues: list[str] | None = None,
+    max_car_section: int = MAX_CAR_SECTION,
 ) -> str:
     """Message utilisateur : état rédigé des rubriques + mémoire du dialogue de
     clarification + éléments nouveaux (dictée et/ou réponses) + repères cliniques."""
-    etat = _etat_sections(sections)
+    etat = _etat_sections(sections, max_car_section)
     reperes = ""
     if patient_desc:
         reperes += (

@@ -64,15 +64,41 @@ def _port_libre() -> int:
     raise SystemExit("Aucun port local libre (8000-8010).")
 
 
-def _ouvrir_quand_pret(url: str) -> None:
-    for _ in range(240):  # jusqu'à 2 minutes (premier démarrage plus lent)
+def _attendre_pret(url: str, essais: int = 240) -> bool:
+    """Sonde /api/status jusqu'à 2 minutes (premier démarrage plus lent).
+    True dès que le serveur répond, False s'il n'a jamais répondu."""
+    for _ in range(essais):
         try:
             if httpx.get(f"{url}/api/status", timeout=0.5).status_code == 200:
-                break
+                return True
         except Exception:
             pass
         time.sleep(0.5)
-    _ouvrir_fenetre(url)
+    return False
+
+
+def _boite_erreur(message: str) -> None:
+    """Boîte de dialogue d'erreur native (l'app est fenêtrée, sans console)."""
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(None, message, "Bilan Ortho", 0x10)
+    else:
+        print(message, file=sys.stderr)
+
+
+def _ouvrir_quand_pret(url: str) -> None:
+    """N'ouvre le navigateur QUE si le serveur a fini par répondre : ouvrir une
+    page d'erreur brute n'aiderait pas — on indique plutôt où est le journal."""
+    if _attendre_pret(url):
+        _ouvrir_fenetre(url)
+        return
+    from app import config
+
+    _boite_erreur(
+        "Bilan Ortho n'a pas démarré (le serveur ne répond pas après 2 minutes).\n"
+        f"Détails dans le journal : {config.data_dir() / 'serveur.log'}"
+    )
 
 
 def main() -> None:

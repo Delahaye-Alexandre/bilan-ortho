@@ -164,6 +164,46 @@ def test_sauvegarde_creation_rotation_et_chiffrement(con, data_dir):
     assert len(fichiers) == 2
 
 
+def test_sauvegarde_echec_sans_residu(con, data_dir):
+    """Un VACUUM interrompu (disque plein…) ne laisse ni sauvegarde partielle
+    qui passerait pour valide, ni fichier .tmp résiduel (BUG-12)."""
+    from pathlib import Path
+
+    import sqlcipher3
+
+    cfg = config.DEFAULTS
+
+    class ConVacuumKO:
+        def __getattr__(self, nom):
+            return getattr(con, nom)
+
+        def execute(self, sql, params=()):
+            if sql.startswith("VACUUM"):
+                # simule une écriture partielle avant l'échec
+                Path(params[0]).write_bytes(b"partiel")
+                raise sqlcipher3.OperationalError("database or disk is full")
+            return con.execute(sql, params)
+
+    with pytest.raises(sqlcipher3.OperationalError):
+        sauvegarde.creer(ConVacuumKO(), cfg)
+    assert sauvegarde.liste(con, cfg)["fichiers"] == []
+    assert list((data_dir / "sauvegardes").iterdir()) == []
+
+
+def test_statut_envoye_une_seule_trace(con):
+    """Re-marquer « envoyé » un bilan déjà envoyé ne duplique pas la trace
+    d'envoi (BUG-10) ; un nouveau cycle validé → envoyé en retrace une."""
+    bid = bilan.create(con, [], "initial_simple")
+    assert bilan.set_statut(con, bid, "envoye", "Dr Martin")
+    assert bilan.set_statut(con, bid, "envoye", "Dr Martin")
+    n = con.execute("SELECT COUNT(*) FROM envoi WHERE bilan_id=?", (bid,)).fetchone()[0]
+    assert n == 1
+    assert bilan.set_statut(con, bid, "valide")
+    assert bilan.set_statut(con, bid, "envoye", "Dr Durand")
+    n = con.execute("SELECT COUNT(*) FROM envoi WHERE bilan_id=?", (bid,)).fetchone()[0]
+    assert n == 2
+
+
 def test_sauvegarde_auto_si_due(con):
     cfg = config.DEFAULTS  # auto_jours = 7
     assert sauvegarde.auto_si_due(con, cfg) is not None   # jamais sauvegardé -> due
