@@ -6,6 +6,7 @@ du domaine. Les modèles CRUD des bilans/patients seront étoffés en Phase 3.
 from __future__ import annotations
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -172,6 +173,65 @@ class ConfigPatch(BaseModel):
     """Surcharges partielles de configuration (fusion profonde côté serveur)."""
 
     overrides: OverridesPatch
+
+
+# --- Éditeurs dédiés (remplacement EN BLOC d'une section) ---------------------
+#
+# Contrairement aux *Patch ci-dessus (fusion tolérante), ces modèles valident
+# strictement ce que les éditeurs de l'écran Paramètres envoient : la fusion
+# profonde ne sachant rien supprimer, ces routes remplacent la section entière.
+
+def _exiger_non_blanc(v: str) -> str:
+    v = v.strip()
+    if not v:
+        raise ValueError("ne doit pas être vide")
+    return v
+
+
+class TrameSectionStricte(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    cle: str
+    titre: str
+
+    _non_blanc = field_validator("cle", "titre")(_exiger_non_blanc)
+
+
+class TrameRemplacement(BaseModel):
+    """Trame complète (PUT /api/config/trame). Liste vide refusée : pour
+    revenir à la trame réglementaire, utiliser DELETE."""
+
+    sections: list[TrameSectionStricte] = Field(min_length=1)
+
+
+class TestCatalogue(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    nom: str
+    tranche: str = ""
+    mesure: str = ""
+    metriques: list[
+        Literal["ecart_type", "percentile", "note_standard",
+                "age_dev", "age_lecture", "qualitatif"]
+    ] = []
+
+    _nom_non_blanc = field_validator("nom")(_exiger_non_blanc)
+
+
+class CatalogueDomaine(BaseModel):
+    """Surcharge d'un domaine de catalogue : guidance et/ou tests (chaque
+    champ absent conserve la partie intégrée correspondante)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    guidance: str | None = None
+    tests: list[TestCatalogue] | None = None
+
+
+class PromptRemplacement(BaseModel):
+    """Prompt de structuration personnalisé ('' = consigne intégrée)."""
+
+    structure_system: str = ""
 
 
 # --- Bilans / structuration --------------------------------------------------

@@ -52,8 +52,8 @@ ci-dessous.
   dictée, embeddings), style (détail, vouvoiement, nb d'exemples), seuils,
   cotation, RGPD (verrouillage, durée de conservation — l'audio de dictée est,
   lui, toujours supprimé), et même la **trame des bilans**, les **catalogues de
-  tests** et le **prompt de structuration** (éditeur avancé JSON) — sans
-  toucher au code.
+  tests** et la **consigne de structuration**, chacun avec son éditeur dédié —
+  sans toucher au code.
 
 ## Prérequis
 
@@ -129,9 +129,13 @@ si la dernière date de plus de N jours (défaut 7), et à la demande depuis
 plutôt un support externe (clé USB, disque). La copie reste chiffrée : **elle
 ne s'ouvre qu'avec votre passphrase**.
 
-**Restaurer** : application arrêtée, remplacez
-`~/.local/share/bilan-ortho/bilan.db` par le fichier de sauvegarde (renommé
-`bilan.db`), puis relancez et déverrouillez avec la même passphrase.
+**Restaurer** : depuis ⚙️ Paramètres → « Sauvegarde du coffre », bouton
+« Restaurer… » en face de la copie voulue. L'application vérifie que la copie
+s'ouvre avec votre passphrase, crée d'abord une sauvegarde de vos données
+actuelles, puis échange les fichiers et se reconnecte. En dernier recours, la
+procédure manuelle reste possible : application arrêtée, remplacez
+`~/.local/share/bilan-ortho/bilan.db` par la copie (renommée `bilan.db`), puis
+relancez et déverrouillez avec la même passphrase.
 
 ## Dictée : choix du modèle
 

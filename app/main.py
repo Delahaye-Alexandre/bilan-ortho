@@ -36,6 +36,7 @@ from . import (
     importer,
     llm,
     patient,
+    prompts,
     rag,
     sauvegarde,
     security,
@@ -44,15 +45,18 @@ from . import (
 )
 from .models import (
     BilanCreate,
+    CatalogueDomaine,
     ConfigPatch,
     EpreuveCreate,
     OkResponse,
     PatientIn,
+    PromptRemplacement,
     RestaurationRequest,
     SectionPut,
     StatusResponse,
     StatutPut,
     StructureRequest,
+    TrameRemplacement,
     UnlockRequest,
 )
 
@@ -213,7 +217,8 @@ async def reset_config() -> dict:
 
 @app.get("/api/config/overrides", dependencies=[Depends(require_unlock)])
 async def get_config_overrides() -> dict:
-    """Surcharges praticien seules (sans les défauts) — pour l'éditeur avancé."""
+    """Surcharges praticien seules (sans les défauts) — les éditeurs dédiés
+    s'en servent pour indiquer la provenance des réglages (intégré/personnalisé)."""
     with security.transaction() as con:
         return config.ConfigStore(con).overrides()
 
@@ -221,6 +226,97 @@ async def get_config_overrides() -> dict:
 @app.get("/api/domaines")
 async def get_domaines() -> list[dict]:
     return config.DOMAINES
+
+
+# Routes des éditeurs dédiés (Paramètres) : remplacement EN BLOC d'une section.
+# Le PUT /api/config fusionne en profondeur et ne sait donc ni retirer une
+# rubrique de trame, ni supprimer un domaine surchargé, ni effacer un prompt.
+
+@app.put("/api/config/trame", dependencies=[Depends(require_unlock)])
+async def put_config_trame(corps: TrameRemplacement) -> dict:
+    with security.transaction() as con:
+        eff = config.ConfigStore(con).remplacer_section("trame", corps.model_dump())
+        security.audit("config_trame", "config", None, "remplacement")
+        return eff
+
+
+@app.delete("/api/config/trame", dependencies=[Depends(require_unlock)])
+async def delete_config_trame() -> dict:
+    """Retour à la trame réglementaire (les défauts suivent les mises à jour)."""
+    with security.transaction() as con:
+        eff = config.ConfigStore(con).effacer_section("trame")
+        security.audit("config_trame", "config", None, "réinitialisation")
+        return eff
+
+
+@app.put("/api/config/catalogues", dependencies=[Depends(require_unlock)])
+async def put_config_catalogues(corps: dict[str, CatalogueDomaine]) -> dict:
+    """Remplace l'ensemble des surcharges de catalogues. Un domaine absent du
+    corps redevient intégré ; {} = plus aucune surcharge."""
+    connus = {d["cle"] for d in config.DOMAINES}
+    inconnus = sorted(set(corps) - connus)
+    if inconnus:
+        raise HTTPException(422, f"Domaine inconnu : {', '.join(inconnus)}.")
+    with security.transaction() as con:
+        store = config.ConfigStore(con)
+        if corps:
+            eff = store.remplacer_section(
+                "catalogues",
+                {cle: dom.model_dump(exclude_none=True) for cle, dom in corps.items()},
+            )
+        else:
+            eff = store.effacer_section("catalogues")
+        security.audit(
+            "config_catalogues", "config", None,
+            "remplacement" if corps else "réinitialisation",
+        )
+        return eff
+
+
+@app.delete("/api/config/catalogues", dependencies=[Depends(require_unlock)])
+async def delete_config_catalogues() -> dict:
+    with security.transaction() as con:
+        eff = config.ConfigStore(con).effacer_section("catalogues")
+        security.audit("config_catalogues", "config", None, "réinitialisation")
+        return eff
+
+
+@app.put("/api/config/prompts", dependencies=[Depends(require_unlock)])
+async def put_config_prompts(corps: PromptRemplacement) -> dict:
+    """Un prompt vide = retour à la consigne intégrée : on ne fige jamais une
+    surcharge vide (elle masquerait les mises à jour de l'application)."""
+    with security.transaction() as con:
+        store = config.ConfigStore(con)
+        if corps.structure_system.strip():
+            eff = store.remplacer_section(
+                "prompts", {"structure_system": corps.structure_system}
+            )
+            details = "remplacement"
+        else:
+            eff = store.effacer_section("prompts")
+            details = "réinitialisation"
+        security.audit("config_prompts", "config", None, details)
+        return eff
+
+
+@app.delete("/api/config/prompts", dependencies=[Depends(require_unlock)])
+async def delete_config_prompts() -> dict:
+    with security.transaction() as con:
+        eff = config.ConfigStore(con).effacer_section("prompts")
+        security.audit("config_prompts", "config", None, "réinitialisation")
+        return eff
+
+
+@app.get("/api/prompts/structure-defaut", dependencies=[Depends(require_unlock)])
+async def prompt_structure_defaut() -> dict:
+    """Consigne de structuration intégrée, prête à personnaliser.
+
+    STRUCTURE_SYSTEM est un gabarit ``.format`` : ses accolades JSON sont
+    doublées (``{{…}}``). Un prompt personnalisé est appliqué par
+    ``.replace("{cles}", …)`` — accolades simples. On dé-double donc ici (en
+    laissant ``{cles}`` intact) pour que ce texte, enregistré tel quel, soit
+    strictement équivalent à la consigne intégrée."""
+    return {"prompt": prompts.STRUCTURE_SYSTEM.replace("{{", "{").replace("}}", "}")}
 
 
 # --- Dictée vocale locale ----------------------------------------------------

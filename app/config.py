@@ -192,7 +192,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "trame": {
         # Rubriques créées pour chaque nouveau bilan (clé + intitulé, dans
-        # l'ordre). Surchargeable depuis Paramètres → Avancé.
+        # l'ordre). Surchargeable depuis Paramètres → Trame des bilans.
         "sections": [
             {"cle": c, "titre": t} for c, t in _db.SECTIONS_TRONC_COMMUN
         ],
@@ -239,14 +239,37 @@ class ConfigStore:
     def set_overrides(self, override: dict) -> dict:
         """Fusionne de nouvelles surcharges et persiste. Retourne l'effectif."""
         merged = _deep_merge(self.overrides(), override)
-        self._con.execute(
-            "INSERT INTO config(key, value) VALUES(?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (self.KEY, json.dumps(merged, ensure_ascii=False)),
-        )
+        self._persister(merged)
         return _deep_merge(DEFAULTS, merged)
+
+    def remplacer_section(self, cle: str, valeur) -> dict:
+        """Remplace la surcharge d'une section EN BLOC (aucune fusion) : la
+        fusion profonde de set_overrides ne sait ni retirer un élément d'une
+        liste ni supprimer un domaine surchargé. Retourne l'effectif."""
+        ov = self.overrides()
+        ov[cle] = copy.deepcopy(valeur)
+        self._persister(ov)
+        return _deep_merge(DEFAULTS, ov)
+
+    def effacer_section(self, cle: str) -> dict:
+        """Supprime la surcharge d'une section : retour aux défauts, qui
+        suivent les mises à jour de l'application. Retourne l'effectif."""
+        ov = self.overrides()
+        ov.pop(cle, None)
+        if ov:
+            self._persister(ov)
+        else:
+            self._con.execute("DELETE FROM config WHERE key = ?", (self.KEY,))
+        return _deep_merge(DEFAULTS, ov)
 
     def reset(self) -> dict:
         """Efface toutes les surcharges praticien. Retourne les défauts."""
         self._con.execute("DELETE FROM config WHERE key = ?", (self.KEY,))
         return copy.deepcopy(DEFAULTS)
+
+    def _persister(self, ov: dict) -> None:
+        self._con.execute(
+            "INSERT INTO config(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (self.KEY, json.dumps(ov, ensure_ascii=False)),
+        )

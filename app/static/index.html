@@ -307,9 +307,40 @@
         </div>
       </fieldset>
       <fieldset>
-        <legend>Avancé — trame, catalogues de tests, prompt (JSON)</legend>
-        <div class="muted">Seules <b>vos surcharges</b> apparaissent ici (<code>{}</code> = tout aux défauts, qui suivent les mises à jour de l'application). Rubriques des nouveaux bilans : <code>trame.sections</code> · tests par domaine : <code>catalogues.&lt;domaine&gt;</code> · prompt de structuration : <code>prompts.structure_system</code> (<code>{cles}</code> y est remplacé par les rubriques valides).</div>
-        <textarea id="cfgAdvanced" rows="8" spellcheck="false" aria-label="Surcharges avancées (JSON)" style="font-family:ui-monospace,monospace;font-size:12px"></textarea>
+        <legend>Trame des bilans</legend>
+        <div class="muted">Rubriques créées pour chaque nouveau bilan, dans l'ordre (les bilans existants ne changent pas). <span id="trameProv"></span></div>
+        <div id="trameListe" style="margin-top:8px"></div>
+        <div class="row" style="margin-top:6px"><button id="trameAdd" class="ghost">+ Ajouter une rubrique</button></div>
+        <div id="trameAvert" class="muted" style="color:var(--warn)"></div>
+        <div class="row" style="margin-top:8px">
+          <button id="trameSave" class="ghost">Enregistrer la trame</button>
+          <button id="trameReset" class="ghost">Revenir à la trame réglementaire</button>
+          <span class="status" id="trameStatus"></span>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Catalogues de tests par domaine</legend>
+        <div class="muted">Tests proposés à la saisie des épreuves et rappelés à l'assistant. <span id="catProv"></span></div>
+        <div style="margin-top:8px"><label for="catDomaine">Domaine</label><select id="catDomaine"></select></div>
+        <div style="margin-top:8px"><label for="catGuidance">Orientations de rédaction pour ce domaine</label><textarea id="catGuidance" rows="3"></textarea></div>
+        <div id="catTests"></div>
+        <div class="row" style="margin-top:6px"><button id="catAdd" class="ghost">+ Ajouter un test</button></div>
+        <div class="row" style="margin-top:8px">
+          <button id="catSave" class="ghost">Enregistrer ce domaine</button>
+          <button id="catRetour" class="ghost">Revenir au catalogue intégré</button>
+          <span class="status" id="catStatus"></span>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Consigne de structuration de l'assistant</legend>
+        <div class="muted"><code>{cles}</code> est remplacé automatiquement par la liste des rubriques du bilan. L'assistant reste une aide à la rédaction : il ne pose jamais de diagnostic. <span id="promptProv"></span></div>
+        <textarea id="promptTexte" rows="10" spellcheck="false" aria-label="Consigne de structuration personnalisée" placeholder="Consigne intégrée utilisée (recommandé : elle suit les mises à jour de l'application)." style="font-family:ui-monospace,monospace;font-size:12px;margin-top:8px"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="promptDefaut" class="ghost">Partir de la consigne intégrée</button>
+          <button id="promptSave" class="ghost">Enregistrer la consigne</button>
+          <button id="promptReset" class="ghost">Revenir à la consigne intégrée</button>
+          <span class="status" id="promptStatus"></span>
+        </div>
       </fieldset>
     </div>
     <div class="mfoot">
@@ -1390,23 +1421,337 @@ document.getElementById('sauvBtn').addEventListener('click', e => avecBouton(e.t
     st.textContent = `✓ ${s.fichier.split('/').pop()} (${Math.round(s.octets / 1024)} Ko)`;
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }));
-// L'éditeur « Avancé » n'affiche que les SURCHARGES du praticien (jamais la
-// config effective) : réenregistrer les défauts les figeait en surcharges et
-// les mises à jour de l'application n'atteignaient plus l'utilisateur (audit).
-async function fillAdvanced() {
+// --- Éditeurs dédiés : trame, catalogues, consigne de structuration -----------
+// Règle produit (héritée de l'ancien éditeur JSON) : ne JAMAIS figer les
+// défauts en surcharges — sans modification, rien n'est enregistré, et les
+// mises à jour de l'application continuent d'atteindre l'utilisateur.
+let TRAME_EDIT = [];        // rubriques en cours d'édition [{cle, titre}]
+let TRAME_CHARGEE = '[]';   // instantané au chargement (détection de modification)
+let TRAME_SURCHARGEE = false;
+let DOMAINES_LISTE = [];    // domaines du serveur [{cle, titre}]
+let CAT_OVR = {};           // surcharges de catalogues telles qu'en base
+let CAT_DOM = null;         // domaine affiché
+let CAT_EDIT = { guidance: '', tests: [] };
+let CAT_CHARGE = '';        // instantané du domaine affiché
+let PROMPT_CHARGE = '';
+
+async function fillEditeurs(eff) {
   try {
     const ov = await (await api('/api/config/overrides')).json();
-    const adv = {};
-    for (const k of ['trame', 'catalogues', 'prompts']) {
-      if (ov[k] !== undefined) adv[k] = ov[k];
+    TRAME_SURCHARGEE = ov.trame !== undefined;
+    TRAME_EDIT = ((eff.trame || {}).sections || [])
+      .map(s => ({ cle: String(s.cle || ''), titre: String(s.titre || '') }));
+    TRAME_CHARGEE = JSON.stringify(TRAME_EDIT);
+    renderTrame();
+    PROMPT_CHARGE = (ov.prompts && ov.prompts.structure_system) || '';
+    $('promptTexte').value = PROMPT_CHARGE;
+    majPromptProv();
+    CAT_OVR = JSON.parse(JSON.stringify(ov.catalogues || {}));
+    if (!DOMAINES_LISTE.length) {
+      DOMAINES_LISTE = await (await api('/api/domaines')).json();
     }
-    $('cfgAdvanced').value = JSON.stringify(adv, null, 2);
+    await chargerCatDomaine(CAT_DOM || (DOMAINES_LISTE[0] || {}).cle);
+    $('trameStatus').textContent = ''; $('catStatus').textContent = '';
+    $('promptStatus').textContent = '';
   } catch {}
 }
+
+// (a) Trame — l'ordre de la liste est l'ordre des rubriques du bilan.
+function lireTrameEdit() {
+  // Relit la saisie en cours AVANT tout re-rendu (rien ne doit se perdre
+  // lors d'un déplacement, ajout ou suppression de ligne).
+  document.querySelectorAll('#trameListe .ed-ligne').forEach((l, i) => {
+    if (TRAME_EDIT[i]) {
+      TRAME_EDIT[i].cle = l.querySelector('.trCle').value;
+      TRAME_EDIT[i].titre = l.querySelector('.trTitre').value;
+    }
+  });
+}
+function renderTrame() {
+  $('trameProv').textContent = TRAME_SURCHARGEE
+    ? 'Réglage actuel : trame personnalisée.'
+    : 'Réglage actuel : trame réglementaire intégrée (suit les mises à jour).';
+  $('trameListe').innerHTML = TRAME_EDIT.map((s, i) => `
+    <div class="row ed-ligne" style="margin-top:4px">
+      <input class="trCle" value="${escapeHtml(s.cle)}" aria-label="Clé de la rubrique ${i + 1}" style="max-width:170px">
+      <input class="trTitre grow" value="${escapeHtml(s.titre)}" aria-label="Intitulé de la rubrique ${i + 1}">
+      <button class="ghost" data-tr-up="${i}" aria-label="Monter la rubrique ${i + 1}" ${i === 0 ? 'disabled' : ''}>↑</button>
+      <button class="ghost" data-tr-down="${i}" aria-label="Descendre la rubrique ${i + 1}" ${i === TRAME_EDIT.length - 1 ? 'disabled' : ''}>↓</button>
+      <button class="ghost" data-tr-del="${i}" aria-label="Supprimer la rubrique ${i + 1}">✕</button>
+    </div>`).join('');
+  const bouge = (i, j) => {
+    lireTrameEdit();
+    [TRAME_EDIT[i], TRAME_EDIT[j]] = [TRAME_EDIT[j], TRAME_EDIT[i]];
+    renderTrame();
+  };
+  $('trameListe').querySelectorAll('[data-tr-up]').forEach(b =>
+    b.addEventListener('click', () => bouge(+b.dataset.trUp, +b.dataset.trUp - 1)));
+  $('trameListe').querySelectorAll('[data-tr-down]').forEach(b =>
+    b.addEventListener('click', () => bouge(+b.dataset.trDown, +b.dataset.trDown + 1)));
+  $('trameListe').querySelectorAll('[data-tr-del]').forEach(b =>
+    b.addEventListener('click', () => {
+      lireTrameEdit(); TRAME_EDIT.splice(+b.dataset.trDel, 1); renderTrame();
+    }));
+  $('trameListe').querySelectorAll('input').forEach(inp =>
+    inp.addEventListener('input', majTrameAvert));
+  majTrameAvert();
+}
+function majTrameAvert() {
+  lireTrameEdit();
+  const cles = TRAME_EDIT.map(s => s.cle.trim());
+  const avert = [];
+  if (!cles.includes('epreuves')) {
+    avert.push('Sans rubrique « epreuves », la saisie des épreuves et scores '
+      + "n'aura aucune rubrique où s'écrire.");
+  }
+  const nonVides = cles.filter(Boolean);
+  if (cles.some(c => !c) || new Set(nonVides).size !== nonVides.length) {
+    avert.push('Des clés de rubrique sont vides ou en double : seules des clés '
+      + 'uniques garantissent un bilan cohérent.');
+  }
+  $('trameAvert').textContent = avert.join(' ');
+}
+document.getElementById('trameAdd').addEventListener('click', () => {
+  lireTrameEdit();
+  TRAME_EDIT.push({ cle: '', titre: '' });
+  renderTrame();
+  const lignes = document.querySelectorAll('#trameListe .trCle');
+  if (lignes.length) lignes[lignes.length - 1].focus();
+});
+document.getElementById('trameSave').addEventListener('click', e => avecBouton(e.target, async () => {
+  lireTrameEdit();
+  const st = $('trameStatus');
+  if (JSON.stringify(TRAME_EDIT) === TRAME_CHARGEE) {
+    st.textContent = 'Aucune modification à enregistrer.'; return;
+  }
+  const sections = TRAME_EDIT.map(s => ({ cle: s.cle.trim(), titre: s.titre.trim() }));
+  if (!sections.length) {
+    st.textContent = 'Ajoutez au moins une rubrique, ou utilisez « Revenir à la trame réglementaire ».';
+    return;
+  }
+  if (sections.some(s => !s.cle || !s.titre)) {
+    st.textContent = 'Erreur : chaque rubrique doit avoir une clé et un intitulé.'; return;
+  }
+  try {
+    await api('/api/config/trame', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sections }),
+    });
+    TRAME_EDIT = sections; TRAME_CHARGEE = JSON.stringify(sections);
+    TRAME_SURCHARGEE = true;
+    renderTrame();
+    st.textContent = '✓ trame enregistrée (pour les nouveaux bilans)';
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
+document.getElementById('trameReset').addEventListener('click', e => avecBouton(e.target, async () => {
+  if (!confirm('Revenir à la trame réglementaire intégrée ? Votre trame personnalisée sera effacée.')) return;
+  const st = $('trameStatus');
+  try {
+    const eff = await (await api('/api/config/trame', { method: 'DELETE' })).json();
+    TRAME_SURCHARGEE = false;
+    TRAME_EDIT = ((eff.trame || {}).sections || [])
+      .map(s => ({ cle: String(s.cle || ''), titre: String(s.titre || '') }));
+    TRAME_CHARGEE = JSON.stringify(TRAME_EDIT);
+    renderTrame();
+    st.textContent = '✓ trame réglementaire rétablie';
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
+
+// (b) Catalogues — l'éditeur affiche l'état EFFECTIF du domaine ; enregistrer
+// un domaine le rend « personnalisé » en bloc (guidance + tests), réversible
+// par « Revenir au catalogue intégré ».
+const METRIQUES = [
+  ['ecart_type', 'écart-type'], ['percentile', 'percentile'],
+  ['note_standard', 'note standard'], ['age_dev', 'âge de développement'],
+  ['age_lecture', 'âge de lecture'], ['qualitatif', 'qualitatif'],
+];
+function lireCatEdit() {
+  CAT_EDIT.guidance = $('catGuidance').value;
+  document.querySelectorAll('#catTests .ed-test').forEach((el, i) => {
+    if (!CAT_EDIT.tests[i]) return;
+    CAT_EDIT.tests[i] = {
+      nom: el.querySelector('.ctNom').value,
+      tranche: el.querySelector('.ctTranche').value,
+      mesure: el.querySelector('.ctMesure').value,
+      metriques: [...el.querySelectorAll('.ctMet')].filter(c => c.checked).map(c => c.dataset.met),
+    };
+  });
+}
+function catInstantane() {
+  lireCatEdit();
+  return JSON.stringify(CAT_EDIT);
+}
+function catCorpsConnu() {
+  // Ne garde que les domaines connus : une vieille surcharge d'un domaine
+  // inexistant (héritée de l'ancien éditeur JSON) serait refusée par le
+  // serveur et bloquerait tout enregistrement de catalogue.
+  const connus = new Set(DOMAINES_LISTE.map(d => d.cle));
+  const corps = {};
+  for (const cle of Object.keys(CAT_OVR)) {
+    if (connus.has(cle)) corps[cle] = CAT_OVR[cle];
+  }
+  return JSON.parse(JSON.stringify(corps));
+}
+function renderCatSelect() {
+  $('catDomaine').innerHTML = DOMAINES_LISTE.map(d =>
+    `<option value="${escapeHtml(d.cle)}"${d.cle === CAT_DOM ? ' selected' : ''}>`
+    + `${escapeHtml(d.titre)}${CAT_OVR[d.cle] ? ' — personnalisé' : ''}</option>`).join('');
+  $('catProv').textContent = CAT_DOM && CAT_OVR[CAT_DOM]
+    ? 'Domaine affiché : catalogue personnalisé.'
+    : 'Domaine affiché : catalogue intégré (suit les mises à jour).';
+}
+function renderCatTests() {
+  $('catTests').innerHTML = CAT_EDIT.tests.map((t, i) => `
+    <div class="ed-test" style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px">
+      <div class="row">
+        <input class="ctNom grow" value="${escapeHtml(t.nom)}" placeholder="Nom du test" aria-label="Nom du test ${i + 1}">
+        <input class="ctTranche" value="${escapeHtml(t.tranche)}" placeholder="Tranche d'âge" aria-label="Tranche d'âge du test ${i + 1}" style="max-width:130px">
+        <input class="ctMesure grow" value="${escapeHtml(t.mesure)}" placeholder="Ce que mesure le test" aria-label="Mesure du test ${i + 1}">
+        <button class="ghost" data-ct-del="${i}" aria-label="Supprimer le test ${i + 1}">✕</button>
+      </div>
+      <div class="row" style="margin-top:4px;flex-wrap:wrap">
+        ${METRIQUES.map(([cle, lab]) => `<label class="check"><input type="checkbox" class="ctMet" data-met="${cle}"${(t.metriques || []).includes(cle) ? ' checked' : ''}> ${lab}</label>`).join('')}
+      </div>
+    </div>`).join('');
+  $('catTests').querySelectorAll('[data-ct-del]').forEach(b =>
+    b.addEventListener('click', () => {
+      lireCatEdit(); CAT_EDIT.tests.splice(+b.dataset.ctDel, 1); renderCatTests();
+    }));
+}
+async function chargerCatDomaine(cle) {
+  if (!cle) return;
+  CAT_DOM = cle;
+  const cat = await (await api('/api/catalogues/' + encodeURIComponent(cle))).json();
+  CAT_EDIT = {
+    guidance: cat.guidance || '',
+    tests: (cat.tests || []).map(t => ({
+      nom: t.nom || '', tranche: t.tranche || '', mesure: t.mesure || '',
+      metriques: t.metriques || [],
+    })),
+  };
+  $('catGuidance').value = CAT_EDIT.guidance;
+  renderCatTests();
+  renderCatSelect();
+  CAT_CHARGE = catInstantane();
+}
+document.getElementById('catDomaine').addEventListener('change', async e => {
+  if (catInstantane() !== CAT_CHARGE
+      && !confirm('Des modifications de ce domaine ne sont pas enregistrées. Changer de domaine les abandonne. Continuer ?')) {
+    e.target.value = CAT_DOM; return;
+  }
+  try { await chargerCatDomaine(e.target.value); }
+  catch (err) { $('catStatus').textContent = 'Erreur : ' + err.message; }
+});
+document.getElementById('catAdd').addEventListener('click', () => {
+  lireCatEdit();
+  CAT_EDIT.tests.push({ nom: '', tranche: '', mesure: '', metriques: [] });
+  renderCatTests();
+  const noms = document.querySelectorAll('#catTests .ctNom');
+  if (noms.length) noms[noms.length - 1].focus();
+});
+document.getElementById('catSave').addEventListener('click', e => avecBouton(e.target, async () => {
+  const st = $('catStatus');
+  if (catInstantane() === CAT_CHARGE) {
+    st.textContent = 'Aucune modification à enregistrer.'; return;
+  }
+  const tests = CAT_EDIT.tests.map(t => ({
+    nom: t.nom.trim(), tranche: t.tranche.trim(), mesure: t.mesure.trim(),
+    metriques: t.metriques,
+  }));
+  if (tests.some(t => !t.nom)) {
+    st.textContent = 'Erreur : chaque test doit avoir un nom (supprimez les lignes vides).';
+    return;
+  }
+  const corps = catCorpsConnu();
+  corps[CAT_DOM] = { guidance: $('catGuidance').value.trim(), tests };
+  try {
+    await api('/api/config/catalogues', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corps),
+    });
+    CAT_OVR = corps;
+    CAT_CHARGE = catInstantane();
+    renderCatSelect();
+    st.textContent = '✓ domaine enregistré';
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
+document.getElementById('catRetour').addEventListener('click', e => avecBouton(e.target, async () => {
+  const st = $('catStatus');
+  if (!CAT_OVR[CAT_DOM]) {
+    st.textContent = 'Ce domaine utilise déjà le catalogue intégré.'; return;
+  }
+  if (!confirm('Revenir au catalogue intégré pour ce domaine ? Vos tests personnalisés de ce domaine seront effacés.')) return;
+  const corps = catCorpsConnu();
+  delete corps[CAT_DOM];
+  try {
+    await api('/api/config/catalogues', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corps),
+    });
+    CAT_OVR = corps;
+    await chargerCatDomaine(CAT_DOM);
+    st.textContent = '✓ catalogue intégré rétabli';
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
+
+// (c) Consigne de structuration — seule la surcharge est affichée ; le champ
+// vide signifie « consigne intégrée » (on ne fige jamais une surcharge vide).
+function majPromptProv() {
+  $('promptProv').textContent = PROMPT_CHARGE
+    ? 'Réglage actuel : consigne personnalisée.'
+    : 'Réglage actuel : consigne intégrée (suit les mises à jour).';
+}
+document.getElementById('promptDefaut').addEventListener('click', e => avecBouton(e.target, async () => {
+  // Seule voie de préremplissage : le serveur expose la consigne intégrée en
+  // accolades simples — le texte brut (gabarit .format, accolades doublées)
+  // casserait le prompt une fois enregistré.
+  const st = $('promptStatus');
+  try {
+    const d = await (await api('/api/prompts/structure-defaut')).json();
+    $('promptTexte').value = d.prompt;
+    st.textContent = 'Consigne intégrée insérée — personnalisez puis enregistrez.';
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
+document.getElementById('promptSave').addEventListener('click', e => avecBouton(e.target, async () => {
+  const st = $('promptStatus');
+  const texte = $('promptTexte').value;
+  if (texte === PROMPT_CHARGE) {
+    st.textContent = 'Aucune modification à enregistrer.'; return;
+  }
+  try {
+    if (texte.trim()) {
+      await api('/api/config/prompts', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ structure_system: texte }),
+      });
+      PROMPT_CHARGE = texte;
+      st.textContent = '✓ consigne enregistrée';
+    } else {
+      await api('/api/config/prompts', { method: 'DELETE' });
+      PROMPT_CHARGE = '';
+      $('promptTexte').value = '';
+      st.textContent = '✓ consigne intégrée rétablie';
+    }
+    majPromptProv();
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
+document.getElementById('promptReset').addEventListener('click', e => avecBouton(e.target, async () => {
+  if (!confirm('Revenir à la consigne intégrée ? Votre consigne personnalisée sera effacée.')) return;
+  const st = $('promptStatus');
+  try {
+    await api('/api/config/prompts', { method: 'DELETE' });
+    PROMPT_CHARGE = '';
+    $('promptTexte').value = '';
+    majPromptProv();
+    st.textContent = '✓ consigne intégrée rétablie';
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
+
 document.getElementById('settingsBtn').addEventListener('click', async () => {
   try {
-    fillSettings(await (await api('/api/config')).json());
-    await fillAdvanced();
+    const eff = await (await api('/api/config')).json();
+    fillSettings(eff);
+    await fillEditeurs(eff);
   } catch { return; }
   $('cfgStatus').textContent = ''; $('settingsOverlay').hidden = false;
   $('cfgLlmModel').focus();
@@ -1419,13 +1764,9 @@ function collectSettings() {
   });
   // Champ numérique vidé -> undefined : la clé est omise du JSON et la valeur
   // précédente est conservée côté serveur (fusion), au lieu d'écrire NaN/null.
+  // Trame, catalogues et consigne ont leurs éditeurs dédiés (routes propres) :
+  // ils ne passent plus par cet enregistrement global.
   const num = v => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
-  let advanced;
-  try { advanced = JSON.parse($('cfgAdvanced').value || '{}'); }
-  catch (err) {
-    throw new Error('le JSON de la section « Avancé » est invalide'
-      + positionJsonInvalide(err, $('cfgAdvanced').value) + '.');
-  }
   return {
     llm: { model: $('cfgLlmModel').value.trim(), temperature: num($('cfgLlmTemp').value) },
     stt: {
@@ -1460,40 +1801,24 @@ function collectSettings() {
       retention: num($('cfgSauvRet').value),
       auto_jours: num($('cfgSauvAuto').value),
     },
-    trame: advanced.trame, catalogues: advanced.catalogues, prompts: advanced.prompts,
   };
 }
 document.getElementById('cfgSave').addEventListener('click', async () => {
   const st = $('cfgStatus'); st.textContent = '…';
   try {
     const r = await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: collectSettings() }) });
-    fillSettings(await r.json()); await fillAdvanced(); st.textContent = '✓ enregistré';
+    fillSettings(await r.json()); st.textContent = '✓ enregistré';
     loadLLM(); initDictee();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 });
-// Position lisible extraite du message d'un SyntaxError de JSON.parse
-// (« at line L column C » ou « at position N » selon le navigateur) pour
-// guider la correction dans la zone Avancé.
-function positionJsonInvalide(err, texte) {
-  const msg = (err && err.message) || '';
-  let m = /line (\d+) column (\d+)/.exec(msg);
-  if (m) return ` (ligne ${m[1]}, colonne ${m[2]})`;
-  m = /position (\d+)/.exec(msg);
-  if (m) {
-    const avant = texte.slice(0, +m[1]);
-    const ligne = avant.split('\n').length;
-    const colonne = avant.length - avant.lastIndexOf('\n');
-    return ` (ligne ${ligne}, colonne ${colonne})`;
-  }
-  return '';
-}
 document.getElementById('cfgReset').addEventListener('click', async () => {
   if (!confirm('Cela efface vos réglages personnalisés : vocabulaire, corrections, '
       + 'seuils, cotation, trame, catalogues et prompts. Continuer ?')) return;
   const st = $('cfgStatus');
   try {
     const r = await api('/api/config', { method: 'DELETE' });
-    fillSettings(await r.json()); await fillAdvanced(); st.textContent = '✓ défauts rétablis';
+    const eff = await r.json();
+    fillSettings(eff); await fillEditeurs(eff); st.textContent = '✓ défauts rétablis';
     loadLLM(); initDictee();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 });

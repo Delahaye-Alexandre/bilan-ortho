@@ -53,6 +53,8 @@ let recentsResponder = () => [{ id: 7, statut: "brouillon", domaine_titres: "Gé
 let exportResponder = null;
 let restaurationCalls = [];
 let restaurationResponder = () => ({ ok: true, fichier: "f", filet: "g" });
+let editeurCalls = [];       // PUT/DELETE des routes /api/config/{trame,catalogues,prompts}
+let editeurResponder = null; // null = succès (config effective renvoyée)
 const SAUVEGARDES = {
   dossier: "", derniere: "2026-07-20 10:00:00",
   fichiers: [{ fichier: "bilan-ortho-sauvegarde-20260720-100000.db", octets: 4096 }],
@@ -82,6 +84,9 @@ const OVERRIDES = { prompts: { structure_system: "MON PROMPT PERSO" } };
 globalThis.fetch = async (p, o = {}) => {
   if (reseauCoupe) throw new TypeError("Failed to fetch");
   const url = String(p);
+  // AVANT la branche « /structure » : l'URL de la consigne intégrée la contient
+  if (url.includes("/api/prompts/structure-defaut"))
+    return rep({ prompt: 'CONSIGNE INTÉGRÉE {cles} — réponds {"updates":[]}' });
   if (url.includes("/structure")) {
     structureCalls.push(JSON.parse(o.body));
     if (holdNext) await holdNext;
@@ -102,6 +107,16 @@ globalThis.fetch = async (p, o = {}) => {
     sectionPuts.push({ url, body: JSON.parse(o.body) });
     return rep(sectionResponder());
   }
+  const mEd = url.match(/\/api\/config\/(trame|catalogues|prompts)/);
+  if (mEd) {
+    editeurCalls.push({ cible: mEd[1], method: o.method, body: o.body ? JSON.parse(o.body) : null });
+    return rep(editeurResponder ? editeurResponder() : structuredClone(CFG));
+  }
+  if (url.includes("/api/domaines"))
+    return rep([{ cle: "langage_oral", titre: "Langage oral" }, { cle: "voix", titre: "Voix" }]);
+  if (url.includes("/api/catalogues/"))
+    return rep({ guidance: "Guidance intégrée langage oral.",
+                 tests: [{ nom: "GRBAS", tranche: "", mesure: "voix", metriques: ["qualitatif"] }] });
   if (url.includes("/api/config/overrides")) return rep(structuredClone(OVERRIDES));
   if (url.includes("/api/config")) return rep(structuredClone(CFG));
   if (url.includes("/api/restauration")) {
@@ -267,14 +282,25 @@ document.getElementById("dicteeText").value = "";
 secTa("anamnese").value = "modif non enregistrée";
 check("saisieEnCours : rubrique modifiée non enregistrée → true", __t.saisieEnCours() === true);
 
-// === 9. Éditeur Avancé : surcharges seules, jamais les défauts ===============
+// === 9. Éditeurs dédiés : surcharges affichées, défauts jamais figés =========
 document.getElementById("settingsBtn").click();
 await settle();
 check("modale Paramètres ouverte", document.getElementById("settingsOverlay").hidden === false);
-const adv = document.getElementById("cfgAdvanced").value;
-check("Avancé : la surcharge du praticien est affichée", adv.includes("MON PROMPT PERSO"));
-check("Avancé : les défauts (trame…) ne sont PAS figés dans l'éditeur",
-  !adv.includes("Anamnèse") && !adv.includes("trame"));
+check("éditeur consigne : la surcharge du praticien est affichée",
+  document.getElementById("promptTexte").value === "MON PROMPT PERSO");
+check("éditeur consigne : provenance « personnalisée » indiquée",
+  document.getElementById("promptProv").textContent.includes("personnalisée"));
+check("éditeur trame : la trame effective est affichée",
+  document.querySelector("#trameListe .trTitre") !== null
+  && document.querySelector("#trameListe .trTitre").value === "Anamnèse");
+check("éditeur trame : provenance « intégrée » (aucune surcharge)",
+  document.getElementById("trameProv").textContent.includes("intégrée"));
+editeurCalls = [];
+document.getElementById("trameSave").click();
+await settle();
+check("trame sans modification : aucun enregistrement (défauts jamais figés)",
+  editeurCalls.length === 0
+  && document.getElementById("trameStatus").textContent.includes("Aucune modification"));
 check("modale : focus posé à l'ouverture",
   document.activeElement === document.getElementById("cfgLlmModel"));
 
@@ -484,6 +510,84 @@ await settle();
 check("restauration sur coffre verrouillé : overlay ré-affiché", overlay().hidden === false);
 overlay().hidden = true;
 restaurationResponder = () => ({ ok: true });
+document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+// === 22. Éditeur de trame : ajout, réordonnancement, avertissement ==========
+document.getElementById("settingsBtn").click();
+await settle();
+document.getElementById("trameAdd").click();
+const ligneAjoutee = [...document.querySelectorAll("#trameListe .ed-ligne")].pop();
+ligneAjoutee.querySelector(".trCle").value = "epreuves";
+ligneAjoutee.querySelector(".trTitre").value = "Épreuves";
+ligneAjoutee.querySelector("[data-tr-up]").click();
+editeurCalls = [];
+document.getElementById("trameSave").click();
+await settle();
+check("trame : PUT avec la liste exacte réordonnée",
+  editeurCalls.length === 1 && editeurCalls[0].cible === "trame"
+  && editeurCalls[0].method === "PUT"
+  && JSON.stringify(editeurCalls[0].body.sections) === JSON.stringify([
+    { cle: "epreuves", titre: "Épreuves" }, { cle: "anamnese", titre: "Anamnèse" }]));
+check("trame : provenance passée à « personnalisée » après enregistrement",
+  document.getElementById("trameProv").textContent.includes("personnalisée"));
+document.querySelector("#trameListe [data-tr-del]").click(); // supprime « epreuves »
+check("trame : avertissement « epreuves » affiché (non bloquant)",
+  document.getElementById("trameAvert").textContent.includes("epreuves"));
+editeurCalls = [];
+document.getElementById("trameSave").click();
+await settle();
+check("trame : l'enregistrement passe malgré l'avertissement",
+  editeurCalls.length === 1
+  && JSON.stringify(editeurCalls[0].body.sections)
+     === JSON.stringify([{ cle: "anamnese", titre: "Anamnèse" }]));
+
+// === 23. Éditeur de catalogues : PUT complet, retour à l'intégré =============
+check("catalogues : le domaine affiche le catalogue intégré (guidance + tests)",
+  document.getElementById("catGuidance").value.includes("Guidance intégrée")
+  && document.querySelector("#catTests .ctNom") !== null
+  && document.querySelector("#catTests .ctNom").value === "GRBAS");
+document.getElementById("catGuidance").value = "Ma guidance à moi.";
+editeurCalls = [];
+document.getElementById("catSave").click();
+await settle();
+check("catalogues : PUT du dict complet avec le domaine modifié",
+  editeurCalls.length === 1 && editeurCalls[0].cible === "catalogues"
+  && editeurCalls[0].body.langage_oral
+  && editeurCalls[0].body.langage_oral.guidance === "Ma guidance à moi.");
+check("catalogues : domaine marqué « personnalisé » dans la liste",
+  document.querySelector("#catDomaine option").textContent.includes("personnalisé"));
+confirmReponse = true;
+editeurCalls = [];
+document.getElementById("catRetour").click();
+await settle();
+check("catalogues : retour à l'intégré → domaine absent du corps envoyé",
+  editeurCalls.length === 1 && editeurCalls[0].cible === "catalogues"
+  && editeurCalls[0].method === "PUT"
+  && !("langage_oral" in editeurCalls[0].body));
+check("catalogues : le catalogue intégré est rechargé",
+  document.getElementById("catGuidance").value.includes("Guidance intégrée"));
+
+// === 24. Éditeur de consigne : défaut exposé, vide = DELETE, erreur ==========
+document.getElementById("promptDefaut").click();
+await settle();
+check("consigne : préremplissage depuis la consigne intégrée exposée",
+  document.getElementById("promptTexte").value.includes("CONSIGNE INTÉGRÉE {cles}"));
+document.getElementById("promptTexte").value = "";
+editeurCalls = [];
+document.getElementById("promptSave").click();
+await settle();
+check("consigne vidée : DELETE émis (jamais de surcharge vide)",
+  editeurCalls.length === 1 && editeurCalls[0].cible === "prompts"
+  && editeurCalls[0].method === "DELETE");
+check("consigne : provenance repassée à « intégrée »",
+  document.getElementById("promptProv").textContent.includes("intégrée"));
+editeurResponder = () => ({ __status: 422, detail: "donnée invalide (structure_system)" });
+document.getElementById("promptTexte").value = "NOUVELLE CONSIGNE";
+document.getElementById("promptSave").click();
+await settle();
+check("consigne : erreur serveur → message français dans le statut",
+  document.getElementById("promptStatus").textContent.includes("Erreur : donnée invalide"));
+editeurResponder = null;
 document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");

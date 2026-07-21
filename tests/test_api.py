@@ -140,6 +140,110 @@ def test_trame_et_catalogue_configurables_via_api(client):
     assert [t["nom"] for t in cat["tests"]] == ["Échelle maison"]
 
 
+# --- éditeurs dédiés : remplacement en bloc ---------------------------------------
+
+def test_config_trame_remplacement_et_retour_defauts(client):
+    """PUT /api/config/trame remplace EN BLOC (une rubrique retirée disparaît
+    vraiment — impossible via la fusion du PUT /api/config) ; DELETE rend la
+    trame réglementaire et ne laisse aucune surcharge figée."""
+    deux = [{"cle": "libre", "titre": "Rubrique libre"},
+            {"cle": "epreuves", "titre": "Épreuves"}]
+    assert client.put("/api/config/trame", json={"sections": deux}).status_code == 200
+    r = client.put("/api/config/trame", json={"sections": deux[:1]})
+    assert r.status_code == 200
+    ov = client.get("/api/config/overrides").json()
+    assert ov["trame"]["sections"] == [{"cle": "libre", "titre": "Rubrique libre"}]
+    b = client.post("/api/bilans", json={"domaines": []}).json()
+    assert [s["cle"] for s in b["sections"]] == ["libre"]
+    eff = client.delete("/api/config/trame").json()
+    assert eff["trame"] == config.DEFAULTS["trame"]
+    assert "trame" not in client.get("/api/config/overrides").json()
+    b = client.post("/api/bilans", json={"domaines": []}).json()
+    assert len(b["sections"]) == 7  # tronc commun réglementaire
+
+
+def test_config_trame_validation(client):
+    ko = [
+        {"sections": []},                                     # liste vide
+        {"sections": [{"cle": "x", "titre": ""}]},            # titre vide
+        {"sections": [{"cle": "  ", "titre": "T"}]},          # clé blanche
+        {"sections": [{"titre": "Sans clé"}]},                # clé absente
+    ]
+    for corps in ko:
+        assert client.put("/api/config/trame", json=corps).status_code == 422
+    # l'app reste utilisable après un rejet
+    assert client.get("/api/patients").status_code == 200
+
+
+def test_config_catalogues_remplacement_et_suppression_domaine(client):
+    r = client.put("/api/config/catalogues", json={
+        "voix": {"guidance": "Ma guidance.", "tests": [{"nom": "Échelle maison"}]},
+    })
+    assert r.status_code == 200
+    cat = client.get("/api/catalogues/voix").json()
+    assert cat["guidance"] == "Ma guidance."
+    assert [t["nom"] for t in cat["tests"]] == ["Échelle maison"]
+    # remplacement par {} : le domaine disparaît, le catalogue intégré revient
+    assert client.put("/api/config/catalogues", json={}).status_code == 200
+    assert "catalogues" not in client.get("/api/config/overrides").json()
+    cat = client.get("/api/catalogues/voix").json()
+    assert cat["guidance"] != "Ma guidance." and len(cat["tests"]) > 0
+    # validations : nom manquant, métrique inconnue, domaine inconnu
+    assert client.put("/api/config/catalogues", json={
+        "voix": {"tests": [{"mesure": "sans nom"}]}}).status_code == 422
+    assert client.put("/api/config/catalogues", json={
+        "voix": {"tests": [{"nom": "T", "metriques": ["score_brut"]}]}}).status_code == 422
+    r = client.put("/api/config/catalogues", json={"telepathie": {"guidance": "x"}})
+    assert r.status_code == 422 and "Domaine inconnu" in r.json()["detail"]
+
+
+def test_config_prompts_remplacement_et_vide_efface(client):
+    assert client.put(
+        "/api/config/prompts", json={"structure_system": "MA CONSIGNE {cles}"}
+    ).status_code == 200
+    assert client.get("/api/config/overrides").json()["prompts"] == {
+        "structure_system": "MA CONSIGNE {cles}"
+    }
+    # vide = retour à la consigne intégrée, pas de surcharge vide figée
+    assert client.put("/api/config/prompts", json={"structure_system": "  "}).status_code == 200
+    assert "prompts" not in client.get("/api/config/overrides").json()
+    client.put("/api/config/prompts", json={"structure_system": "X"})
+    client.delete("/api/config/prompts")
+    assert "prompts" not in client.get("/api/config/overrides").json()
+    # les remplacements sont audités
+    with security.transaction() as con:
+        actions = [r[0] for r in con.execute("SELECT action FROM audit_log").fetchall()]
+    assert "config_prompts" in actions
+
+
+def test_prompt_defaut_expose_et_reutilisable(client, monkeypatch, mock_embed):
+    """Verrou anti-régression du piège des accolades : la consigne intégrée
+    exposée (accolades simples) doit, enregistrée telle quelle, produire
+    EXACTEMENT le même prompt système que le défaut (.format)."""
+    from app import prompts as prompts_mod
+
+    texte = client.get("/api/prompts/structure-defaut").json()["prompt"]
+    assert "{cles}" in texte and '{"updates"' in texte
+    assert "{{" not in texte and "}}" not in texte
+    client.put("/api/config/prompts", json={"structure_system": texte})
+
+    captures = {}
+
+    async def chat_espion(system, user, **kw):
+        captures["system"] = system
+        return '{"updates": [], "questions": []}'
+
+    monkeypatch.setattr(llm, "chat_json", chat_espion)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    assert client.post(
+        f"/api/bilans/{bid}/structure", json={"transcription": "Texte."}
+    ).status_code == 200
+    cles = ", ".join(
+        sorted(s["cle"] for s in client.get(f"/api/bilans/{bid}").json()["sections"])
+    )
+    assert captures["system"] == prompts_mod.STRUCTURE_SYSTEM.format(cles=cles)
+
+
 def test_statut_valide_puis_envoye(client):
     bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
     b = client.put(f"/api/bilans/{bid}/statut", json={"statut": "valide"}).json()
