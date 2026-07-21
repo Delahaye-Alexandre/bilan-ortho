@@ -48,6 +48,7 @@ from .models import (
     EpreuveCreate,
     OkResponse,
     PatientIn,
+    RestaurationRequest,
     SectionPut,
     StatusResponse,
     StatutPut,
@@ -329,6 +330,45 @@ async def list_sauvegardes() -> dict:
     with security.transaction() as con:
         cfg = config.ConfigStore(con).effective()
         return sauvegarde.liste(con, cfg)
+
+
+# Une seule restauration à la fois : sans cette garde, la seconde requête
+# gèlerait sur le verrou global puis restaurerait par-dessus le résultat de
+# la première. Même esprit que la garde des analyses (_analyses_en_cours).
+_restauration_verrou = threading.Lock()
+
+
+@app.post("/api/restauration", dependencies=[Depends(require_unlock)])
+async def restaurer_sauvegarde(req: RestaurationRequest) -> dict:
+    """Restauration guidée : vérifie que la copie s'ouvre avec la passphrase,
+    sauvegarde la base actuelle en filet, échange les fichiers atomiquement
+    puis rouvre le coffre."""
+    if not req.passphrase.strip():
+        raise HTTPException(400, "Passphrase vide.")
+    if not _restauration_verrou.acquire(blocking=False):
+        raise HTTPException(
+            409, "Une restauration est déjà en cours. Patientez quelques instants."
+        )
+    try:
+        # Threadpool : copie + vérification + VACUUM filet peuvent durer
+        # plusieurs secondes — l'event loop doit rester réactif.
+        return await run_in_threadpool(security.restaurer, req.fichier, req.passphrase)
+    except security.RestaurationImpossible as exc:
+        # Demande invalide (fichier, passphrase, version) : base intacte.
+        raise HTTPException(400, str(exc))
+    except security.CoffreVerrouille:
+        raise  # géré globalement en 423
+    except (sqlite3.OperationalError, sqlcipher3.OperationalError):
+        raise  # géré globalement en 503 (disque plein ?)
+    except RuntimeError as exc:
+        # Échec après le point de non-retour : message d'état précis
+        # (« données intactes » ou « restaurée mais verrouillée »).
+        raise HTTPException(500, str(exc))
+    except Exception:
+        logger.exception("Restauration : échec inattendu")
+        raise HTTPException(500, "La restauration a échoué. Réessayez.")
+    finally:
+        _restauration_verrou.release()
 
 
 # --- Bilans & structuration IA ----------------------------------------------

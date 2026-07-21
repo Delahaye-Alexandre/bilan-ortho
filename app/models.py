@@ -34,6 +34,13 @@ class UnlockRequest(BaseModel):
     passphrase: str
 
 
+class RestaurationRequest(BaseModel):
+    """Restauration d'une sauvegarde : nom de fichier (jamais un chemin) +
+    passphrase, indispensable pour vérifier la copie et rouvrir le coffre."""
+    fichier: str
+    passphrase: str
+
+
 class StatusResponse(BaseModel):
     db_exists: bool
     unlocked: bool

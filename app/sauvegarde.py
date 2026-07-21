@@ -3,7 +3,9 @@
 ``VACUUM INTO`` produit une copie compacte et transactionnellement cohérente ;
 avec SQLCipher, la copie est chiffrée avec la même clé que la base source — la
 passphrase reste donc indispensable pour ouvrir une sauvegarde. La restauration
-consiste à remplacer ``bilan.db`` par la copie, application arrêtée.
+se fait depuis l'écran Paramètres (:func:`app.security.restaurer`) : la copie
+est vérifiée avec la passphrase, la base actuelle est sauvegardée en filet,
+puis le fichier est remplacé atomiquement.
 """
 from __future__ import annotations
 
@@ -68,6 +70,30 @@ def creer(con, cfg: dict) -> dict:
     retention = int((cfg.get("sauvegarde") or {}).get("retention") or 0)
     _rotation(d, retention)
     return {"fichier": str(cible), "octets": cible.stat().st_size}
+
+
+def resoudre(nom: str, cfg: dict) -> Path:
+    """Chemin d'une sauvegarde existante à partir de son seul NOM de fichier.
+
+    Refuse tout ce qui n'est pas un nom simple de sauvegarde (anti-traversée
+    de répertoires : la restauration ne doit jamais lire ailleurs que dans le
+    dossier de sauvegarde). Le suffixe ``.db`` exigé écarte de fait les
+    ``.tmp`` partiels et les noms du type ``..``.
+    """
+    separateurs = {"/", "\\", os.sep, os.altsep or "/"}
+    if (
+        any(s in nom for s in separateurs)
+        or not nom.startswith(PREFIXE)
+        or not nom.endswith(".db")
+    ):
+        raise ValueError("Nom de sauvegarde invalide.")
+    chemin = dossier(cfg) / nom
+    if not chemin.is_file():
+        raise ValueError(
+            "Cette sauvegarde est introuvable. Fermez puis rouvrez les "
+            "Paramètres pour actualiser la liste."
+        )
+    return chemin
 
 
 def liste(con, cfg: dict) -> dict:

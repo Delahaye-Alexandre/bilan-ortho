@@ -294,7 +294,17 @@
           <button id="sauvBtn" class="ghost">💾 Sauvegarder maintenant</button>
           <span class="status" id="sauvStatus"></span>
         </div>
-        <div class="muted">La copie reste chiffrée (même passphrase). Restauration : remplacer <code>bilan.db</code> par la copie, application arrêtée. Pensez à un dossier sur un autre support (clé USB, disque externe).</div>
+        <div class="muted">La copie reste chiffrée (même passphrase). Pensez à un dossier sur un autre support (clé USB, disque externe).</div>
+        <div id="sauvListe" style="margin-top:8px"></div>
+        <div id="restZone" hidden style="margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:10px">
+          <p style="margin-top:0"><b>Restaurer « <span id="restNom"></span> »</b> remplace toutes les données actuelles par le contenu de cette sauvegarde. Par précaution, une copie de vos données actuelles est d'abord créée dans le dossier de sauvegarde.</p>
+          <div><label for="restPass">Passphrase de cette sauvegarde (en général, votre passphrase actuelle)</label><input id="restPass" type="password" autocomplete="off"></div>
+          <div class="row" style="margin-top:8px">
+            <button id="restConfirm">Restaurer maintenant</button>
+            <button id="restCancel" class="ghost">Annuler</button>
+            <span class="status" id="restStatus"></span>
+          </div>
+        </div>
       </fieldset>
       <fieldset>
         <legend>Avancé — trame, catalogues de tests, prompt (JSON)</legend>
@@ -390,7 +400,7 @@
       <p>Importez vos propres bilans (PDF, Word .docx, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Les PDF scannés nécessitent Tesseract : sous Windows, utilisez l'installeur UB-Mannheim (<code>github.com/UB-Mannheim/tesseract</code>) puis relancez l'import ; sous Linux : <code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>.</p>
       <h3>Confidentialité & sauvegardes</h3>
       <p>Tout est chiffré (SQLCipher) et tout tourne en local : aucune donnée ne quitte votre machine. L'application se verrouille seule après inactivité. Pensez à votre passphrase : elle est <b>irrécupérable</b>.</p>
-      <p>Une <b>sauvegarde chiffrée</b> du coffre est créée automatiquement au déverrouillage (par défaut : au plus tous les 7 jours) ; configurez le dossier dans ⚙️ Paramètres — idéalement sur un autre support (clé USB). Supprimer un patient efface définitivement tous ses bilans (droit à l'effacement).</p>
+      <p>Une <b>sauvegarde chiffrée</b> du coffre est créée automatiquement au déverrouillage (par défaut : au plus tous les 7 jours) ; configurez le dossier dans ⚙️ Paramètres — idéalement sur un autre support (clé USB). Pour revenir à une sauvegarde : ⚙️ Paramètres → Sauvegarde du coffre → « Restaurer… » (une copie de vos données actuelles est créée avant). Supprimer un patient efface définitivement tous ses bilans (droit à l'effacement).</p>
     </div>
   </div>
 </div>
@@ -1331,8 +1341,45 @@ function fillSettings(c) {
     $('sauvStatus').textContent = s.derniere
       ? `Dernière : ${s.derniere} UTC (${s.fichiers.length} copie${s.fichiers.length > 1 ? 's' : ''})`
       : 'Aucune sauvegarde pour le moment.';
+    renderSauvegardes(s);
   }).catch(() => {});
 }
+// --- Restauration guidée d'une sauvegarde ------------------------------------
+let REST_NOM = null;
+function renderSauvegardes(s) {
+  const liste = $('sauvListe');
+  const fichiers = s.fichiers || [];
+  liste.innerHTML = fichiers.map(f => `
+    <div class="row" style="margin-top:4px">
+      <span class="muted grow">${escapeHtml(f.fichier)} (${Math.round(f.octets / 1024)} Ko)</span>
+      <button class="ghost" data-rest="${escapeHtml(f.fichier)}">Restaurer…</button>
+    </div>`).join('');
+  liste.querySelectorAll('[data-rest]').forEach(b => b.addEventListener('click', () => {
+    REST_NOM = b.dataset.rest;
+    $('restNom').textContent = REST_NOM;
+    $('restPass').value = ''; $('restStatus').textContent = '';
+    $('restZone').hidden = false;
+    $('restPass').focus();
+  }));
+}
+document.getElementById('restCancel').addEventListener('click', () => {
+  $('restZone').hidden = true; REST_NOM = null; $('restPass').value = '';
+});
+document.getElementById('restConfirm').addEventListener('click', e => avecBouton(e.target, async () => {
+  const st = $('restStatus');
+  const pass = $('restPass').value;
+  if (!pass.trim()) { st.textContent = 'Saisissez la passphrase.'; $('restPass').focus(); return; }
+  statutOccupe(st, 'Restauration en cours…');
+  try {
+    await api('/api/restauration', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fichier: REST_NOM, passphrase: pass }),
+    });
+    $('restPass').value = '';
+    st.textContent = '✓ Sauvegarde restaurée. La page va se recharger…';
+    setTimeout(() => location.reload(), 1200);
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
 document.getElementById('sauvBtn').addEventListener('click', e => avecBouton(e.target, async () => {
   // avecBouton : chaque clic crée un fichier de sauvegarde — un double-clic
   // en créerait deux.

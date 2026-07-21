@@ -7,9 +7,12 @@ La passphrase n'est jamais persistée sur le disque.
 """
 from __future__ import annotations
 
+import os
+import shutil
 import threading
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 from . import config, db
 
@@ -21,6 +24,11 @@ class CoffreVerrouille(RuntimeError):
     """Le coffre s'est verrouillé entre la vérification d'accès et l'usage de
     la connexion (course réelle en multi-onglets via POST /api/lock). Mappée
     globalement en 423 par le serveur."""
+
+
+class RestaurationImpossible(RuntimeError):
+    """Demande de restauration invalide (fichier, passphrase ou version) : la
+    base courante est restée intacte. Mappée en 400 par le serveur."""
 
 
 def db_exists() -> bool:
@@ -81,6 +89,119 @@ def _con():
     if con is None:
         raise CoffreVerrouille("Application verrouillée.")
     return con
+
+
+def _supprimer_sidecars(chemin) -> None:
+    """Supprime les fichiers annexes WAL d'une base (``-wal``, ``-shm``).
+
+    Un ``-wal`` orphelin rejoué à côté d'une base restaurée la corromprait."""
+    for suffixe in ("-wal", "-shm"):
+        Path(str(chemin) + suffixe).unlink(missing_ok=True)
+
+
+def _verifier_copie(chemin: Path, passphrase: str) -> None:
+    """Contrôle une copie de sauvegarde AVANT de toucher la base courante :
+    ouverture avec la passphrase, lecture, version de schéma supportée."""
+    illisible = RestaurationImpossible(
+        "Impossible d'ouvrir cette sauvegarde avec la passphrase saisie. "
+        "Vérifiez la passphrase ; si elle est correcte, le fichier est "
+        "peut-être endommagé."
+    )
+    try:
+        con = db.connect(chemin, passphrase)
+    except Exception:
+        raise illisible
+    try:
+        if not db.verify(con):
+            raise illisible
+        version = con.execute("PRAGMA user_version").fetchone()[0]
+        if version > db.SCHEMA_VERSION:
+            raise RestaurationImpossible(
+                "Cette sauvegarde vient d'une version plus récente de "
+                "l'application. Mettez d'abord l'application à jour."
+            )
+    finally:
+        con.close()
+        # Le PRAGMA journal_mode=WAL de connect() sème -wal/-shm à côté de la
+        # copie : les purger pour que l'échange ne porte que sur UN fichier.
+        _supprimer_sidecars(chemin)
+
+
+def restaurer(nom_fichier: str, passphrase: str) -> dict:
+    """Remplace la base courante par la sauvegarde nommée, puis la rouvre.
+
+    Toute la séquence tient sous ``_lock`` (RLock : ``lock()`` et ``unlock()``
+    restent appelables depuis ce thread) — comme le VACUUM de /api/sauvegarde,
+    les autres requêtes attendent ; gel borné et assumé. La réouverture rejoue
+    la purge RGPD et la sauvegarde auto sur la base restaurée : comportement
+    normal d'un déverrouillage.
+    """
+    from . import sauvegarde  # import tardif (évite un cycle au chargement)
+
+    tmp = config.data_dir() / "bilan.db.restauration.tmp"
+    with _lock:
+        con = _con()
+        cfg = config.ConfigStore(con).effective()
+        try:
+            src = sauvegarde.resoudre(nom_fichier, cfg)
+        except ValueError as exc:
+            raise RestaurationImpossible(str(exc))
+        try:
+            # Copier vers le dossier de données AVANT tout : os.replace n'est
+            # atomique qu'au sein d'un même système de fichiers (la source
+            # peut vivre sur une clé USB), et la rotation déclenchée par le
+            # filet ci-dessous pourrait supprimer la sauvegarde source.
+            try:
+                shutil.copyfile(src, tmp)
+            except OSError:
+                raise RestaurationImpossible(
+                    "La copie de la sauvegarde a échoué (espace disque "
+                    "insuffisant ?). Libérez de l'espace puis réessayez."
+                )
+            _verifier_copie(tmp, passphrase)
+            # Filet : la base actuelle reste récupérable depuis le dossier de
+            # sauvegarde en cas de regret. (Son journal d'audit part avec elle
+            # — l'entrée « restauration » vit dans la base restaurée.)
+            filet = sauvegarde.creer(con, cfg)
+            # Fermer la connexion (checkpoint WAL) puis purger d'éventuels
+            # fichiers annexes orphelins : sous Windows, os.replace échoue sur
+            # un fichier encore ouvert.
+            lock()
+            _supprimer_sidecars(config.db_path())
+            try:
+                os.replace(tmp, config.db_path())
+            except OSError:
+                # L'échange n'a pas eu lieu : l'ancienne base est intacte, on
+                # la rouvre (best-effort) pour ne pas laisser l'app fermée.
+                unlock(passphrase)
+                raise RuntimeError(
+                    "La restauration a échoué ; vos données actuelles sont "
+                    "intactes. Réessayez, ou redémarrez l'application."
+                )
+            try:
+                reouvert = unlock(passphrase)
+            except Exception as exc:
+                raise RuntimeError(
+                    "La sauvegarde a bien été restaurée, mais la réouverture "
+                    "automatique a échoué. Déverrouillez l'application avec "
+                    "la passphrase de la sauvegarde."
+                ) from exc
+            if not reouvert:
+                raise RuntimeError(
+                    "La sauvegarde a bien été restaurée, mais la réouverture "
+                    "automatique a échoué. Déverrouillez l'application avec "
+                    "la passphrase de la sauvegarde."
+                )
+            audit("restauration", "app", None, nom_fichier)
+            _state["con"].commit()
+            return {
+                "ok": True,
+                "fichier": nom_fichier,
+                "filet": Path(filet["fichier"]).name,
+            }
+        finally:
+            tmp.unlink(missing_ok=True)
+            _supprimer_sidecars(tmp)
 
 
 def touch() -> None:

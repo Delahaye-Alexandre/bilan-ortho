@@ -190,6 +190,29 @@ def test_sauvegarde_echec_sans_residu(con, data_dir):
     assert list((data_dir / "sauvegardes").iterdir()) == []
 
 
+def test_resoudre_nom_hostile_rejete(con, data_dir):
+    """La restauration ne prend qu'un NOM de fichier du dossier de sauvegarde :
+    chemins, préfixes étrangers, .tmp et fichiers absents sont rejetés."""
+    from pathlib import Path
+
+    cfg = config.DEFAULTS
+    nom = Path(sauvegarde.creer(con, cfg)["fichier"]).name
+    assert sauvegarde.resoudre(nom, cfg) == data_dir / "sauvegardes" / nom
+    hostiles = [
+        "../bilan.db",
+        "/etc/passwd",
+        "..\\bilan.db",
+        "sous/" + nom,
+        "autre-fichier.db",                       # préfixe étranger
+        "bilan-ortho-sauvegarde-x.db.tmp",        # copie partielle
+        "bilan-ortho-sauvegarde-inexistante.db",  # absent du dossier
+        "",
+    ]
+    for nom_hostile in hostiles:
+        with pytest.raises(ValueError):
+            sauvegarde.resoudre(nom_hostile, cfg)
+
+
 def test_statut_envoye_une_seule_trace(con):
     """Re-marquer « envoyé » un bilan déjà envoyé ne duplique pas la trace
     d'envoi (BUG-10) ; un nouveau cycle validé → envoyé en retrace une."""

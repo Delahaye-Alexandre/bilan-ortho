@@ -350,6 +350,51 @@ def test_sauvegarde_api(client):
     assert any(f["fichier"] == Path(s["fichier"]).name for f in etat["fichiers"])
 
 
+def test_restauration_api(client):
+    """Parcours complet de restauration via l'API + demandes invalides."""
+    from pathlib import Path
+
+    client.put("/api/config", json={"overrides": {"sauvegarde": {"auto_jours": 0}}})
+    nom = Path(client.post("/api/sauvegarde").json()["fichier"]).name
+    r = client.put("/api/config", json={"overrides": {"llm": {"model": "apres-sauvegarde"}}})
+    assert r.status_code == 200
+    r = client.post("/api/restauration", json={"fichier": nom, "passphrase": PASSPHRASE})
+    assert r.status_code == 200
+    corps = r.json()
+    assert corps["ok"] is True and corps["filet"].startswith("bilan-ortho-sauvegarde-")
+    # la surcharge postérieure à la sauvegarde a disparu : base bien remplacée,
+    # et l'app est restée utilisable sans re-déverrouillage manuel
+    assert client.get("/api/config").json()["llm"]["model"] != "apres-sauvegarde"
+    # passphrase incorrecte → 400 explicite, app toujours utilisable
+    r = client.post("/api/restauration", json={"fichier": nom, "passphrase": "mauvaise"})
+    assert r.status_code == 400 and "passphrase" in r.json()["detail"]
+    # nom hostile ou fichier inconnu → 400
+    for nom_ko in ["../bilan.db", "bilan-ortho-sauvegarde-inexistante.db"]:
+        r = client.post("/api/restauration", json={"fichier": nom_ko, "passphrase": PASSPHRASE})
+        assert r.status_code == 400
+    # passphrase vide → 400
+    r = client.post("/api/restauration", json={"fichier": nom, "passphrase": " "})
+    assert r.status_code == 400
+    assert client.get("/api/status").json()["unlocked"] is True
+
+
+def test_restauration_concurrente_409(client):
+    """Une restauration déjà en cours → 409 explicite, pas de gel silencieux
+    sur le verrou global."""
+    from app import main as main_mod
+
+    assert main_mod._restauration_verrou.acquire(blocking=False)
+    try:
+        r = client.post(
+            "/api/restauration",
+            json={"fichier": "bilan-ortho-sauvegarde-x.db", "passphrase": PASSPHRASE},
+        )
+    finally:
+        main_mod._restauration_verrou.release()
+    assert r.status_code == 409
+    assert "déjà en cours" in r.json()["detail"]
+
+
 # --- structuration (LLM mocké) -------------------------------------------------------
 
 def test_structure_avec_llm_mocke(client, monkeypatch, mock_embed):

@@ -51,6 +51,12 @@ let sauvegardeCalls = 0;
 let recentsRequests = [];
 let recentsResponder = () => [{ id: 7, statut: "brouillon", domaine_titres: "Générique" }];
 let exportResponder = null;
+let restaurationCalls = [];
+let restaurationResponder = () => ({ ok: true, fichier: "f", filet: "g" });
+const SAUVEGARDES = {
+  dossier: "", derniere: "2026-07-20 10:00:00",
+  fichiers: [{ fichier: "bilan-ortho-sauvegarde-20260720-100000.db", octets: 4096 }],
+};
 
 const rep = (r) => r && r.__status
   ? { ok: false, status: r.__status, statusText: "ERR", json: async () => ({ detail: r.detail }) }
@@ -98,6 +104,12 @@ globalThis.fetch = async (p, o = {}) => {
   }
   if (url.includes("/api/config/overrides")) return rep(structuredClone(OVERRIDES));
   if (url.includes("/api/config")) return rep(structuredClone(CFG));
+  if (url.includes("/api/restauration")) {
+    restaurationCalls.push(JSON.parse(o.body));
+    if (holdNext) await holdNext;
+    return rep(restaurationResponder());
+  }
+  if (url.includes("/api/sauvegardes")) return rep(structuredClone(SAUVEGARDES));
   if (url.includes("/api/sauvegarde") && o.method === "POST") {
     sauvegardeCalls++;
     if (holdNext) await holdNext;
@@ -416,6 +428,63 @@ check("analyse : spinner affiché dans le statut principal",
   document.querySelector("#structStatus .spin") !== null);
 holdNext = null;
 await new Promise((r) => setTimeout(r, 80));
+
+// === 20. Restauration guidée : liste, passphrase exigée, un seul POST ========
+try {
+  Object.defineProperty(window.location, "reload", { value: () => {}, configurable: true });
+} catch {}
+document.getElementById("settingsBtn").click();
+await settle();
+const ligneRest = document.querySelector("#sauvListe [data-rest]");
+check("restauration : la sauvegarde est listée (nom + taille)",
+  ligneRest !== null
+  && document.getElementById("sauvListe").textContent.includes("bilan-ortho-sauvegarde-20260720-100000.db")
+  && document.getElementById("sauvListe").textContent.includes("4 Ko"));
+ligneRest.click();
+check("restauration : parcours guidé ouvert avec l'explication et le nom",
+  document.getElementById("restZone").hidden === false
+  && document.getElementById("restZone").textContent.includes("remplace toutes les données actuelles")
+  && document.getElementById("restNom").textContent === "bilan-ortho-sauvegarde-20260720-100000.db");
+document.getElementById("restConfirm").click();
+await settle();
+check("restauration : refus sans passphrase, aucun appel serveur",
+  restaurationCalls.length === 0
+  && document.getElementById("restStatus").textContent.includes("Saisissez la passphrase"));
+document.getElementById("restPass").value = "ma phrase secrète";
+holdNext = new Promise((r) => setTimeout(r, 60));
+document.getElementById("restConfirm").click();
+document.getElementById("restConfirm").click();
+await new Promise((r) => setTimeout(r, 100));
+holdNext = null;
+check("restauration : double-clic → un seul POST", restaurationCalls.length === 1);
+check("restauration : corps exact {fichier, passphrase}",
+  restaurationCalls[0]
+  && restaurationCalls[0].fichier === "bilan-ortho-sauvegarde-20260720-100000.db"
+  && restaurationCalls[0].passphrase === "ma phrase secrète");
+check("restauration : succès annoncé + rechargement programmé",
+  document.getElementById("restStatus").textContent.includes("va se recharger"));
+
+// === 21. Restauration : erreurs traduites, pas de rechargement ===============
+restaurationCalls = [];
+restaurationResponder = () => ({ __status: 400,
+  detail: "Impossible d'ouvrir cette sauvegarde avec la passphrase saisie." });
+document.querySelector("#sauvListe [data-rest]").click();
+document.getElementById("restPass").value = "mauvaise";
+document.getElementById("restConfirm").click();
+await settle();
+check("restauration en échec : message français affiché",
+  document.getElementById("restStatus").textContent.includes("Impossible d'ouvrir"));
+check("restauration en échec : bouton ré-activé",
+  !document.getElementById("restConfirm").disabled);
+overlay().hidden = true;
+restaurationResponder = () => ({ __status: 423, detail: "Application verrouillée." });
+document.getElementById("restPass").value = "x";
+document.getElementById("restConfirm").click();
+await settle();
+check("restauration sur coffre verrouillé : overlay ré-affiché", overlay().hidden === false);
+overlay().hidden = true;
+restaurationResponder = () => ({ ok: true });
+document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

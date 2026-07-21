@@ -142,3 +142,147 @@ def test_migration_echec_ferme_la_connexion(data_dir, monkeypatch):
     # La connexion ouverte a bien été fermée : tout usage lève ProgrammingError.
     with pytest.raises(sqlcipher3.ProgrammingError):
         ouvertes[-1].execute("SELECT 1")
+
+
+# --- Restauration guidée des sauvegardes ---------------------------------------
+
+def _coffre_avec_sauvegarde(marqueur_apres: bool = True) -> str:
+    """Coffre déverrouillé (sauvegarde auto désactivée pour le déterminisme),
+    marqueur « avant », sauvegarde, puis marqueur « apres ». Retourne le nom
+    de la sauvegarde."""
+    from pathlib import Path
+
+    from app import sauvegarde, security
+
+    assert security.unlock(PASSPHRASE)
+    with security.transaction() as con:
+        config.ConfigStore(con).set_overrides({"sauvegarde": {"auto_jours": 0}})
+        con.execute("INSERT INTO meta(key, value) VALUES('marqueur', 'avant')")
+        cfg = config.ConfigStore(con).effective()
+        nom = Path(sauvegarde.creer(con, cfg)["fichier"]).name
+        if marqueur_apres:
+            con.execute("UPDATE meta SET value='apres' WHERE key='marqueur'")
+    return nom
+
+
+def _marqueur() -> str:
+    from app import security
+
+    with security.transaction() as con:
+        return con.execute("SELECT value FROM meta WHERE key='marqueur'").fetchone()[0]
+
+
+def test_restauration_remplace_la_base(data_dir):
+    """Cycle nominal : la base revient à l'état de la sauvegarde, un filet de
+    la base actuelle est créé, l'app est rouverte, l'action est auditée."""
+    from app import security
+
+    nom = _coffre_avec_sauvegarde()
+    res = security.restaurer(nom, PASSPHRASE)
+    assert res["ok"] is True and res["fichier"] == nom
+    assert security.is_unlocked()
+    assert _marqueur() == "avant"  # les données postérieures ont disparu
+    with security.transaction() as con:
+        actions = [r[0] for r in con.execute("SELECT action FROM audit_log").fetchall()]
+    assert "restauration" in actions
+    # filet : la base remplacée reste récupérable depuis le dossier de sauvegarde
+    assert res["filet"].startswith("bilan-ortho-sauvegarde-")
+    assert (data_dir / "sauvegardes" / res["filet"]).is_file()
+    # aucun résidu temporaire à côté de la base
+    assert not list(data_dir.glob("bilan.db.restauration.tmp*"))
+
+
+def test_restauration_passphrase_incorrecte_sans_degat(data_dir):
+    """La vérification de la copie précède tout : passphrase KO → erreur
+    claire, app TOUJOURS déverrouillée, données intactes, pas de filet."""
+    import pytest
+
+    from app import security
+
+    nom = _coffre_avec_sauvegarde()
+    avant = sorted(f.name for f in (data_dir / "sauvegardes").iterdir())
+    with pytest.raises(security.RestaurationImpossible, match="passphrase"):
+        security.restaurer(nom, "mauvaise-passphrase")
+    assert security.is_unlocked()
+    assert _marqueur() == "apres"
+    assert sorted(f.name for f in (data_dir / "sauvegardes").iterdir()) == avant
+    assert not list(data_dir.glob("bilan.db.restauration.tmp*"))
+
+
+def test_restauration_version_future_refusee(data_dir):
+    """Une sauvegarde issue d'une version plus récente de l'app ferait échouer
+    db.migrate après l'échange : refusée AVANT de toucher la base courante."""
+    from pathlib import Path
+
+    import pytest
+
+    from app import security
+
+    nom = _coffre_avec_sauvegarde()
+    chemin = data_dir / "sauvegardes" / nom
+    copie = db.connect(chemin, PASSPHRASE)
+    copie.execute(f"PRAGMA user_version = {db.SCHEMA_VERSION + 1}")
+    copie.commit()
+    copie.close()
+    for suffixe in ("-wal", "-shm"):
+        Path(str(chemin) + suffixe).unlink(missing_ok=True)
+    with pytest.raises(security.RestaurationImpossible, match="plus récente"):
+        security.restaurer(nom, PASSPHRASE)
+    assert security.is_unlocked()
+    assert _marqueur() == "apres"
+
+
+def test_restauration_echec_echange_base_reouverte(data_dir, monkeypatch):
+    """Si l'échange atomique échoue, l'ancienne base est intacte et ROUVERTE
+    (pas d'app laissée verrouillée sur un demi-échec)."""
+    import os as os_mod
+
+    import pytest
+
+    from app import security
+
+    nom = _coffre_avec_sauvegarde()
+
+    vrai_replace = os_mod.replace
+
+    def replace_ko(src, dst):
+        # Ne fait échouer QUE l'échange final vers bilan.db : le os.replace
+        # du filet (sauvegarde.creer) doit continuer de fonctionner.
+        if str(dst) == str(config.db_path()):
+            raise OSError("échange KO")
+        return vrai_replace(src, dst)
+
+    monkeypatch.setattr(os_mod, "replace", replace_ko)
+    with pytest.raises(RuntimeError, match="intactes"):
+        security.restaurer(nom, PASSPHRASE)
+    assert security.is_unlocked()
+    assert _marqueur() == "apres"
+    assert not list(data_dir.glob("bilan.db.restauration.tmp*"))
+
+
+def test_restauration_sidecars_residuels_purges(data_dir, monkeypatch):
+    """Des -wal/-shm orphelins (arrêt brutal) sont purgés avant l'échange :
+    un vieux journal rejoué à côté de la base restaurée la corromprait."""
+    from pathlib import Path
+
+    from app import security
+
+    nom = _coffre_avec_sauvegarde()
+
+    vrai_lock = security.lock
+
+    def lock_puis_orphelins():
+        vrai_lock()
+        Path(str(config.db_path()) + "-wal").write_bytes(b"journal orphelin")
+        Path(str(config.db_path()) + "-shm").write_bytes(b"index orphelin")
+
+    monkeypatch.setattr(security, "lock", lock_puis_orphelins)
+    res = security.restaurer(nom, PASSPHRASE)
+    assert res["ok"] is True
+    assert security.is_unlocked()
+    assert _marqueur() == "avant"
+    # Les orphelins factices n'ont pas survécu : si le faux -wal avait été
+    # laissé à côté de la base restaurée, la réouverture aurait tenté de le
+    # rejouer et la lecture échouerait.
+    with security.transaction() as con:
+        assert con.execute("SELECT count(*) FROM sqlite_master").fetchone()[0] > 0
