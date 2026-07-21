@@ -101,7 +101,9 @@ class SttPatch(_SectionPatch):
 class RgpdPatch(_SectionPatch):
     verrouillage_inactivite_minutes: float | None = Field(None, ge=0)
     conservation_jours: int | None = Field(None, ge=0)
-    dictee_max_minutes: float | None = Field(None, ge=0)
+    # Plafond à 7 jours : au-delà, le délai en ms dépasserait l'int32 de
+    # setTimeout côté navigateur (débordement = arrêt immédiat de la dictée).
+    dictee_max_minutes: float | None = Field(None, ge=0, le=10080)
 
 
 class SauvegardePatch(_SectionPatch):

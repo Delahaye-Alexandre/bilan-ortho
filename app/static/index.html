@@ -1230,7 +1230,7 @@ async function toggleRec() {
   mediaRecorder.start();
   // Ping périodique : garde le coffre déverrouillé tant que la dictée tourne (évite un 423 au moment de transcrire).
   keepAlive = setInterval(() => api('/api/keepalive', { method: 'POST' }).catch(() => {}), 60000);
-  if (maxMin > 0) {
+  if (maxMin > 0 && maxMin <= 10080) { // borne int32 de setTimeout (cf. validation serveur)
     dicteeTimer = setTimeout(() => {
       // Même chemin que le clic « Arrêter » : onstop transcrit ce qui a été dit.
       if (mediaRecorder && mediaRecorder.state === 'recording') {

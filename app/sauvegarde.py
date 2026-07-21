@@ -51,6 +51,7 @@ def creer(con, cfg: dict) -> dict:
     # et de la rotation (motif « *.db »).
     tmp = cible.parent / (cible.name + ".tmp")
     try:
+        tmp.unlink(missing_ok=True)  # .tmp orphelin (arrêt brutal) : VACUUM refuse d'écraser
         con.execute("VACUUM INTO ?", (str(tmp),))
         os.replace(tmp, cible)
     except BaseException:
