@@ -98,8 +98,11 @@
   <div class="lock-card">
     <h2>🔒 Bilan Ortho</h2>
     <p class="muted" id="lockMsg">Déverrouillez votre coffre chiffré.</p>
-    <input type="password" id="passphrase" placeholder="Passphrase" autocomplete="current-password" />
-    <input type="password" id="passphrase2" placeholder="Confirmer la passphrase" autocomplete="new-password" hidden />
+    <div class="row" style="gap:6px">
+      <input type="password" id="passphrase" class="grow" placeholder="Passphrase" autocomplete="current-password" aria-label="Passphrase" />
+      <button id="passEye" type="button" class="ghost" style="margin-top:10px;width:auto" title="Afficher la passphrase" aria-label="Afficher la passphrase">👁</button>
+    </div>
+    <input type="password" id="passphrase2" placeholder="Confirmer la passphrase" autocomplete="new-password" aria-label="Confirmer la passphrase" hidden />
     <div class="lock-err" id="lockErr"></div>
     <button id="unlockBtn">Déverrouiller</button>
     <p class="muted small">Données chiffrées localement (AES-256). Aucune donnée ne quitte votre machine.</p>
@@ -143,7 +146,7 @@
     <select id="llmModel"></select>
     <div id="sttInfo" class="status"></div>
 
-    <label>Mes bilans de référence</label>
+    <label for="refFile">Mes bilans de référence</label>
     <div class="muted">Importez vos propres bilans : l'IA s'inspire de votre style (100 % local).</div>
     <input type="file" id="refFile" accept=".pdf,.docx,.txt,.md" style="margin-top:6px" />
     <div class="row" style="margin-top:6px"><button id="refImport" class="ghost" style="width:100%">Importer</button></div>
@@ -152,7 +155,7 @@
 
     <div style="margin-top:16px" class="row">
       <button id="settingsBtn" class="ghost grow">⚙️ Paramètres</button>
-      <button id="helpBtn" class="ghost">❓</button>
+      <button id="helpBtn" class="ghost" aria-label="Aide">❓</button>
     </div>
     <div style="margin-top:8px"><button id="lockBtn" class="ghost" style="width:100%">🔒 Verrouiller</button></div>
   </aside>
@@ -188,6 +191,7 @@
       <button class="ghost" id="expDocx">⬇ Word</button>
       <button class="ghost" id="expMd">⬇ Markdown</button>
       <button class="ghost" id="copyBilan">Copier</button>
+      <span class="status" id="copyStatus"></span>
     </div>
   </section>
 </main>
@@ -369,7 +373,7 @@
       <h3>5. Relisez, validez, exportez</h3>
       <p>Chaque rubrique proposée par l'IA est marquée « à valider » : <b>vous relisez, corrigez et validez</b> — vous restez seul(e) responsable du contenu. Puis cotez (NGAP), exportez en Word ou Markdown, et marquez le bilan « validé » puis « envoyé » (le destinataire est tracé).</p>
       <h3>Vos bilans de référence (votre style)</h3>
-      <p>Importez vos propres bilans (PDF, Word .docx, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Les PDF scannés nécessitent Tesseract (<code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>).</p>
+      <p>Importez vos propres bilans (PDF, Word .docx, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Les PDF scannés nécessitent Tesseract : sous Windows, utilisez l'installeur UB-Mannheim (<code>github.com/UB-Mannheim/tesseract</code>) puis relancez l'import ; sous Linux : <code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>.</p>
       <h3>Confidentialité & sauvegardes</h3>
       <p>Tout est chiffré (SQLCipher) et tout tourne en local : aucune donnée ne quitte votre machine. L'application se verrouille seule après inactivité. Pensez à votre passphrase : elle est <b>irrécupérable</b>.</p>
       <p>Une <b>sauvegarde chiffrée</b> du coffre est créée automatiquement au déverrouillage (par défaut : au plus tous les 7 jours) ; configurez le dossier dans ⚙️ Paramètres — idéalement sur un autre support (clé USB). Supprimer un patient efface définitivement tous ses bilans (droit à l'effacement).</p>
@@ -518,6 +522,13 @@ async function pullUn(modele, base, part) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ modele }),
   });
+  if (!r.ok) {
+    // Réponse d'erreur (400/500…) : pas un flux NDJSON — lire le détail JSON
+    // plutôt que de crasher sur getReader().
+    let detail = '';
+    try { detail = (await r.json()).detail || ''; } catch {}
+    throw new Error(detail || `erreur serveur (${r.status})`);
+  }
   const lecteur = r.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
@@ -547,8 +558,15 @@ document.getElementById('instPull').addEventListener('click', async () => {
     for (let i = 0; i < manquants.length; i++)
       await pullUn(manquants[i], i / manquants.length, 1 / manquants.length);
     document.getElementById('instBarre').style.width = '100%';
-    st.textContent = '✅ Téléchargement terminé.';
+    // Ne déclarer le succès qu'une fois la présence des modèles confirmée
+    // par le serveur (un flux interrompu peut se terminer sans erreur).
+    st.textContent = 'Vérification…';
     await recheckInstall();
+    const restants = modelesManquants(INST || {});
+    st.textContent = restants.length
+      ? '⚠️ Téléchargement incomplet — réessayez.'
+      : '✅ Téléchargement terminé.';
+    if (restants.length) btn.disabled = false;
   } catch (e) { st.textContent = 'Erreur : ' + e.message; btn.disabled = false; }
 });
 async function doUnlock() {
@@ -557,12 +575,25 @@ async function doUnlock() {
   if (!p) { lockErr.textContent = 'Passphrase requise.'; return; }
   if (!pass2.hidden && p !== pass2.value) { lockErr.textContent = 'Les passphrases ne correspondent pas.'; return; }
   unlockBtn.disabled = true;
+  // Le déverrouillage (dérivation de clé + sauvegarde auto) peut durer
+  // plusieurs secondes : l'attente est signalée sur le bouton lui-même.
+  const libelle = unlockBtn.textContent;
+  unlockBtn.textContent = 'Déverrouillage…';
   try {
     await api('/api/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: p }) });
     pass.value = ''; pass2.value = ''; overlay.hidden = true; startApp();
-  } catch (e) { lockErr.textContent = e.message; } finally { unlockBtn.disabled = false; }
+  } catch (e) { lockErr.textContent = e.message; }
+  finally { unlockBtn.disabled = false; unlockBtn.textContent = libelle; }
 }
 unlockBtn.addEventListener('click', doUnlock);
+document.getElementById('passEye').addEventListener('click', () => {
+  const montrer = pass.type === 'password';
+  pass.type = pass2.type = montrer ? 'text' : 'password';
+  const b = document.getElementById('passEye');
+  b.textContent = montrer ? '🙈' : '👁';
+  b.title = montrer ? 'Masquer la passphrase' : 'Afficher la passphrase';
+  b.setAttribute('aria-label', b.title);
+});
 pass.addEventListener('keydown', e => { if (e.key === 'Enter' && pass2.hidden) doUnlock(); });
 pass2.addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); });
 document.getElementById('lockBtn').addEventListener('click', async () => {
@@ -658,7 +689,7 @@ async function loadRefs() {
     const list = await (await api('/api/references')).json();
     const el = document.getElementById('refList');
     el.innerHTML = list.length ? list.map(r =>
-      `<a href="#"><span data-open>${escapeHtml(r.titre || 'extrait')} <span class="muted">(${r.section_cle})</span></span><span class="delref" data-id="${r.id}" role="button" tabindex="0" aria-label="Supprimer la référence ${escapeHtml(r.titre || 'extrait')}" style="float:right;cursor:pointer">✕</span></a>`).join('') : 'Aucun.';
+      `<a href="#"><span data-open>${escapeHtml(r.titre || 'extrait')} <span class="muted">(${escapeHtml(r.section_cle || '')})</span></span><span class="delref" data-id="${r.id}" role="button" tabindex="0" aria-label="Supprimer la référence ${escapeHtml(r.titre || 'extrait')}" style="float:right;cursor:pointer">✕</span></a>`).join('') : 'Aucun.';
     el.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.preventDefault()));
     el.querySelectorAll('.delref').forEach(x => x.addEventListener('click', async e => {
       e.preventDefault(); e.stopPropagation();
@@ -687,7 +718,7 @@ async function loadDomaines() {
   try {
     const doms = await (await api('/api/domaines')).json();
     sel.innerHTML = '<option value="">Générique (tronc commun)</option>' +
-      doms.map(d => `<option value="${d.cle}">${d.titre}</option>`).join('');
+      doms.map(d => `<option value="${escapeHtml(d.cle)}">${escapeHtml(d.titre)}</option>`).join('');
   } catch { sel.innerHTML = '<option value="">Générique (tronc commun)</option>'; }
 }
 async function loadLLM() {
@@ -696,7 +727,7 @@ async function loadLLM() {
     const { models, default: def } = await (await api('/api/models')).json();
     const cfg = await (await api('/api/config')).json();
     const cur = cfg.llm.model;
-    sel.innerHTML = models.map(m => `<option ${m === cur ? 'selected' : ''}>${m}</option>`).join('') || `<option>${cur}</option>`;
+    sel.innerHTML = models.map(m => `<option ${m === cur ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('') || `<option>${escapeHtml(cur)}</option>`;
   } catch { sel.innerHTML = '<option>Ollama injoignable</option>'; }
 }
 document.getElementById('llmModel').addEventListener('change', async e => {
@@ -728,7 +759,7 @@ async function loadRecents() {
     const el = document.getElementById('recents');
     el.innerHTML = (list.length ? list.map(b => {
       const pat = b.patient_nom ? `${(b.patient_nom || '').toUpperCase()} ${b.patient_prenom || ''}`.trim() + ' · ' : '';
-      return `<a href="#" data-id="${b.id}">#${b.id} · ${escapeHtml(pat)}${b.domaine_titres || 'Générique'} <span class="muted">(${b.statut})</span></a>`;
+      return `<a href="#" data-id="${b.id}">#${b.id} · ${escapeHtml(pat)}${escapeHtml(b.domaine_titres || 'Générique')} <span class="muted">(${escapeHtml(b.statut || '')})</span></a>`;
     }).join('') : '—') +
       (list.length >= RECENTS_LIMIT ? '<a href="#" data-plus>… afficher plus</a>' : '');
     el.querySelectorAll('a[data-id]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); loadBilan(a.dataset.id); }));
@@ -754,8 +785,8 @@ async function setStatut(statut) {
     CUR = await r.json(); renderBilan(); loadRecents();
   } catch (e) { document.getElementById('coteInfo').textContent = 'Erreur : ' + e.message; }
 }
-document.getElementById('valideBtn').addEventListener('click', () => setStatut('valide'));
-document.getElementById('envoyeBtn').addEventListener('click', () => setStatut('envoye'));
+document.getElementById('valideBtn').addEventListener('click', e => avecBouton(e.target, () => setStatut('valide')));
+document.getElementById('envoyeBtn').addEventListener('click', e => avecBouton(e.target, () => setStatut('envoye')));
 function renderBilan() {
   curLabel();
   const root = document.getElementById('bilanView');
@@ -774,9 +805,9 @@ function renderBilan() {
   SEC_RENDERED = {}; SEC_BILAN = CUR ? CUR.id : null;
   if (!CUR) { root.innerHTML = '<div class="bilan-empty">Créez un nouveau bilan pour commencer.</div>'; return; }
   const sectionsHtml = CUR.sections.map(s => `
-    <div class="sec" data-cle="${s.cle}">
+    <div class="sec" data-cle="${escapeHtml(s.cle)}">
       <div class="head">
-        <h3>${s.titre} <span class="badge ${s.statut}">${badgeLabel(s.statut)}</span></h3>
+        <h3>${escapeHtml(s.titre)} <span class="badge ${escapeHtml(s.statut)}">${badgeLabel(s.statut)}</span></h3>
         <button class="valider">Valider</button>
       </div>
       <div class="body">
@@ -794,8 +825,8 @@ function renderBilan() {
       ta.value = drafts[cle];
       sec.querySelector('.savest').textContent = '⚠️ modifications non enregistrées';
     }
-    sec.querySelector('.save').addEventListener('click', () => saveSection(cle, ta.value, null, sec));
-    sec.querySelector('.valider').addEventListener('click', () => saveSection(cle, ta.value, 'valide', sec));
+    sec.querySelector('.save').addEventListener('click', e => avecBouton(e.target, () => saveSection(cle, ta.value, null, sec)));
+    sec.querySelector('.valider').addEventListener('click', e => avecBouton(e.target, () => saveSection(cle, ta.value, 'valide', sec)));
   });
   document.getElementById('epAdd').addEventListener('click', e => avecBouton(e.target, addEpreuve));
   marquerStatuts(); // les statuts recréés (savest, epStatus) restent annoncés
@@ -846,7 +877,7 @@ async function loadTestList() {
   if (!dom) { dl.innerHTML = ''; return; }
   try {
     const cat = await (await api('/api/catalogues/' + dom)).json();
-    dl.innerHTML = (cat.tests || []).map(t => `<option value="${t.nom}">${t.mesure}</option>`).join('');
+    dl.innerHTML = (cat.tests || []).map(t => `<option value="${escapeHtml(t.nom || '')}">${escapeHtml(t.mesure || '')}</option>`).join('');
   } catch {}
 }
 
@@ -877,19 +908,29 @@ async function saveSection(cle, contenu, statut, sec) {
     st.textContent = '✓';
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }
-document.getElementById('copyBilan').addEventListener('click', () => {
+let copyTimer = null;
+document.getElementById('copyBilan').addEventListener('click', async () => {
+  if (!CUR) return;
+  const st = document.getElementById('copyStatus');
   const txt = CUR.sections.filter(s => (s.contenu || '').trim())
     .map(s => s.titre.toUpperCase() + '\n\n' + s.contenu.trim()).join('\n\n');
-  navigator.clipboard.writeText(txt);
+  try {
+    await navigator.clipboard.writeText(txt);
+    st.textContent = '✓ Copié dans le presse-papiers';
+  } catch {
+    st.textContent = 'Copie impossible — sélectionnez le texte à la main.';
+  }
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => { st.textContent = ''; }, 4000);
 });
-document.getElementById('coteBtn').addEventListener('click', async () => {
+document.getElementById('coteBtn').addEventListener('click', e => avecBouton(e.target, async () => {
   if (!CUR) return;
   const info = document.getElementById('coteInfo'); info.textContent = '…';
   try {
     const c = await (await api(`/api/bilans/${CUR.id}/cotation`, { method: 'POST' })).json();
     CUR.cotation = c; info.textContent = `${c.code_amo} · ${c.montant} €`;
   } catch (e) { info.textContent = 'Erreur : ' + e.message; }
-});
+}));
 document.getElementById('expDocx').addEventListener('click', () => { if (CUR) window.open(`/api/bilans/${CUR.id}/export?format=docx`); });
 document.getElementById('expMd').addEventListener('click', () => { if (CUR) window.open(`/api/bilans/${CUR.id}/export?format=md`); });
 
@@ -1118,7 +1159,11 @@ async function toggleRec() {
   recording = true; recBtn.textContent = '■ Arrêter'; recBtn.classList.add('rec'); recStatus.textContent = 'Enregistrement…';
 }
 recBtn.addEventListener('click', toggleRec);
-document.getElementById('dicteeClear').addEventListener('click', () => { dicteeText.value = ''; });
+document.getElementById('dicteeClear').addEventListener('click', () => {
+  if (dicteeText.value.trim()
+      && !confirm('Effacer la dictée non structurée ? Ce texte sera perdu.')) return;
+  dicteeText.value = '';
+});
 
 function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -1183,15 +1228,16 @@ function fillSettings(c) {
       : 'Aucune sauvegarde pour le moment.';
   }).catch(() => {});
 }
-document.getElementById('sauvBtn').addEventListener('click', async () => {
+document.getElementById('sauvBtn').addEventListener('click', e => avecBouton(e.target, async () => {
+  // avecBouton : chaque clic crée un fichier de sauvegarde — un double-clic
+  // en créerait deux.
   const st = $('sauvStatus'); st.textContent = 'Sauvegarde…';
   try {
     const r = await api('/api/sauvegarde', { method: 'POST' });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
     const s = await r.json();
     st.textContent = `✓ ${s.fichier.split('/').pop()} (${Math.round(s.octets / 1024)} Ko)`;
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
-});
+}));
 // L'éditeur « Avancé » n'affiche que les SURCHARGES du praticien (jamais la
 // config effective) : réenregistrer les défauts les figeait en surcharges et
 // les mises à jour de l'application n'atteignaient plus l'utilisateur (audit).
@@ -1224,7 +1270,10 @@ function collectSettings() {
   const num = v => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
   let advanced;
   try { advanced = JSON.parse($('cfgAdvanced').value || '{}'); }
-  catch { throw new Error('le JSON de la section « Avancé » est invalide.'); }
+  catch (err) {
+    throw new Error('le JSON de la section « Avancé » est invalide'
+      + positionJsonInvalide(err, $('cfgAdvanced').value) + '.');
+  }
   return {
     llm: { model: $('cfgLlmModel').value.trim(), temperature: num($('cfgLlmTemp').value) },
     stt: {
@@ -1269,8 +1318,25 @@ document.getElementById('cfgSave').addEventListener('click', async () => {
     loadLLM(); initDictee();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 });
+// Position lisible extraite du message d'un SyntaxError de JSON.parse
+// (« at line L column C » ou « at position N » selon le navigateur) pour
+// guider la correction dans la zone Avancé.
+function positionJsonInvalide(err, texte) {
+  const msg = (err && err.message) || '';
+  let m = /line (\d+) column (\d+)/.exec(msg);
+  if (m) return ` (ligne ${m[1]}, colonne ${m[2]})`;
+  m = /position (\d+)/.exec(msg);
+  if (m) {
+    const avant = texte.slice(0, +m[1]);
+    const ligne = avant.split('\n').length;
+    const colonne = avant.length - avant.lastIndexOf('\n');
+    return ` (ligne ${ligne}, colonne ${colonne})`;
+  }
+  return '';
+}
 document.getElementById('cfgReset').addEventListener('click', async () => {
-  if (!confirm('Rétablir tous les paramètres par défaut ?')) return;
+  if (!confirm('Cela efface vos réglages personnalisés : vocabulaire, corrections, '
+      + 'seuils, cotation, trame, catalogues et prompts. Continuer ?')) return;
   const st = $('cfgStatus');
   try {
     const r = await api('/api/config', { method: 'DELETE' });

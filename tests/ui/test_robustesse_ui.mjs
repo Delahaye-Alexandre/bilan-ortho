@@ -47,6 +47,7 @@ let sectionPuts = [];
 let sectionResponder = () => ({});
 let holdNext = null;    // promesse pour tester l'état « en vol »
 let reseauCoupe = false; // simule un serveur injoignable
+let sauvegardeCalls = 0;
 
 const rep = (r) => r && r.__status
   ? { ok: false, status: r.__status, statusText: "ERR", json: async () => ({ detail: r.detail }) }
@@ -91,6 +92,11 @@ globalThis.fetch = async (p, o = {}) => {
   }
   if (url.includes("/api/config/overrides")) return rep(structuredClone(OVERRIDES));
   if (url.includes("/api/config")) return rep(structuredClone(CFG));
+  if (url.includes("/api/sauvegarde") && o.method === "POST") {
+    sauvegardeCalls++;
+    if (holdNext) await holdNext;
+    return rep({ fichier: "sauvegardes/bilan-ortho-sauvegarde-t.db", octets: 4096 });
+  }
   return { ok: true, status: 200, json: async () => ({}) };
 };
 
@@ -265,6 +271,73 @@ await __t.loadRecents();
 const lien = document.querySelector("#recents a[data-id]");
 check("a11y : lien de bilan récent focusable au clavier (href)",
   lien !== null && lien.getAttribute("href") === "#");
+
+// === 12. Effacer la dictée : confirmation si du texte serait perdu ===========
+let confirmCalls = [];
+let confirmReponse = false;
+globalThis.confirm = (msg) => { confirmCalls.push(msg); return confirmReponse; };
+document.getElementById("dicteeText").value = "texte précieux";
+document.getElementById("dicteeClear").click();
+check("effacer avec texte : confirmation demandée", confirmCalls.length === 1);
+check("effacer refusé : le texte est intact",
+  document.getElementById("dicteeText").value === "texte précieux");
+confirmReponse = true;
+document.getElementById("dicteeClear").click();
+check("effacer confirmé : champ vidé", document.getElementById("dicteeText").value === "");
+confirmCalls = [];
+document.getElementById("dicteeClear").click();
+check("effacer un champ déjà vide : pas de confirmation", confirmCalls.length === 0);
+
+// === 13. Copier le bilan : retour visuel =====================================
+let copie = null;
+try {
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: async (t) => { copie = t; } }, configurable: true,
+  });
+} catch {
+  navigator.clipboard = { writeText: async (t) => { copie = t; } };
+}
+__t.CUR = structuredClone(CUR0);
+__t.renderBilan();
+document.getElementById("copyBilan").click();
+await settle();
+check("copier : le contenu des rubriques est copié",
+  copie !== null && copie.includes("Texte initial."));
+check("copier : statut ✓ affiché",
+  document.getElementById("copyStatus").textContent.includes("Copié"));
+Object.defineProperty(navigator, "clipboard", {
+  value: { writeText: async () => { throw new Error("refus navigateur"); } },
+  configurable: true,
+});
+document.getElementById("copyBilan").click();
+await settle();
+check("copier en échec : message d'erreur français",
+  document.getElementById("copyStatus").textContent.includes("impossible"));
+
+// === 14. Double-clic « Sauvegarder maintenant » : un seul fichier créé =======
+sauvegardeCalls = 0;
+holdNext = new Promise((r) => setTimeout(r, 60));
+document.getElementById("sauvBtn").click();
+document.getElementById("sauvBtn").click();
+await new Promise((r) => setTimeout(r, 100));
+holdNext = null;
+check("double-clic sauvegarde : un seul POST", sauvegardeCalls === 1);
+check("sauvegarde : nom du fichier affiché",
+  document.getElementById("sauvStatus").textContent.includes("bilan-ortho-sauvegarde"));
+
+// === 15. Échappement : un titre de section hostile ne casse rien =============
+const bx = structuredClone(CUR0);
+bx.id = "bx"; // id distinct : les brouillons des scénarios précédents ne s'appliquent pas
+bx.sections[0].titre = 'Anamnèse"<b>piège</b>';
+__t.CUR = bx;
+__t.renderBilan();
+check("échappement : aucun élément HTML injecté via le titre",
+  document.querySelector("#bilanView .sec .head h3 b") === null);
+check("échappement : le titre est affiché tel quel",
+  document.querySelector('#bilanView .sec[data-cle="anamnese"] h3')
+    .textContent.includes('Anamnèse"<b>piège</b>'));
+check("échappement : data-cle reste exploitable (rubrique retrouvée)",
+  secTa("anamnese") !== null && secTa("anamnese").value === "Texte initial.");
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);
