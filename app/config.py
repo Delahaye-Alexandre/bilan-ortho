@@ -168,6 +168,13 @@ DEFAULTS: dict[str, Any] = {
         "retention": 10,           # nb de copies conservées (rotation)
         "auto_jours": 7,           # auto au déverrouillage si plus ancienne ; 0 = off
     },
+    "maj": {
+        # Vérification des mises à jour au démarrage (opt-in — désactivée par
+        # défaut) : un simple GET vers GitHub Releases, aucune donnée transmise
+        # (voir app/maj.py). Le bouton « Vérifier maintenant » des Paramètres
+        # reste disponible quel que soit ce réglage.
+        "verification_auto": False,
+    },
     "style": {
         "few_shot_k": 4,           # nb d'extraits du praticien réinjectés (RAG)
         "vouvoiement": True,

@@ -33,7 +33,11 @@
 - **Contrôle d'accès** : passphrase + **verrouillage automatique sur inactivité**
   (`rgpd.verrouillage_inactivite_minutes`).
 - **Journalisation** : table `audit_log` (déverrouillages, actions).
-- **Réseau** : service lié à `127.0.0.1` ; aucun appel réseau sortant.
+- **Réseau** : service lié à `127.0.0.1` ; aucun appel réseau sortant dans le
+  traitement des données. Seule exception, hors traitement : la vérification de
+  mise à jour (`app/maj.py`) — un GET vers l'API GitHub Releases, déclenché
+  manuellement ou via une option opt-in (désactivée par défaut), sans aucune
+  donnée personnelle transmise.
 - À la charge du praticien : chiffrement du disque (LUKS/BitLocker), sauvegardes
   chiffrées conservées hors du cabinet, antivirus/pare-feu à jour.
 

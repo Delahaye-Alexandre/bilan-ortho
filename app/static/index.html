@@ -131,6 +131,13 @@
   ⚠️ Aide à la rédaction. L'IA <b>propose</b> ; vous <b>relisez, corrigez et validez</b> chaque rubrique.
   L'outil ne pose aucun diagnostic : vous restez responsable du contenu.
 </div>
+<div class="banner" id="majBanner" hidden>
+  ⬆️ Nouvelle version disponible : <b>v<span id="majVersion"></span></b>
+  (installée : v<span id="majActuelle"></span>).
+  L'installation est un geste manuel : téléchargez puis lancez l'installeur — vos données sont préservées.
+  <button class="ghost" id="majOuvrir" style="margin-left:8px">⬇ Télécharger</button>
+  <button class="close" data-close="majBanner" aria-label="Masquer la notification de mise à jour" style="float:right">✕</button>
+</div>
 
 <main>
   <aside class="side">
@@ -284,6 +291,15 @@
         <div class="muted" style="margin-top:8px">L'audio de dictée est toujours supprimé après transcription (non désactivable).</div>
       </fieldset>
       <fieldset>
+        <legend>Mises à jour de l'application</legend>
+        <label class="check"><input type="checkbox" id="cfgMajAuto"> Vérifier au démarrage qu'une nouvelle version existe</label>
+        <div class="row" style="margin-top:8px">
+          <button id="majCheck" class="ghost">↻ Vérifier maintenant</button>
+          <span class="status" id="majStatus"></span>
+        </div>
+        <div class="muted">Seul échange réseau de l'application : une simple interrogation de la page des versions du projet (GitHub), sans aucune donnée transmise. Vos données de patients ne quittent jamais cette machine. L'installation d'une mise à jour reste toujours un geste manuel.</div>
+      </fieldset>
+      <fieldset>
         <legend>Sauvegarde du coffre (chiffrée)</legend>
         <div class="grid3">
           <div><label for="cfgSauvDossier">Dossier (vide = données/sauvegardes)</label><input id="cfgSauvDossier" placeholder="ex. /mnt/usb/bilan-ortho"></div>
@@ -431,6 +447,7 @@
       <p>Importez vos propres bilans (PDF, Word .docx, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Les PDF scannés nécessitent Tesseract : sous Windows, utilisez l'installeur UB-Mannheim (<code>github.com/UB-Mannheim/tesseract</code>) puis relancez l'import ; sous Linux : <code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>.</p>
       <h3>Confidentialité & sauvegardes</h3>
       <p>Tout est chiffré (SQLCipher) et tout tourne en local : aucune donnée ne quitte votre machine. L'application se verrouille seule après inactivité. Pensez à votre passphrase : elle est <b>irrécupérable</b>.</p>
+      <p>Seule exception réseau, transparente et sans aucune donnée transmise : la <b>vérification de mise à jour</b> (⚙️ Paramètres → Mises à jour) interroge la page des versions du projet sur GitHub — uniquement quand vous cliquez « Vérifier maintenant », ou au démarrage si vous avez coché l'option (décochée par défaut).</p>
       <p>Une <b>sauvegarde chiffrée</b> du coffre est créée automatiquement au déverrouillage (par défaut : au plus tous les 7 jours) ; configurez le dossier dans ⚙️ Paramètres — idéalement sur un autre support (clé USB). Pour revenir à une sauvegarde : ⚙️ Paramètres → Sauvegarde du coffre → « Restaurer… » (une copie de vos données actuelles est créée avant). Supprimer un patient efface définitivement tous ses bilans (droit à l'effacement).</p>
     </div>
   </div>
@@ -672,6 +689,7 @@ async function startApp() {
     } catch {}
   }
   await Promise.all([loadDomaines(), loadLLM(), initDictee(), loadRecents(), loadRefs(), loadPatients()]);
+  verifierMajAuto();
 }
 
 // ---------- Patients ----------
@@ -1368,6 +1386,7 @@ function fillSettings(c) {
   $('cfgRgpdDictee').value = c.rgpd.dictee_max_minutes;
   $('cfgSauvDossier').value = c.sauvegarde.dossier || ''; $('cfgSauvRet').value = c.sauvegarde.retention;
   $('cfgSauvAuto').value = c.sauvegarde.auto_jours;
+  $('cfgMajAuto').checked = !!(c.maj || {}).verification_auto;
   api('/api/sauvegardes').then(r => r.json()).then(s => {
     $('sauvStatus').textContent = s.derniere
       ? `Dernière : ${s.derniere} UTC (${s.fichiers.length} copie${s.fichiers.length > 1 ? 's' : ''})`
@@ -1420,6 +1439,41 @@ document.getElementById('sauvBtn').addEventListener('click', e => avecBouton(e.t
     const s = await r.json();
     st.textContent = `✓ ${s.fichier.split('/').pop()} (${Math.round(s.octets / 1024)} Ko)`;
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+}));
+// --- Mise à jour de l'application ---------------------------------------------
+// Seul appel réseau externe de l'app (un GET vers GitHub, rien n'est envoyé) :
+// déclenché par le bouton des Paramètres, ou au démarrage si l'option opt-in
+// est activée. L'URL de téléchargement est construite par le serveur (jamais
+// reprise de la réponse GitHub) — on n'ouvre pas une URL venue d'un tiers.
+let MAJ_URL = '';
+async function verifierMaj() {
+  const m = await (await api('/api/maj')).json();
+  if (m.maj_disponible) {
+    MAJ_URL = m.url;
+    $('majVersion').textContent = m.version_disponible;
+    $('majActuelle').textContent = m.version_actuelle;
+    $('majBanner').hidden = false;
+  }
+  return m;
+}
+async function verifierMajAuto() {
+  // Vérification opt-in du démarrage : jamais bloquante, jamais d'erreur visible.
+  try {
+    const c = await (await api('/api/config')).json();
+    if ((c.maj || {}).verification_auto) await verifierMaj();
+  } catch {}
+}
+document.getElementById('majOuvrir').addEventListener('click', () => {
+  if (MAJ_URL) window.open(MAJ_URL, '_blank');
+});
+document.getElementById('majCheck').addEventListener('click', e => avecBouton(e.target, async () => {
+  const st = $('majStatus'); statutOccupe(st, 'Vérification…');
+  try {
+    const m = await verifierMaj();
+    st.textContent = m.maj_disponible
+      ? `Version ${m.version_disponible} disponible — voir le bandeau en haut de page.`
+      : `✓ Vous êtes à jour (v${m.version_actuelle}).`;
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
 }));
 // --- Éditeurs dédiés : trame, catalogues, consigne de structuration -----------
 // Règle produit (héritée de l'ancien éditeur JSON) : ne JAMAIS figer les
@@ -1801,6 +1855,7 @@ function collectSettings() {
       retention: num($('cfgSauvRet').value),
       auto_jours: num($('cfgSauvAuto').value),
     },
+    maj: { verification_auto: $('cfgMajAuto').checked },
   };
 }
 document.getElementById('cfgSave').addEventListener('click', async () => {

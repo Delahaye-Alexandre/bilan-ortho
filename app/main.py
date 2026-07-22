@@ -35,6 +35,7 @@ from . import (
     export,
     importer,
     llm,
+    maj,
     patient,
     prompts,
     rag,
@@ -48,6 +49,7 @@ from .models import (
     CatalogueDomaine,
     ConfigPatch,
     EpreuveCreate,
+    MajResponse,
     OkResponse,
     PatientIn,
     PromptRemplacement,
@@ -226,6 +228,21 @@ async def get_config_overrides() -> dict:
 @app.get("/api/domaines")
 async def get_domaines() -> list[dict]:
     return config.DOMAINES
+
+
+# --- Mise à jour de l'application ---------------------------------------------
+
+@app.get("/api/maj")
+async def verifier_maj() -> MajResponse:
+    """Compare la version en cours à la dernière release GitHub publiée.
+
+    Pas de dépendance au coffre (aucune donnée patient) : comme /api/status,
+    la route répond même verrouillée. Elle n'est appelée que sur action de
+    l'utilisateur, ou au démarrage si l'option opt-in est activée."""
+    try:
+        return MajResponse(**await maj.verifier())
+    except maj.MajIndisponible as e:
+        raise HTTPException(503, str(e))
 
 
 # Routes des éditeurs dédiés (Paramètres) : remplacement EN BLOC d'une section.

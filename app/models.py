@@ -54,6 +54,15 @@ class OkResponse(BaseModel):
     detail: str = ""
 
 
+class MajResponse(BaseModel):
+    """Résultat de la vérification de mise à jour (app/maj.py)."""
+
+    version_actuelle: str
+    version_disponible: str
+    maj_disponible: bool
+    url: str
+
+
 # --- Configuration -----------------------------------------------------------
 #
 # Les surcharges sont validées : une valeur mal typée (« 15 » au lieu de 15)
@@ -155,6 +164,10 @@ class PromptsPatch(_SectionPatch):
     structure_system: str | None = None
 
 
+class MajPatch(_SectionPatch):
+    verification_auto: bool | None = None
+
+
 class OverridesPatch(_SectionPatch):
     llm: LlmPatch | None = None
     stt: SttPatch | None = None
@@ -167,6 +180,7 @@ class OverridesPatch(_SectionPatch):
     trame: TramePatch | None = None
     catalogues: dict | None = None
     prompts: PromptsPatch | None = None
+    maj: MajPatch | None = None
 
 
 class ConfigPatch(BaseModel):
