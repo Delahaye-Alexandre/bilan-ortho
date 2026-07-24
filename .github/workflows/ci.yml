@@ -6,8 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
 
+# Moindre privilège : lecture seule par défaut. Le workflow tourne aussi sur
+# les pull requests — sur un dépôt public, n'importe qui peut en ouvrir une.
+# Seul le job qui publie la release demande l'écriture.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   lint:
@@ -64,6 +67,8 @@ jobs:
   build-windows:
     needs: [tests, tests-ui, lint]
     runs-on: windows-latest
+    permissions:
+      contents: write  # `gh release create` sur tag (étape « Release publiée »)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

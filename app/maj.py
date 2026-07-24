@@ -23,6 +23,14 @@ URL_API_RELEASE = f"https://api.github.com/repos/{DEPOT_GITHUB}/releases/latest"
 URL_TELECHARGEMENT = f"https://github.com/{DEPOT_GITHUB}/releases/latest"
 TIMEOUT_S = 5
 
+# Deux causes d'échec bien distinctes — ne jamais affirmer au praticien qu'il
+# est hors ligne alors que sa connexion fonctionne.
+MSG_INJOIGNABLE = "Vérification impossible : hors ligne, ou GitHub injoignable."
+MSG_AUCUNE_RELEASE = (
+    "Aucune version publiée n'est accessible pour le moment. "
+    "Votre installation reste fonctionnelle ; réessayez plus tard."
+)
+
 
 class MajIndisponible(Exception):
     """La vérification n'a pas abouti (hors ligne, GitHub injoignable…)."""
@@ -60,10 +68,15 @@ async def derniere_version() -> str:
             )
             r.raise_for_status()
             return str(r.json().get("tag_name") or "")
+    except httpx.HTTPStatusError as e:
+        # 404 : le dépôt n'a aucune release publiée, ou n'est pas accessible
+        # sans authentification. La connexion, elle, fonctionne — le dire.
+        # (Sous-classe de HTTPError : ce cas doit rester avant le suivant.)
+        if e.response.status_code == 404:
+            raise MajIndisponible(MSG_AUCUNE_RELEASE) from e
+        raise MajIndisponible(MSG_INJOIGNABLE) from e
     except (httpx.HTTPError, ValueError) as e:
-        raise MajIndisponible(
-            "Vérification impossible : hors ligne, ou GitHub injoignable."
-        ) from e
+        raise MajIndisponible(MSG_INJOIGNABLE) from e
 
 
 async def verifier() -> dict:

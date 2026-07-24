@@ -194,11 +194,16 @@ Le dépôt GitHub (`Delahaye-Alexandre/bilan-ortho`) construit tout via
 Actions : tests sur Windows + Linux, binaire PyInstaller (`lanceur.py` →
 `dist/BilanOrtho/`), fumage du binaire, installeur Inno Setup
 (`packaging/windows/installeur.iss`, installation par utilisateur sans
-droits admin). Un tag `v*` publie une **Release draft** avec l'installeur —
-à partager en privé avec les personnes qui testent l'application,
-accompagné de `docs/guide-test.md` (SmartScreen, premier lancement guidé,
+droits admin). Un tag `v*` **publie** la Release avec son installeur sur la
+[page des versions](https://github.com/Delahaye-Alexandre/bilan-ortho/releases),
+accompagnée de `docs/guide-test.md` (SmartScreen, premier lancement guidé,
 parcours d'essai). Les données vivent dans `%LOCALAPPDATA%\bilan-ortho` (préservées à
 la désinstallation).
+
+> **Publier la release, ne pas la laisser en brouillon.** L'API
+> `releases/latest` ignore les brouillons : la vérification de mise à jour
+> intégrée à l'application (`app/maj.py`) ne verrait pas la nouvelle version,
+> et les personnes déjà équipées ne sauraient pas qu'elle existe.
 
 ## Licence & engagements
 

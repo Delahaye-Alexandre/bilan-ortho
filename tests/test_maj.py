@@ -60,14 +60,26 @@ def test_derniere_version_nominale(monkeypatch):
     "reponse",
     [
         httpx.ConnectError("réseau coupé"),
-        httpx.Response(404, json={"message": "Not Found"}),  # aucune release publiée
+        httpx.Response(500, json={"message": "Server Error"}),  # panne côté GitHub
         httpx.Response(200, content=b"pas du JSON"),
     ],
 )
 def test_derniere_version_indisponible(monkeypatch, reponse):
     _client_mocke(monkeypatch, reponse)
-    with pytest.raises(maj.MajIndisponible):
+    with pytest.raises(maj.MajIndisponible, match="hors ligne"):
         asyncio.run(maj.derniere_version())
+
+
+def test_derniere_version_404_ne_dit_pas_hors_ligne(monkeypatch):
+    """404 = aucune release publiée, ou dépôt non accessible sans compte.
+
+    La connexion fonctionne : l'application ne doit pas affirmer le contraire
+    à la personne qui l'utilise (cas vécu tant que le dépôt était privé)."""
+    _client_mocke(monkeypatch, httpx.Response(404, json={"message": "Not Found"}))
+    with pytest.raises(maj.MajIndisponible) as e:
+        asyncio.run(maj.derniere_version())
+    assert str(e.value) == maj.MSG_AUCUNE_RELEASE
+    assert "hors ligne" not in str(e.value)
 
 
 # --- Route /api/maj -------------------------------------------------------------
