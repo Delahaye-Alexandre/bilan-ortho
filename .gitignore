@@ -22,6 +22,10 @@ bilans/
 # Documents internes — volontairement hors dépôt (décision 2026-07-17)
 docs/business-plan.md
 docs/audit-2026-07-17.md
+docs/plan-correction-audit-2026-07-21.md
+
+# Index d'outillage local (généré, propre à la machine)
+.codegraph/
 
 # Artefacts de build (générés)
 packaging/windows/BilanOrtho.exe
