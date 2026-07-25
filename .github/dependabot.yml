@@ -18,6 +18,12 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # Les planchers de `requirements.txt` sont volontairement souples : les
+    # relever à chaque sortie amont n'apporte rien et noie les propositions
+    # utiles. Ici, la contrainte du manifeste n'est touchée que si la nouvelle
+    # version en sort — les versions épinglées du verrou, elles, sont toujours
+    # proposées, et ce sont elles qui déterminent le logiciel construit.
+    versioning-strategy: increase-if-necessary
     commit-message:
       prefix: "Dépendances"
     groups:

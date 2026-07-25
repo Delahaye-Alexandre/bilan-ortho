@@ -167,6 +167,12 @@ jobs:
           name: BilanOrtho-Setup
           path: packaging/windows/Output/*.exe
           if-no-files-found: error
+          # L'installeur pèse ~71 Mo et chaque push en produit un : à 90 jours
+          # de rétention (défaut), le quota de stockage Actions sature et
+          # l'upload échoue — donc aussi la publication de release, qui vient
+          # juste après. Les installeurs qui comptent vivent dans les Releases
+          # (stockage séparé) ; ces copies ne servent qu'à dépanner un build.
+          retention-days: 7
       - name: Release publiée (sur tag)
         # Publication directe (plus de --draft) : la vérification de mise à jour
         # de l'app (app/maj.py) interroge releases/latest, qui ignore les
