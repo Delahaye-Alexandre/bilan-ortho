@@ -152,7 +152,8 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Formulation genrée dans tous les exports** : « seul responsable du contenu » subsistait dans `export.DISCLAIMER`, donc dans chaque .docx/.md/.txt transmis au prescripteur — le nettoyage du 25/07 n'avait touché que le README et l'écran d'aide.
   - **Perte silencieuse du style du praticien** : l'échec de la réinjection RAG était avalé par un `except Exception` muet. Le style est l'argument central du produit ; le voir cesser sans un mot laissait croire à une IA qui rédige moins bien sans cause visible. Cause désormais journalisée et signalée dans l'UI (`style_indisponible`, sur le modèle de `rubriques_tronquees`) — mais **seulement** aux praticiens ayant réellement importé des bilans de référence, pour ne pas créer de bruit.
   - **`/api/models` ignorait la config** : la route interrogeait la constante `OLLAMA_HOST` du module et annonçait son modèle par défaut, alors que la structuration, les embeddings, `/api/installation` et le téléchargement de modèles suivent tous `cfg["llm"]["host"]`. Sélecteur potentiellement sans rapport avec la configuration effective.
-  - **Vérifié** : 146 tests pytest (3 ajoutés), `ruff check .` propre, deux suites UI happy-dom vertes.
+  - **Mention de naissance accordée** : l'en-tête d'export écrivait « né(e) le » alors que le sexe est une donnée du dossier. Quand il est renseigné, la forme est accordée (« née le » / « né le ») ; sinon — non renseigné ou « autre » — la date est introduite sans participe (« date de naissance : … ») plutôt que par une forme genrée par défaut.
+  - **Vérifié** : 147 tests pytest (4 ajoutés), `ruff check .` propre, deux suites UI happy-dom vertes.
 
 ## Lancer
 `./run.sh` → http://localhost:8000 (bind 127.0.0.1). Données : `~/.local/share/bilan-ortho/` (surchargeable via `BILAN_ORTHO_DATA_DIR`).

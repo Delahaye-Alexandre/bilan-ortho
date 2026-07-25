@@ -18,6 +18,18 @@ _TYPE_LBL = {
 }
 
 
+def _naissance(p: dict) -> str:
+    """Mention de naissance accordée au sexe *enregistré*, sans parenthèse.
+
+    Le sexe est une donnée du dossier : quand il est connu, l'accorder est plus
+    juste qu'un « né(e) » parenthésé dans un document adressé au prescripteur.
+    Quand il ne l'est pas (non renseigné, ou « autre »), la date est introduite
+    sans participe plutôt que par une forme genrée par défaut."""
+    date = date_fr(p["date_naissance"])
+    participe = {"F": "née", "M": "né"}.get((p.get("sexe") or "").strip().upper())
+    return f"{participe} le {date}" if participe else f"date de naissance : {date}"
+
+
 def _patient_ligne(b: dict) -> str:
     p = b.get("patient")
     if not p:
@@ -25,7 +37,7 @@ def _patient_ligne(b: dict) -> str:
     ident = " ".join(x for x in [(p.get("nom") or "").upper(), p.get("prenom") or ""] if x)
     ligne = f"Patient : {ident or '—'}"
     if p.get("date_naissance"):
-        ligne += f", né(e) le {date_fr(p['date_naissance'])}"
+        ligne += f", {_naissance(p)}"
         age = age_texte(p["date_naissance"], b.get("created_at"))
         if age:
             ligne += f" ({age} à la date du bilan)"

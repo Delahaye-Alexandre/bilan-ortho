@@ -437,7 +437,14 @@ def test_export_contient_le_patient(client):
     }).json()
     bid = client.post("/api/bilans", json={"domaines": [], "patient_id": p["id"]}).json()["id"]
     md = client.get(f"/api/bilans/{bid}/export?format=md").text
-    assert "Patient : DURAND Léa, né(e) le 12/03/2018" in md
+    # sexe non renseigné : pas de participe accordé, pas de « né(e) » non plus
+    assert "Patient : DURAND Léa, date de naissance : 12/03/2018" in md
+    # sexe renseigné : accord depuis le dossier
+    client.put(f"/api/patients/{p['id']}", json={
+        "nom": "Durand", "prenom": "Léa", "date_naissance": "2018-03-12", "sexe": "F",
+    })
+    md = client.get(f"/api/bilans/{bid}/export?format=md").text
+    assert "Patient : DURAND Léa, née le 12/03/2018" in md
 
 
 # --- sauvegarde chiffrée ------------------------------------------------------------

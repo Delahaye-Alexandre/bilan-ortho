@@ -338,9 +338,27 @@ def test_export_avec_patient():
     b["created_at"] = "2026-06-15 10:00:00"
     b["patient"] = {"nom": "Durand", "prenom": "Léa", "date_naissance": "2018-03-12"}
     md = _export.to_markdown(b)
-    assert "Patient : DURAND Léa, né(e) le 12/03/2018 (8 ans et 3 mois à la date du bilan)" in md
+    # sexe non renseigné : date introduite sans participe accordé
+    assert "Patient : DURAND Léa, date de naissance : 12/03/2018 (8 ans et 3 mois à la date du bilan)" in md
     # sans patient : pas de ligne Patient
     assert "Patient :" not in _export.to_markdown(BILAN)
+
+
+def test_export_accorde_la_naissance_au_sexe_enregistre():
+    """Le sexe est une donnée du dossier : quand il est connu, on accorde
+    plutôt que d'écrire « né(e) » ; « autre » retombe sur la forme neutre."""
+    from app import export as _export
+
+    def ligne(sexe):
+        b = dict(BILAN)
+        b["created_at"] = "2026-06-15 10:00:00"
+        b["patient"] = {"nom": "Durand", "date_naissance": "2018-03-12", "sexe": sexe}
+        return _export.to_markdown(b)
+
+    assert "DURAND, née le 12/03/2018" in ligne("F")
+    assert "DURAND, né le 12/03/2018" in ligne("M")
+    assert "DURAND, date de naissance : 12/03/2018" in ligne("autre")
+    assert "né(e)" not in ligne("F") + ligne("M") + ligne("autre")
 
 
 # --- catalogues surchargés par la config ----------------------------------------
