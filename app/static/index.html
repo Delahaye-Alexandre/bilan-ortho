@@ -54,6 +54,12 @@
   .badge.valide { background: #ecfdf5; color: #047857; }
   .badge.patho { background: #fee2e2; color: #b91c1c; }
   .badge.severe { background: #b91c1c; color: #fff; }
+  /* Chiffres proposés que l'app n'a pas su retrouver dans la dictée : le
+     signal reste affiché jusqu'à ce que la rubrique soit enregistrée ou
+     validée — c'est un point de relecture clinique, pas une notification. */
+  .verif { background: #fef2f2; border-left: 3px solid #b91c1c; color: #7f1d1d;
+           font-size: 13px; padding: 8px 10px; border-radius: 4px; margin-bottom: 8px; }
+  .verif b { color: #b91c1c; }
   .q { border: 1px solid #fed7aa; background: #fff7ed; border-radius: 10px;
        padding: 10px 12px; margin-bottom: 10px; }
   .q .ans { margin-top: 8px; }
@@ -201,6 +207,7 @@
     </div>
 
     <div id="questions"></div>
+    <div id="enteteView"></div>
     <div id="bilanView"><div class="bilan-empty">Créez un nouveau bilan pour commencer.</div></div>
     <div id="actionsRow" class="row" style="display:none; gap:8px; margin-bottom:20px; flex-wrap:wrap">
       <button id="coteBtn" class="ghost">€ Coter le bilan</button>
@@ -208,6 +215,7 @@
       <button id="valideBtn" class="ghost">✔ Marquer validé</button>
       <button id="envoyeBtn" class="ghost">📨 Marquer envoyé</button>
       <span class="grow"></span>
+      <button class="ghost" id="expPdf">⬇ PDF</button>
       <button class="ghost" id="expDocx">⬇ Word</button>
       <button class="ghost" id="expMd">⬇ Markdown</button>
       <button class="ghost" id="copyBilan">Copier</button>
@@ -220,6 +228,34 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="mhead"><h2 id="settingsTitle">⚙️ Paramètres</h2><button class="close" data-close="settingsOverlay">✕</button></div>
     <div class="mbody">
+      <fieldset>
+        <legend>Mon identité professionnelle</legend>
+        <p class="muted" style="margin:0 0 10px">
+          Reportée en en-tête et en signature de vos exports (PDF, Word, Markdown).
+          À renseigner une fois. Laissé vide, l'export ne porte aucun en-tête —
+          rien n'est inventé.
+        </p>
+        <div class="grid3">
+          <div><label for="cfgPratPrenom">Prénom</label><input id="cfgPratPrenom" autocomplete="off"></div>
+          <div><label for="cfgPratNom">Nom</label><input id="cfgPratNom" autocomplete="off"></div>
+          <div><label for="cfgPratTitre">Titre</label><input id="cfgPratTitre" placeholder="Orthophoniste"></div>
+        </div>
+        <div class="grid3">
+          <div><label for="cfgPratAdeli">N° ADELI</label><input id="cfgPratAdeli" autocomplete="off"></div>
+          <div><label for="cfgPratRpps">N° RPPS</label><input id="cfgPratRpps" autocomplete="off"></div>
+          <div><label for="cfgPratSiret">SIRET</label><input id="cfgPratSiret" autocomplete="off"></div>
+        </div>
+        <div class="grid3">
+          <div><label for="cfgPratAdresse">Adresse</label><input id="cfgPratAdresse" placeholder="12 rue des Lilas"></div>
+          <div><label for="cfgPratCp">Code postal</label><input id="cfgPratCp"></div>
+          <div><label for="cfgPratVille">Ville</label><input id="cfgPratVille"></div>
+        </div>
+        <div class="grid3">
+          <div><label for="cfgPratTel">Téléphone</label><input id="cfgPratTel"></div>
+          <div><label for="cfgPratEmail">Courriel</label><input id="cfgPratEmail" type="email"></div>
+          <div><label for="cfgPratLieu">Lieu de signature</label><input id="cfgPratLieu" placeholder="vide = la ville"></div>
+        </div>
+      </fieldset>
       <fieldset>
         <legend>Assistant IA (Ollama)</legend>
         <div class="grid2">
@@ -883,8 +919,72 @@ async function setStatut(statut) {
 }
 document.getElementById('valideBtn').addEventListener('click', e => avecBouton(e.target, () => setStatut('valide')));
 document.getElementById('envoyeBtn').addEventListener('click', e => avecBouton(e.target, () => setStatut('envoye')));
+// Chiffres à vérifier, par clé de rubrique (réponse de /structure). L'app trace
+// chaque nombre proposé jusqu'à la dictée ; ceux qu'elle ne retrouve pas sont
+// pointés au praticien, qui seul peut trancher. Rattaché à un bilan précis :
+// changer de dossier ne doit pas traîner l'alerte du précédent.
+let VERIF = {}, VERIF_BILAN = null;
+function verifHtml(cle) {
+  const msgs = (VERIF_BILAN === (CUR && CUR.id)) ? (VERIF[cle] || []) : [];
+  if (!msgs.length) return '';
+  return `<div class="verif" role="status"><b>À vérifier</b> — `
+    + escapeHtml(msgs.join(' ; '))
+    + `. Comparez avec ce que vous avez dicté avant de valider.</div>`;
+}
+// En-tête du compte-rendu : date du bilan et médecin prescripteur, tous deux
+// reportés sur l'export. Rendu dans son propre conteneur et reconstruit
+// UNIQUEMENT au changement de bilan : le re-rendu déclenché par une analyse ne
+// doit pas effacer une date en cours de saisie (même précaution que les
+// brouillons de rubriques).
+let ENT_BILAN = null;
+function renderEntete() {
+  const el = document.getElementById('enteteView');
+  if (!CUR) { el.innerHTML = ''; ENT_BILAN = null; return; }
+  if (ENT_BILAN === CUR.id) return;
+  ENT_BILAN = CUR.id;
+  const p = CUR.prescripteur || {};
+  el.innerHTML = `
+    <div class="sec">
+      <div class="head"><h3>📄 En-tête du compte-rendu</h3></div>
+      <div class="body">
+        <div class="muted">Repris sur l'export, avec votre identité professionnelle (⚙️ Paramètres).</div>
+        <div class="grid3" style="margin-top:8px">
+          <div><label for="entDate">Date du bilan</label>
+            <input id="entDate" type="date" value="${escapeHtml((CUR.date_bilan || '').slice(0, 10))}"></div>
+          <div><label for="entPresc">Médecin prescripteur</label>
+            <input id="entPresc" placeholder="Bernard" value="${escapeHtml(p.nom || '')}"></div>
+          <div><label for="entPrescRpps">RPPS du prescripteur</label>
+            <input id="entPrescRpps" value="${escapeHtml(p.rpps || '')}"></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="ghost" id="entSave">Enregistrer l'en-tête</button>
+          <span class="status" id="entStatus" role="status"></span>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('entSave')
+    .addEventListener('click', e => avecBouton(e.target, saveEntete));
+}
+async function saveEntete() {
+  const st = document.getElementById('entStatus');
+  st.textContent = '…';
+  try {
+    const r = await api(`/api/bilans/${CUR.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date_bilan: document.getElementById('entDate').value,
+        prescripteur: document.getElementById('entPresc').value,
+        prescripteur_rpps: document.getElementById('entPrescRpps').value,
+      }),
+    });
+    const b = await r.json();
+    CUR.date_bilan = b.date_bilan; CUR.prescripteur = b.prescripteur;
+    st.textContent = '✓';
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+}
 function renderBilan() {
   curLabel();
+  renderEntete();
   const root = document.getElementById('bilanView');
   document.getElementById('actionsRow').style.display = CUR ? 'flex' : 'none';
   // Même technique que les brouillons de questions : avant de reconstruire
@@ -907,6 +1007,7 @@ function renderBilan() {
         <button class="valider">Valider</button>
       </div>
       <div class="body">
+        ${verifHtml(s.cle)}
         <textarea class="secText out" rows="4" placeholder="—">${escapeHtml(s.contenu || '')}</textarea>
         <div class="row" style="margin-top:8px"><button class="ghost save">Enregistrer</button><span class="status savest"></span></div>
       </div>
@@ -1013,6 +1114,12 @@ async function saveSection(cle, contenu, statut, sec) {
     const s = CUR.sections.find(x => x.cle === cle); s.contenu = contenu; if (statut) s.statut = statut;
     SEC_RENDERED[cle] = contenu; // le contenu affiché est désormais celui du serveur
     const badge = sec.querySelector('.badge'); if (statut) { badge.className = 'badge ' + statut; badge.textContent = badgeLabel(statut); }
+    // La rubrique vient d'être relue et enregistrée par le praticien :
+    // l'avertissement de traçabilité a joué son rôle, il disparaît.
+    if (VERIF[cle]) {
+      delete VERIF[cle];
+      const av = sec.querySelector('.verif'); if (av) av.remove();
+    }
     st.textContent = '✓';
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }
@@ -1055,6 +1162,7 @@ async function telechargerExport(format) {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }
+document.getElementById('expPdf').addEventListener('click', e => avecBouton(e.target, () => telechargerExport('pdf')));
 document.getElementById('expDocx').addEventListener('click', e => avecBouton(e.target, () => telechargerExport('docx')));
 document.getElementById('expMd').addEventListener('click', e => avecBouton(e.target, () => telechargerExport('md')));
 
@@ -1110,6 +1218,10 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
       majStatut(`✓ analyse intégrée au bilan #${bilanId} (vous avez changé de bilan entre-temps).`);
       return;
     }
+    // Avant le rendu : les avertissements de traçabilité doivent apparaître
+    // en même temps que le texte qu'ils concernent.
+    VERIF = {}; VERIF_BILAN = res.bilan.id;
+    (res.chiffres_a_verifier || []).forEach(c => { VERIF[c.section] = c.signalements || []; });
     CUR = res.bilan; renderBilan();
     // Les questions répondues ne sont retirées qu'ici, une fois l'analyse réussie
     // (en cas d'erreur, rien n'est perdu — et ANSWERED n'est enrichi qu'ici aussi).
@@ -1130,10 +1242,29 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     const style = res.style_indisponible
       ? ' — Vos bilans de référence n\'ont pas inspiré ce passage : ' + res.style_indisponible
       : '';
+    // Un chiffre non retrouvé dans la dictée est signalé jusque dans le
+    // statut : c'est le point de relecture le plus important de l'écran.
+    const nbVerif = (res.chiffres_a_verifier || []).length;
+    const verif = nbVerif
+      ? ` — ⚠️ ${nbVerif} rubrique(s) contiennent des chiffres absents de votre dictée : à vérifier`
+      : '';
+    // Le modèle a rendu un nom de rubrique inconnu : le texte n'a pas pu être
+    // placé. Le dire, plutôt que de laisser disparaître un passage clinique.
+    const perdues = (res.updates_non_placees || []).length
+      ? ` — ⚠️ un passage n'a pas pu être rangé (rubrique « ${res.updates_non_placees.join('», «')} » inconnue) : relancez l'analyse`
+      : '';
+    // Le modèle local s'arrête parfois avant d'avoir traité toute la dictée :
+    // le compte-rendu partirait sans son diagnostic sans que rien ne le dise.
+    const incomplete = res.analyse_incomplete
+      ? ' — ⚠️ l\'analyse semble incomplète au vu de la longueur de votre dictée :'
+        + ' vérifiez les rubriques vides et relancez « Structurer » (votre dictée est conservée)'
+      : '';
     majStatut((answeredIds.length
       ? `✓ réponse(s) intégrée(s)${fresh.length ? ` — ${fresh.length} nouvelle(s) question(s)` : ''}`
-      : `✓ ${fresh.length} question(s) de clarification`) + tronque + style);
-    if (fromDictee) document.getElementById('dicteeText').value = '';
+      : `✓ ${fresh.length} question(s) de clarification`) + verif + perdues + incomplete + tronque + style);
+    // La dictée n'est effacée que si l'analyse paraît complète : sinon le
+    // praticien doit pouvoir relancer sans avoir à tout redicter.
+    if (fromDictee && !res.analyse_incomplete) document.getElementById('dicteeText').value = '';
   } catch (e) { majStatut('Erreur : ' + e.message); }
   finally { STRUCTURING = false; clearInterval(chrono); document.getElementById('structBtn').disabled = false; setQuestionBtns(false); }
 }
@@ -1400,7 +1531,18 @@ document.getElementById('aideBugLien').addEventListener('click',
   () => window.open(DEPOT_PUBLIC + '/issues/new?template=bug.yml', '_blank'));
 
 const $ = id => document.getElementById(id);
+// Identité professionnelle : champ de config <-> champ du formulaire. Table
+// unique pour le remplissage et l'enregistrement — un couple oublié d'un côté
+// donnerait un réglage qui s'affiche mais ne se sauvegarde pas.
+const PRAT_CHAMPS = {
+  prenom: 'cfgPratPrenom', nom: 'cfgPratNom', titre: 'cfgPratTitre',
+  adeli: 'cfgPratAdeli', rpps: 'cfgPratRpps', siret: 'cfgPratSiret',
+  adresse: 'cfgPratAdresse', code_postal: 'cfgPratCp', ville: 'cfgPratVille',
+  telephone: 'cfgPratTel', email: 'cfgPratEmail', lieu_signature: 'cfgPratLieu',
+};
 function fillSettings(c) {
+  const prat = c.praticien || {};
+  Object.entries(PRAT_CHAMPS).forEach(([cle, id]) => { $(id).value = prat[cle] || ''; });
   $('cfgLlmModel').value = c.llm.model; $('cfgLlmTemp').value = c.llm.temperature;
   $('cfgSttDevice').value = c.stt.device; $('cfgSttModel').value = c.stt.model;
   $('cfgSttBeam').value = c.stt.beam_size; $('cfgSttVad').checked = !!c.stt.vad;
@@ -1855,7 +1997,10 @@ function collectSettings() {
   // Trame, catalogues et consigne ont leurs éditeurs dédiés (routes propres) :
   // ils ne passent plus par cet enregistrement global.
   const num = v => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
+  const praticien = {};
+  Object.entries(PRAT_CHAMPS).forEach(([cle, id]) => { praticien[cle] = $(id).value.trim(); });
   return {
+    praticien,
     llm: { model: $('cfgLlmModel').value.trim(), temperature: num($('cfgLlmTemp').value) },
     stt: {
       device: $('cfgSttDevice').value, model: $('cfgSttModel').value.trim() || 'auto',

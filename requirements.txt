@@ -16,6 +16,7 @@ faster-whisper>=1.0          # STT (CTranslate2)
 
 # --- Phase 3 : export ---
 python-docx>=1.1             # export Word (.docx)
+reportlab>=4.1               # export PDF (Python pur : compatible app compilée)
 
 # --- Phase 4 : import & RAG ---
 pypdf>=4                     # extraction texte des PDF natifs

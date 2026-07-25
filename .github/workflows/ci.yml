@@ -98,6 +98,15 @@ jobs:
           $vad = Get-ChildItem "dist\BilanOrtho\_internal\faster_whisper\assets\silero_vad*.onnx" -ErrorAction SilentlyContinue
           if (-not $vad) { throw "Modèle VAD Silero absent du build — la dictée planterait (collect_data_files('faster_whisper') dans le spec)" }
           Write-Host "VAD embarqué : $($vad.Name)"
+      - name: Données embarquées — les polices reportlab sont dans le build
+        shell: pwsh
+        run: |
+          # Même classe de bug que le VAD : reportlab lit ses métriques de
+          # polices comme données de paquet. Absentes, l'export PDF échoue dans
+          # l'app compilée seulement — invisible en développement et en tests.
+          $afm = Get-ChildItem "dist\BilanOrtho\_internal\reportlab" -Recurse -Filter "*.afm" -ErrorAction SilentlyContinue
+          if (-not $afm) { throw "Métriques de polices reportlab absentes du build — l'export PDF planterait (collect_all('reportlab') dans le spec)" }
+          Write-Host "Polices reportlab embarquées : $($afm.Count) fichier(s) .afm"
       - name: Fumée — le binaire compilé démarre et répond
         shell: pwsh
         run: |

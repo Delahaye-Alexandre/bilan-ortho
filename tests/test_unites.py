@@ -7,8 +7,13 @@ from io import BytesIO
 
 import pytest
 
-from app import config, cotation, export, importer, llm, prompts
-from app.bilan import interpret_drapeau, resultat_phrase
+from app import config, cotation, export, importer, llm, prompts, verif_chiffres
+from app import db as _db
+from app.bilan import (
+    interpret_drapeau,
+    nettoyer_prefixe_titre,
+    resultat_phrase,
+)
 
 CFG = config.DEFAULTS
 
@@ -448,3 +453,263 @@ def test_export_docx_est_un_zip_valide():
     with zipfile.ZipFile(BytesIO(data)) as z:
         assert "word/document.xml" in z.namelist()
         assert "Contenu A." in z.read("word/document.xml").decode()
+
+
+# --- export : document réellement envoyable au prescripteur ---------------------
+#
+# Sans en-tête, date, destinataire ni signature, le compte-rendu devait être
+# recollé à la main dans le papier à en-tête du cabinet — ce qui reprenait le
+# temps que l'outil venait de faire gagner.
+
+CFG_PRATICIEN = config._deep_merge(config.DEFAULTS, {"praticien": {
+    "nom": "Martin", "prenom": "Claire", "titre": "Orthophoniste",
+    "adeli": "449912345", "rpps": "10001234567",
+    "adresse": "12 rue des Lilas", "code_postal": "44000", "ville": "Nantes",
+    "telephone": "02 40 00 00 00", "email": "claire.martin@exemple.fr",
+}})
+
+BILAN_COMPLET = {
+    **BILAN,
+    "date_bilan": "2026-07-25",
+    "prescripteur": {"nom": "Bernard", "rpps": "", "date": ""},
+    "epreuves": [{"test_nom": "EXALANG 8-11", "resultats": [
+        {"sous_epreuve": "Dictée de mots", "score_brut": "14/30",
+         "etalonnage_type": "ecart_type", "etalonnage_valeur": "-2,0",
+         "drapeau_seuil": "severe"},
+    ]}],
+}
+
+
+def test_export_porte_entete_date_destinataire_et_signature():
+    md = export.to_markdown(BILAN_COMPLET, CFG_PRATICIEN)
+    assert "Claire Martin" in md and "Orthophoniste" in md
+    assert "12 rue des Lilas, 44000 Nantes" in md
+    assert "N° ADELI 449912345" in md and "RPPS 10001234567" in md
+    assert "À l'attention du Dr Bernard" in md
+    assert "Date du bilan : 25/07/2026" in md
+    assert "Fait à Nantes, le 25/07/2026" in md
+
+
+def test_export_sans_identite_naffiche_ni_entete_ni_signature():
+    """Coffre neuf : aucune identité renseignée, donc aucun en-tête ni signature
+    — et surtout aucune identité inventée. `titre` vaut « Orthophoniste » par
+    défaut : le seul métier ne doit pas suffire à fabriquer un en-tête.
+
+    Le destinataire, lui, vient du bilan et non de la config : il reste."""
+    md = export.to_markdown(BILAN_COMPLET, config.DEFAULTS)
+    assert "N° ADELI" not in md and "Fait à" not in md
+    assert "Orthophoniste" not in md.split("# Compte-rendu")[0]
+    assert "À l'attention du Dr Bernard" in md
+
+
+def test_export_civilite_non_dupliquee():
+    """« Dr Bernard » saisi tel quel ne doit pas donner « du Dr Dr Bernard »."""
+    b = {**BILAN_COMPLET, "prescripteur": {"nom": "Dr Bernard"}}
+    assert "À l'attention de Dr Bernard" in export.to_markdown(b, CFG_PRATICIEN)
+
+
+def test_export_tableau_epreuves():
+    """Les résultats saisis sont rendus en tableau, plus en lignes brutes
+    collées à la prose de la rubrique."""
+    md = export.to_markdown(BILAN_COMPLET, CFG_PRATICIEN)
+    assert "| Test | Épreuve | Score brut | Étalonnage | Interprétation |" in md
+    assert "| EXALANG 8-11 | Dictée de mots | 14/30 | -2,0 ET | déficit sévère |" in md
+    txt = export.to_txt(BILAN_COMPLET, CFG_PRATICIEN)
+    assert "EXALANG 8-11" in txt and "déficit sévère" in txt
+
+
+def test_export_docx_contient_le_tableau():
+    xml = None
+    with zipfile.ZipFile(BytesIO(export.to_docx(BILAN_COMPLET, CFG_PRATICIEN))) as z:
+        xml = z.read("word/document.xml").decode()
+    assert "<w:tbl>" in xml and "EXALANG 8-11" in xml and "Claire Martin" in xml
+
+
+def test_export_pdf_est_un_pdf_valide():
+    data = export.to_pdf(BILAN_COMPLET, CFG_PRATICIEN)
+    assert data.startswith(b"%PDF-") and data.rstrip().endswith(b"%%EOF")
+    assert len(data) > 1000
+
+
+def test_age_calcule_a_la_date_du_bilan_pas_a_la_creation():
+    """Un compte-rendu rédigé plus tard ne doit pas vieillir le patient."""
+    b = {
+        **BILAN_COMPLET,
+        "created_at": "2026-07-25 10:00:00",
+        "date_bilan": "2026-03-10",
+        "patient": {"nom": "Durand", "prenom": "Chloé",
+                    "date_naissance": "2017-03-14", "sexe": "F"},
+    }
+    md = export.to_markdown(b, CFG_PRATICIEN)
+    assert "8 ans et 11 mois à la date du bilan" in md
+
+
+# --- traçabilité des chiffres proposés par le LLM -------------------------------
+#
+# « L'IA n'invente aucun score » ne peut pas reposer sur une consigne de prompt :
+# mesuré en réel, un modèle 4B transpose des écarts-types en percentiles. Ces
+# tests verrouillent le garde-fou déterministe qui le rattrape.
+
+DICTEE_REELLE = (
+    "À l'Alouette, elle lit en trois minutes vingt, avec vingt-huit erreurs, ce "
+    "qui lui donne un âge de lecture d'environ sept ans. À l'EXALANG 8-11, en "
+    "dictée de mots je la situe à moins deux écarts-types, en dictée de phrases "
+    "moins deux virgule cinq."
+)
+
+
+@pytest.mark.parametrize(
+    "mots, attendu",
+    [
+        ("moins deux virgule cinq", "-2.5"),
+        ("vingt-huit erreurs", "28"),
+        ("quatre-vingt-douze", "92"),
+        ("soixante-dix", "70"),
+        ("dix-huit mois", "18"),
+        ("treize mois", "13"),
+    ],
+)
+def test_nombres_dictes_en_mots_sont_reconnus(mots, attendu):
+    """La dictée énonce « moins deux », le modèle écrit « -2 » : sans cette
+    conversion, tout chiffre légitime serait signalé à tort."""
+    assert attendu in verif_chiffres.valeurs_numeriques(mots)
+
+
+def test_texte_fidele_ne_declenche_aucun_signalement():
+    fidele = ("À l'Alouette-R : 28 erreurs, âge de lecture 7 ans. "
+              "EXALANG 8-11 : -2 ET et -2,5 ET.")
+    assert verif_chiffres.signalements(fidele, [DICTEE_REELLE]) == []
+
+
+def test_score_invente_est_signale():
+    invente = "Compréhension écrite déficitaire (-1,8 écart-type)."
+    assert verif_chiffres.chiffres_non_sources(invente, [DICTEE_REELLE]) == ["-1.8"]
+
+
+def test_percentile_impossible_est_signale():
+    """Cas observé en réel : l'écart-type dicté ressort en percentile négatif."""
+    propose = "Dictée de mots : percentile (-2), dictée de phrases : percentile (-3)."
+    assert verif_chiffres.percentiles_hors_bornes(propose) == ["-2", "-3"]
+
+
+def test_percentile_valide_nest_pas_signale():
+    assert verif_chiffres.percentiles_hors_bornes("lecture au 25e percentile") == []
+
+
+def test_ecart_type_voisin_nest_pas_pris_pour_un_percentile():
+    """« écart-type (-2,5) et percentile (-3) » : seul le percentile est fautif."""
+    propose = "écart-type (-2,5) et percentile (-3) en dictée de phrases"
+    assert verif_chiffres.percentiles_hors_bornes(propose) == ["-3"]
+
+
+def test_chiffre_deja_present_dans_la_rubrique_reste_acceptable():
+    """Le contenu déjà relu par le praticien fait source, comme la dictée."""
+    assert verif_chiffres.chiffres_non_sources(
+        "Rappelons l'âge de lecture de 7 ans.", ["âge de lecture : 7 ans"]
+    ) == []
+
+
+# --- nettoyage du « Titre : » en tête de rubrique --------------------------------
+
+def test_prefixe_titre_retire():
+    assert nettoyer_prefixe_titre("Anamnèse : Chloé, 9 ans.", "Anamnèse", "anamnese") \
+        == "Chloé, 9 ans."
+
+
+def test_prefixe_titre_insensible_casse_accents_et_gras():
+    for brut in ["ANAMNÈSE : x", "**Anamnèse** : x", "anamnese: x", "Anamnese :  x"]:
+        assert nettoyer_prefixe_titre(brut, "Anamnèse", "anamnese") == "x"
+
+
+def test_prefixe_par_la_cle_de_section_retire():
+    assert nettoyer_prefixe_titre("epreuves : -2 ET", "Épreuves & résultats", "epreuves") \
+        == "-2 ET"
+
+
+def test_contenu_clinique_avec_deux_points_est_preserve():
+    """« Antécédents familiaux : … » dans l'anamnèse est du contenu, pas un titre."""
+    texte = "Antécédents familiaux : le père a été suivi."
+    assert nettoyer_prefixe_titre(texte, "Anamnèse", "anamnese") == texte
+
+
+def test_titre_dune_autre_rubrique_est_preserve():
+    """Seul le titre de LA rubrique visée est retiré : un « Observations : » mal
+    routé dans les épreuves doit rester visible pour que le praticien le voie."""
+    texte = "Observations cliniques : bon contact."
+    assert nettoyer_prefixe_titre(texte, "Épreuves & résultats", "epreuves") == texte
+
+
+# --- rattachement des clés de rubrique rendues par le LLM -----------------------
+#
+# Mesuré en réel contre qwen3.5:4b : le modèle écrit « euvres » au lieu de
+# « epreuves » dans 5 passages sur 6. La mise à jour était alors écartée en
+# SILENCE et la rubrique « Épreuves & résultats » — le cœur clinique du
+# compte-rendu — disparaissait sans que rien ne le signale.
+
+SECTIONS_REF = [{"cle": c, "titre": t} for c, t in _db.SECTIONS_TRONC_COMMUN]
+
+
+@pytest.mark.parametrize(
+    "brute, attendu",
+    [
+        ("epreuves", "epreuves"),               # exact
+        ("EPREUVES", "epreuves"),               # casse
+        ("anamnèse", "anamnese"),               # accents
+        ("Épreuves & résultats", "epreuves"),   # titre au lieu de la clé
+        ("euvres", "epreuves"),                 # corruption observée en réel
+        ("diagnostique", "diagnostic"),
+        ("analyse / synthèse", "analyse"),
+        ("projet thérapeutique", "projet"),
+        ("observation clinique", "observations"),
+    ],
+)
+def test_cle_rubrique_rattachee(brute, attendu):
+    assert llm.resoudre_cle(brute, SECTIONS_REF) == attendu
+
+
+@pytest.mark.parametrize("brute", ["", "xyzzy", "toto", "cotation"])
+def test_cle_rubrique_inconnue_refusee(brute):
+    """Aucun rattachement au hasard : l'appelant signale au praticien plutôt
+    que de ranger un texte clinique dans une rubrique arbitraire."""
+    assert llm.resoudre_cle(brute, SECTIONS_REF) is None
+
+
+def test_analyse_nest_jamais_confondue_avec_anamnese():
+    """« analysesynthese » ressort à 0,636 de « analyse » mais 0,609 de
+    « anamnese » : sans marge exigée, une analyse clinique finirait dans
+    l'anamnèse du compte-rendu."""
+    assert llm.resoudre_cle("analyse synthèse", SECTIONS_REF) == "analyse"
+    assert llm.resoudre_cle("anamnèse", SECTIONS_REF) == "anamnese"
+
+
+# --- détection d'une analyse interrompue ----------------------------------------
+#
+# Mesuré contre qwen3.5:4b : sur une même dictée de ~1 900 caractères, un
+# passage complet propose 1 600 à 1 770 caractères, un passage amputé 620,
+# parfois 106 — le compte-rendu partirait alors sans diagnostic ni projet
+# thérapeutique. Ollama répond « done_reason: stop » : rien ne le trahit côté
+# transport, il faut le mesurer.
+
+DICTEE_LONGUE = "Bilan de langage écrit. " * 80   # ~1 900 caractères
+
+
+def test_analyse_complete_nest_pas_signalee():
+    updates = [{"texte": "x" * 1700}]
+    assert llm.couverture_suspecte(DICTEE_LONGUE, updates) is False
+
+
+@pytest.mark.parametrize("propose", [620, 106, 0])
+def test_analyse_amputee_est_signalee(propose):
+    updates = [{"texte": "x" * propose}] if propose else []
+    assert llm.couverture_suspecte(DICTEE_LONGUE, updates) is True
+
+
+def test_dictee_courte_ne_declenche_pas_de_faux_signal():
+    """Une remarque brève remplit légitimement peu de rubriques : aucun jugement
+    n'est porté en dessous du seuil de longueur."""
+    assert llm.couverture_suspecte("Ajout : audition normale.", []) is False
+
+
+def test_couverture_somme_toutes_les_rubriques():
+    updates = [{"texte": "x" * 400}, {"texte": "y" * 400}, {"texte": "z" * 400}]
+    assert llm.couverture_suspecte(DICTEE_LONGUE, updates) is False

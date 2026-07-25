@@ -1,13 +1,18 @@
 """Client léger pour Ollama (LLM 100 % local)."""
 from __future__ import annotations
 
+import difflib
 import json
+import logging
 import os
 import re
+import unicodedata
 
 import httpx
 
 from . import catalogues, prompts
+
+logger = logging.getLogger(__name__)
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
@@ -124,6 +129,120 @@ def _parse_structure(raw: str) -> dict:
     return {"updates": updates, "questions": questions}
 
 
+# Seuils de rattachement d'une clé de rubrique approximative (cf. resoudre_cle).
+_PREFIXE_MIN = 5    # longueur minimale d'un préfixe commun jugé signifiant
+_RATIO_MIN = 0.70   # similarité minimale pour un rapprochement approché
+_MARGE_MIN = 0.15   # écart exigé avec le 2e candidat (anti-confusion)
+
+
+def _norm_cle(s: str) -> str:
+    d = unicodedata.normalize("NFD", s or "")
+    sans = "".join(c for c in d if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]+", "", sans.lower())
+
+
+def resoudre_cle(brute: str, sections: list[dict]) -> str | None:
+    """Rattache la clé de rubrique rendue par le modèle à une clé réelle.
+
+    Mesuré en réel : qwen3.5:4b écrit « euvres » au lieu de « epreuves » dans
+    5 passages sur 6. La mise à jour était alors écartée **en silence** et la
+    rubrique « Épreuves & résultats » — le cœur clinique du compte-rendu —
+    disparaissait sans que rien ne le signale.
+
+    Quatre niveaux, du plus sûr au plus tolérant : égalité stricte, égalité
+    une fois normalisée (casse, accents, ponctuation) sur la clé ou le titre,
+    plus long préfixe commun s'il est franc et sans rival, puis rapprochement
+    approché exigeant une marge nette sur le deuxième candidat.
+
+    Cette marge n'est pas une précaution théorique : `analysesynthese` ressort
+    à 0,636 de « analyse » mais 0,609 de « anamnese ». Sans elle, une analyse
+    clinique pourrait être rangée dans l'anamnèse — mal router est plus grave
+    que ne pas router, puisque l'appelant signale au praticien ce qui n'a pas
+    pu être placé."""
+    if not brute:
+        return None
+    cles = [s["cle"] for s in sections]
+    if brute in cles:
+        return brute
+    n = _norm_cle(brute)
+    if not n:
+        return None
+    for s in sections:
+        if n in (_norm_cle(s["cle"]), _norm_cle(s["titre"])):
+            return s["cle"]
+    par_norme = {_norm_cle(c): c for c in cles if _norm_cle(c)}
+
+    def prefixe_commun(a: str, b: str) -> int:
+        i = 0
+        while i < min(len(a), len(b)) and a[i] == b[i]:
+            i += 1
+        return i
+
+    # « analysesynthese » → analyse, « observationclinique » → observations :
+    # un préfixe franc et unique est un signal plus fiable que la similarité.
+    prefixes = sorted(
+        ((prefixe_commun(n, norme), norme) for norme in par_norme), reverse=True
+    )
+    if prefixes and prefixes[0][0] >= _PREFIXE_MIN and (
+        len(prefixes) == 1 or prefixes[0][0] > prefixes[1][0]
+    ):
+        return par_norme[prefixes[0][1]]
+
+    # « euvres » → epreuves : similarité franche ET nettement détachée.
+    scores = sorted(
+        ((difflib.SequenceMatcher(None, n, norme).ratio(), norme) for norme in par_norme),
+        reverse=True,
+    )
+    if not scores or scores[0][0] < _RATIO_MIN:
+        return None
+    if len(scores) > 1 and scores[0][0] - scores[1][0] < _MARGE_MIN:
+        return None
+    return par_norme[scores[0][1]]
+
+
+# En deçà de cette part du matériau du tour, la réponse du modèle est jugée
+# vraisemblablement interrompue (cf. couverture_suspecte).
+_COUVERTURE_MIN = 0.35
+_COUVERTURE_SOURCE_MIN = 500
+
+
+def couverture_suspecte(
+    nouveau: str, updates: list[dict], seuil: float = _COUVERTURE_MIN
+) -> bool:
+    """La réponse du modèle a-t-elle vraisemblablement été interrompue ?
+
+    Mesuré contre qwen3.5:4b sur une dictée de ~1 900 caractères : un passage
+    complet propose 1 600 à 1 770 caractères (85-93 %), un passage amputé n'en
+    propose que 620 (33 %), parfois 106 (6 %) — le compte-rendu part alors sans
+    son diagnostic ni son projet thérapeutique.
+
+    Rien ne permet de le détecter côté transport : Ollama répond
+    ``done_reason: "stop"``, il n'y a pas de troncature technique. Le modèle
+    décide simplement de s'arrêter. On ne relance donc pas d'office (ce serait
+    doubler une attente déjà longue à l'insu du praticien) : on le signale, et
+    il relance d'un clic.
+
+    Une dictée courte remplit légitimement peu de rubriques : en dessous de
+    ``_COUVERTURE_SOURCE_MIN`` caractères, aucun jugement n'est porté."""
+    source = (nouveau or "").strip()
+    if len(source) < _COUVERTURE_SOURCE_MIN:
+        return False
+    propose = sum(len((u.get("texte") or "").strip()) for u in updates)
+    return propose < seuil * len(source)
+
+
+def _aides_trame(cfg: dict) -> dict[str, str]:
+    """Repères « à y ranger » définis par le praticien dans sa trame (champ
+    `aide` d'une rubrique). Les rubriques sans aide retombent sur les repères
+    intégrés de `prompts.AIDE_RUBRIQUES`."""
+    sections = ((cfg.get("trame") or {}).get("sections")) or []
+    return {
+        s["cle"]: str(s.get("aide") or "")
+        for s in sections
+        if isinstance(s, dict) and s.get("cle")
+    }
+
+
 async def structure(
     transcription: str, sections: list[dict], domaines: list[str], cfg: dict,
     style_examples: list[str] | None = None, patient_desc: str = "",
@@ -171,6 +290,7 @@ async def structure(
         questions_ecartees=questions_ecartees,
         questions_repondues=questions_repondues,
         max_car_section=max_car,
+        aides=_aides_trame(cfg),
     )
     raw = await chat_json(
         system, user,
@@ -181,9 +301,25 @@ async def structure(
         timeout_s=llmcfg.get("timeout_s"),
     )
     result = _parse_structure(raw)
-    result["updates"] = [u for u in result["updates"] if u["section"] in valid]
+    # Rattachement des clés rendues par le modèle. Ce qui ne se rattache à
+    # aucune rubrique n'est plus jeté en silence : la liste remonte à
+    # l'interface, qui le dit au praticien — un texte clinique perdu sans un
+    # mot est le pire des deux maux.
+    placees, non_placees = [], []
+    for u in result["updates"]:
+        cle = resoudre_cle(u["section"], sections)
+        if cle:
+            placees.append({**u, "section": cle})
+        else:
+            non_placees.append(u["section"])
+            logger.warning(
+                "Rubrique inconnue rendue par le modèle : %r — texte non placé", u["section"]
+            )
+    result["updates"] = placees
+    result["updates_non_placees"] = non_placees
     result["questions"] = [
-        q for q in result["questions"] if (not q["section"] or q["section"] in valid)
+        q for q in result["questions"]
+        if (not q["section"] or resoudre_cle(q["section"], sections))
     ]
     result["rubriques_tronquees"] = prompts.sections_tronquees(sections, max_car)
     return result

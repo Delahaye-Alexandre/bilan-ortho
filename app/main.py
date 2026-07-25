@@ -43,9 +43,11 @@ from . import (
     security,
     stt,
     systeme,
+    verif_chiffres,
 )
 from .models import (
     BilanCreate,
+    BilanPatch,
     CatalogueDomaine,
     ConfigPatch,
     EpreuveCreate,
@@ -493,10 +495,29 @@ async def create_bilan(req: BilanCreate) -> dict:
             raise HTTPException(404, "Patient introuvable.")
         cfg = config.ConfigStore(con).effective()
         bid = bilan.create(
-            con, req.domaines, req.type.value, req.patient_id, req.motif, cfg
+            con, req.domaines, req.type.value, req.patient_id, req.motif, cfg,
+            date_bilan=req.date_bilan,
+            prescripteur=req.prescripteur,
+            prescripteur_rpps=req.prescripteur_rpps,
         )
         security.audit("create", "bilan", bid, "")
         return bilan.get(con, bid)
+
+
+@app.put("/api/bilans/{bilan_id}", dependencies=[Depends(require_unlock)])
+async def patch_bilan(bilan_id: int, req: BilanPatch) -> dict:
+    """En-tête du bilan : date et prescripteur. Tous deux figurent sur le
+    document adressé au médecin et doivent rester corrigeables après coup."""
+    with security.transaction() as con:
+        if not bilan.maj_entete(
+            con, bilan_id,
+            date_bilan=req.date_bilan,
+            prescripteur=req.prescripteur,
+            prescripteur_rpps=req.prescripteur_rpps,
+        ):
+            raise HTTPException(404, "Bilan introuvable.")
+        security.audit("entete", "bilan", bilan_id, "")
+        return bilan.get(con, bilan_id)
 
 
 @app.get("/api/bilans", dependencies=[Depends(require_unlock)])
@@ -622,12 +643,34 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
         )
     except llm.ReponseIllisible as exc:
         raise HTTPException(502, str(exc))
+    # Traçabilité des chiffres : tout nombre proposé doit se retrouver dans le
+    # matériau source (dictée de ce tour, réponses, contenu déjà relu par le
+    # praticien). Le modèle local transpose parfois un écart-type en percentile
+    # ou attribue un résultat au mauvais test ; aucune consigne de prompt ne le
+    # garantit. On ne corrige rien — on signale, le praticien tranche.
+    sources = (
+        [req.transcription]
+        + [f"{r.question} {r.reponse}" for r in req.reponses]
+        + [s.get("contenu") or "" for s in b["sections"]]
+    )
+    titres = {s["cle"]: s["titre"] for s in b["sections"]}
+    chiffres_a_verifier = []
+    for u in result["updates"]:
+        msgs = verif_chiffres.signalements(u["texte"], sources)
+        if msgs:
+            chiffres_a_verifier.append({
+                "section": u["section"],
+                "titre": titres.get(u["section"], u["section"]),
+                "signalements": msgs,
+            })
     with security.transaction() as con:
         bilan.apply_updates(con, bilan_id, result["updates"])
         security.audit(
             "structure", "bilan", bilan_id,
             f"{len(result['updates'])} maj, {len(result['questions'])} questions"
-            + (f", {len(req.reponses)} réponse(s) intégrée(s)" if req.reponses else ""),
+            + (f", {len(req.reponses)} réponse(s) intégrée(s)" if req.reponses else "")
+            + (f", {len(chiffres_a_verifier)} rubrique(s) à vérifier"
+               if chiffres_a_verifier else ""),
         )
         b2 = bilan.get(con, bilan_id)
     return {
@@ -638,6 +681,14 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
         "rubriques_tronquees": result.get("rubriques_tronquees", []),
         # Vide si le style a bien été réinjecté ; sinon, la cause à afficher.
         "style_indisponible": style_indisponible,
+        # Chiffres proposés que l'app n'a pas pu retrouver dans la dictée.
+        "chiffres_a_verifier": chiffres_a_verifier,
+        # Rubriques rendues par le modèle sous un nom inconnu : le texte n'a pas
+        # pu être placé. Signalé plutôt que perdu en silence.
+        "updates_non_placees": result.get("updates_non_placees", []),
+        # Le modèle s'est vraisemblablement arrêté en cours de route : le
+        # praticien doit le savoir avant de relire un compte-rendu amputé.
+        "analyse_incomplete": llm.couverture_suspecte(texte_tour, result["updates"]),
     }
 
 
@@ -701,25 +752,34 @@ async def cote_bilan(bilan_id: int) -> dict:
 
 @app.get("/api/bilans/{bilan_id}/export", dependencies=[Depends(require_unlock)])
 async def export_bilan(bilan_id: int, format: str = "md"):
+    # La config porte l'identité du praticien : sans elle, l'export ressortirait
+    # sans en-tête ni signature, donc non envoyable en l'état.
     with security.transaction() as con:
         b = bilan.get(con, bilan_id)
+        cfg = config.ConfigStore(con).effective()
     if not b:
         raise HTTPException(404, "Bilan introuvable.")
     fname = f"bilan-{bilan_id}"
     if format == "docx":
-        data = export.to_docx(b)
+        data = export.to_docx(b, cfg)
         return Response(
             content=data,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={"Content-Disposition": f'attachment; filename="{fname}.docx"'},
         )
+    if format == "pdf":
+        return Response(
+            content=export.to_pdf(b, cfg),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{fname}.pdf"'},
+        )
     if format == "txt":
         return PlainTextResponse(
-            export.to_txt(b),
+            export.to_txt(b, cfg),
             headers={"Content-Disposition": f'attachment; filename="{fname}.txt"'},
         )
     return PlainTextResponse(
-        export.to_markdown(b),
+        export.to_markdown(b, cfg),
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{fname}.md"'},
     )

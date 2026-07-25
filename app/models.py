@@ -5,6 +5,7 @@ du domaine. Les modèles CRUD des bilans/patients seront étoffés en Phase 3.
 """
 from __future__ import annotations
 
+from datetime import date
 from enum import Enum
 from typing import Literal
 
@@ -168,7 +169,27 @@ class MajPatch(_SectionPatch):
     verification_auto: bool | None = None
 
 
+class PraticienPatch(_SectionPatch):
+    """Identité professionnelle portée sur les exports. Bornes de longueur
+    seulement : ni ADELI ni RPPS ne sont validés sur leur format, l'app n'a pas
+    à refuser un identifiant que l'Assurance maladie accepterait."""
+
+    nom: str | None = Field(None, max_length=120)
+    prenom: str | None = Field(None, max_length=120)
+    titre: str | None = Field(None, max_length=120)
+    adeli: str | None = Field(None, max_length=40)
+    rpps: str | None = Field(None, max_length=40)
+    siret: str | None = Field(None, max_length=40)
+    adresse: str | None = Field(None, max_length=300)
+    code_postal: str | None = Field(None, max_length=20)
+    ville: str | None = Field(None, max_length=120)
+    telephone: str | None = Field(None, max_length=40)
+    email: str | None = Field(None, max_length=200)
+    lieu_signature: str | None = Field(None, max_length=120)
+
+
 class OverridesPatch(_SectionPatch):
+    praticien: PraticienPatch | None = None
     llm: LlmPatch | None = None
     stt: SttPatch | None = None
     embeddings: EmbeddingsPatch | None = None
@@ -250,11 +271,45 @@ class PromptRemplacement(BaseModel):
 
 # --- Bilans / structuration --------------------------------------------------
 
+def _date_iso_ou_vide(v: str | None) -> str:
+    """Date au format AAAA-MM-JJ, ou chaîne vide. Une date invalide est refusée
+    plutôt que reportée telle quelle sur un document adressé au prescripteur."""
+    v = (v or "").strip()
+    if not v:
+        return ""
+    try:
+        date.fromisoformat(v)
+    except ValueError:
+        raise ValueError("date attendue au format AAAA-MM-JJ")
+    return v
+
+
 class BilanCreate(BaseModel):
     domaines: list[str] = []
     type: BilanType = BilanType.initial_simple
     patient_id: int | None = None
     motif: str = ""
+    # Vide = date du jour (la date de rédaction n'est pas celle de la séance
+    # quand le compte-rendu est rédigé plus tard).
+    date_bilan: str = ""
+    prescripteur: str = Field("", max_length=200)
+    prescripteur_rpps: str = Field("", max_length=40)
+
+    _date = field_validator("date_bilan")(_date_iso_ou_vide)
+
+
+class BilanPatch(BaseModel):
+    """En-tête modifiable d'un bilan : date et prescripteur (champ absent =
+    inchangé)."""
+
+    date_bilan: str | None = None
+    prescripteur: str | None = Field(None, max_length=200)
+    prescripteur_rpps: str | None = Field(None, max_length=40)
+
+    @field_validator("date_bilan")
+    @classmethod
+    def _valide_date(cls, v: str | None) -> str | None:
+        return None if v is None else _date_iso_ou_vide(v)
 
 
 class ReponseClarification(BaseModel):

@@ -104,6 +104,26 @@ DOMAINES: list[dict[str, str]] = [
 # --- Valeurs par défaut (surchargées par la config praticien) ---------------
 
 DEFAULTS: dict[str, Any] = {
+    # Identité professionnelle, reportée en en-tête et en signature des exports.
+    # Un compte-rendu de bilan orthophonique est adressé au prescripteur : sans
+    # ces mentions, le praticien devait recoller le texte dans son papier à
+    # en-tête, ce qui annulait le temps gagné. Tout est vide par défaut — un
+    # en-tête n'apparaît que s'il a été renseigné, jamais d'identité inventée.
+    "praticien": {
+        "nom": "",
+        "prenom": "",
+        "titre": "Orthophoniste",
+        "adeli": "",
+        "rpps": "",
+        "siret": "",
+        "adresse": "",
+        "code_postal": "",
+        "ville": "",
+        "telephone": "",
+        "email": "",
+        # Lieu porté sur la formule « Fait à …, le … ». Vide = la ville.
+        "lieu_signature": "",
+    },
     "llm": {
         "model": "qwen2.5:7b-instruct-q4_K_M",
         "temperature": 0.3,

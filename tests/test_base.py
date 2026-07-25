@@ -90,7 +90,13 @@ def test_apply_updates_et_validation(con):
     assert s["statut"] == "valide" and s["contenu"] == "Version finale."
 
 
-def test_add_epreuve_drapeau_et_phrase(con):
+def test_add_epreuve_drapeau_sans_polluer_la_rubrique(con):
+    """Les résultats saisis sont stockés structurés, PAS recopiés en lignes de
+    texte dans la rubrique.
+
+    Ces lignes s'empilaient à la suite de la prose de l'IA et ressortaient
+    telles quelles dans le .docx envoyé au prescripteur ; elles sont désormais
+    rendues comme un tableau à l'export (cf. test_export_tableau_epreuves)."""
     bid = bilan.create(con, ["langage_ecrit"], "initial_simple")
     bilan.add_epreuve(con, bid, "langage_ecrit", "BALE", "", [{
         "sous_epreuve": "pseudo-mots", "score_brut": "12",
@@ -99,7 +105,7 @@ def test_add_epreuve_drapeau_et_phrase(con):
     b = bilan.get(con, bid)
     assert b["epreuves"][0]["resultats"][0]["drapeau_seuil"] == "severe"
     s = next(s for s in b["sections"] if s["cle"] == "epreuves")
-    assert "BALE — pseudo-mots" in s["contenu"] and "déficit sévère" in s["contenu"]
+    assert s["contenu"] == ""
 
 
 def test_trame_configurable(con):

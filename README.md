@@ -46,8 +46,17 @@ ci-dessous.
   chiffrée) et réinjectés comme exemples de style à la rédaction. Des amorces
   fictives sont fournies dans `data/reference/`.
 - **Cotation NGAP** paramétrable, **cycle de vie** du bilan (brouillon →
-  validé → envoyé au prescripteur, tracé) et **export** Word (.docx),
+  validé → envoyé au prescripteur, tracé) et **export** PDF, Word (.docx),
   Markdown, texte.
+- **Un document envoyable tel quel** : renseignez une fois votre identité
+  professionnelle (nom, titre, ADELI/RPPS, adresse, coordonnées) dans
+  ⚙️ Paramètres, et chaque export porte votre en-tête, la date du bilan, le
+  médecin destinataire, un tableau des résultats d'épreuves et votre bloc de
+  signature. Rien n'est inventé : sans identité renseignée, aucun en-tête.
+- **Aucun chiffre inventé, vérifié et non promis** : chaque nombre proposé par
+  l'IA est retracé jusqu'à votre dictée. Ceux qui ne s'y retrouvent pas — et
+  les percentiles impossibles — sont signalés rubrique par rubrique, à vous de
+  trancher. L'app ne corrige jamais un chiffre d'elle-même.
 - **Tout est configurable** depuis l'écran ⚙️ Paramètres : modèles (LLM,
   dictée, embeddings), style (détail, vouvoiement, nb d'exemples), seuils,
   cotation, RGPD (verrouillage, durée de conservation — l'audio de dictée est,
@@ -115,8 +124,8 @@ Ollama : `OLLAMA_HOST`.
 4. **Épreuves & scores** : saisissez chaque test ; le drapeau
    norme / fragilité / pathologique / sévère est déduit de vos seuils.
 5. **Relire & valider** chaque rubrique (badge « à valider » → « validé »).
-6. **Coter** (NGAP), **exporter** (Word / Markdown / copie), puis marquer le
-   bilan **validé** et **envoyé** (destinataire tracé).
+6. **Coter** (NGAP), **exporter** (PDF / Word / Markdown / copie), puis
+   marquer le bilan **validé** et **envoyé** (destinataire tracé).
 
 Pour le style : importez 2-3 de vos bilans dans « Mes bilans de référence »
 (commencez avec `data/reference/` si vous n'en avez pas sous la main).
@@ -177,7 +186,7 @@ bilan-ortho/
 │   ├── cotation.py     # NGAP paramétrable
 │   ├── rag.py          # embeddings + recherche « style du praticien »
 │   ├── importer.py     # import PDF/OCR/.docx/texte → découpage → indexation
-│   ├── export.py       # Word / Markdown / texte
+│   ├── export.py       # PDF / Word / Markdown / texte (en-tête, tableau, signature)
 │   └── static/         # interface web (vanilla, servie par FastAPI)
 ├── data/reference/     # bilans fictifs d'amorce (style)
 ├── docs/               # recherche, notice médico-légale, registre RGPD, avancement

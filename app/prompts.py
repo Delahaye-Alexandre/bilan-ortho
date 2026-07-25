@@ -15,8 +15,10 @@ DEUX tâches :
 
 1. RÉPARTIR les éléments nouveaux dans les bonnes rubriques et proposer, pour \
 chacune concernée, un texte rédigé : clinique, sobre, en français, à la 3e \
-personne pour le patient. Ton texte sera AJOUTÉ à la suite du contenu existant \
-de la rubrique : ne répète pas ce qui y figure déjà et ne réécris pas \
+personne pour le patient. Chaque rubrique listée plus bas précise CE QU'ON Y \
+RANGE : respecte cette répartition, c'est elle qui fait la structure \
+réglementaire du compte-rendu. Ton texte sera AJOUTÉ à la suite du contenu \
+existant de la rubrique : ne répète pas ce qui y figure déjà et ne réécris pas \
 l'existant. N'INVENTE RIEN : utilise uniquement ce qui a été dicté ou répondu. \
 Pour une réponse à une question, rédige l'information en une phrase complète et \
 autonome, dans la rubrique visée par la question quand elle est indiquée.
@@ -32,16 +34,44 @@ percentile, note standard, âge de lecture) ;
    c) un test est nommé mais son résultat n'est pas donné ;
    d) une appréciation est vague (« très en dessous », « catastrophique », \
 « ça va ») sans chiffre ni précision ;
-   e) une incohérence ou une information manifestement manquante.
+   e) une incohérence ou une information manifestement manquante ;
+   f) une rubrique reste vide alors que les éléments fournis contiennent \
+manifestement des informations qui s'y rapportent.
 Quand le praticien énonce lui-même un diagnostic (ex. « je pense à une \
 dyslexie »), reformule-le dans la rubrique « diagnostic » comme une \
 proposition à confirmer, et pose une question pour l'étayer par les résultats.
+Tes questions portent UNIQUEMENT sur des informations que seul le praticien \
+détient sur CE patient. Ne lui demande jamais une norme, un étalonnage \
+théorique, une valeur de référence ou une définition : leur interprétation \
+relève de sa compétence, pas de la tienne.
 
 RÈGLES IMPÉRATIVES :
+- EXHAUSTIVITÉ : tout élément clinique dicté doit se retrouver dans une \
+rubrique. Ne résume pas au point d'en perdre. Les étapes du développement \
+(marche, premiers mots, association de mots), les antécédents médicaux, ORL, \
+audition et vision, le parcours de soin antérieur et les éléments NÉGATIFS \
+explicites (« pas d'antécédent ORL », « audition normale », « aucun suivi \
+antérieur ») ont une valeur clinique : conserve-les.
+- CHIFFRES : n'écris un chiffre (score, écart-type, percentile, note standard, \
+âge de lecture, durée, nombre d'erreurs) QUE s'il figure mot pour mot dans les \
+éléments fournis. Si une difficulté est évoquée sans chiffre, décris-la \
+qualitativement, n'en invente aucun, et pose une question. Ne recalcule ni ne \
+modifie aucun chiffre. N'attribue JAMAIS à un test un résultat obtenu à un autre.
+- Les scores et étalonnages ne figurent QUE dans la rubrique des épreuves. Les \
+rubriques d'analyse, de diagnostic et de projet les commentent sans les répéter.
+- NE COMMENCE JAMAIS ton texte par le titre ou la clé de la rubrique : n'écris \
+pas « Anamnèse : … » dans la rubrique anamnèse. Le titre est déjà affiché \
+au-dessus ; commence directement par le contenu clinique.
+- Les repères « à y ranger » servent à choisir la bonne rubrique : ce ne sont \
+NI des intertitres à recopier, NI un formulaire à remplir. Rédige en prose \
+clinique continue, et n'écris rien sur un point que la dictée n'aborde pas.
+- Chaque information ne va que dans UNE seule rubrique, celle où elle est le \
+plus à sa place : ne la répète pas d'une rubrique à l'autre.
+- N'attribue au patient que ce qui le concerne : les personnes citées dans la \
+dictée (enseignant, médecin, parents) sont des tiers, jamais le patient.
 - Tu ne poses JAMAIS de diagnostic de ta propre initiative. Tu peux rédiger la \
 rubrique « diagnostic » uniquement pour reformuler ce que le praticien a \
 explicitement énoncé — jamais pour en déduire un.
-- Ne recalcule ni ne modifie aucun chiffre.
 - Si une rubrique n'est pas concernée par les éléments nouveaux, ne l'inclus pas.
 - Préfère poser une question plutôt qu'inventer une donnée manquante.
 - NE REPOSE JAMAIS une question dont la réponse figure déjà dans les rubriques \
@@ -58,11 +88,58 @@ Réponds STRICTEMENT en JSON valide, sans texte autour, au format :
 Les seules clés de section valides sont : {cles}."""
 
 
+# Le niveau « standard » était absent de cette table : `.get()` renvoyait None
+# et AUCUNE consigne de rédaction n'était transmise au modèle, qui résumait
+# alors librement — une anamnèse dictée en détail (développement, antécédents)
+# revenait amputée. Les trois niveaux sont désormais explicites.
 _NIVEAU_DETAIL = {
-    "concis": "Rédige chaque rubrique de façon concise : 1 à 2 phrases, l'essentiel.",
+    "concis": "Rédige chaque rubrique de façon concise : va à l'essentiel, "
+    "en une à deux phrases, mais sans omettre d'élément clinique dicté.",
+    "standard": "Rédige chaque rubrique dans le style d'un compte-rendu : des "
+    "phrases complètes, reprenant TOUS les éléments dictés qui la concernent, "
+    "sans délayer.",
     "detaille": "Rédige chaque rubrique de façon développée (contexte, nuances), "
-    "toujours sans rien inventer.",
+    "toujours sans rien inventer et sans omettre aucun élément dicté.",
 }
+
+
+# Ce qu'on range dans chaque rubrique du tronc commun. Sans ces repères, le
+# modèle ne reçoit que des clés nues (`observations`, `analyse`…) et range au
+# jugé : les observations de passation atterrissaient dans « Épreuves »,
+# laissant leur propre rubrique vide. Une trame personnalisée peut fournir sa
+# propre aide par rubrique (champ `aide`), qui a priorité.
+# Reformuler ces repères en listes de mots-clés, pour dissuader le modèle de
+# les recopier comme intertitres, a été essayé et MESURÉ : la complétude est
+# tombée de 4 passages complets sur 5 à 0 sur 3. La formulation rédigée
+# ci-dessous est celle qui tient — le modèle en recopie parfois une étiquette
+# (« Suites proposées : … »), défaut cosmétique que le praticien corrige à la
+# relecture, sans commune mesure avec un compte-rendu amputé de son diagnostic.
+AIDE_RUBRIQUES: dict[str, str] = {
+    "administratif": "objet de la demande et qui l'adresse, cadre du bilan, "
+    "classe suivie par le patient ou son activité professionnelle ; aucun "
+    "résultat ni score",
+    "anamnese": "histoire rapportée par le patient ou sa famille : grossesse et "
+    "naissance, étapes du développement (marche, premiers mots, association de "
+    "mots), antécédents médicaux et ORL, audition, vision, antécédents "
+    "familiaux, prises en charge antérieures, plainte actuelle et son "
+    "retentissement au quotidien (évitement, refus, fatigue, souffrance)",
+    "observations": "comportement pendant la passation : contact, coopération, "
+    "attention, fatigabilité, appétence, communication spontanée ; aucun score",
+    "epreuves": "tests passés avec leurs résultats et étalonnages chiffrés — "
+    "c'est la SEULE rubrique où figurent des scores",
+    "analyse": "interprétation clinique croisée : ce qui est déficitaire, ce qui "
+    "est préservé, hypothèses explicatives, sans répéter les chiffres",
+    "diagnostic": "uniquement la conclusion énoncée par le praticien, reformulée "
+    "comme une proposition à confirmer",
+    "projet": "suites proposées : rééducation (rythme, durée), axes de travail, "
+    "aménagements, réévaluation, orientations",
+}
+
+
+def aide_rubrique(cle: str, aides: dict[str, str] | None = None) -> str:
+    """Repère de contenu d'une rubrique : trame du praticien, sinon défaut."""
+    perso = (aides or {}).get(cle)
+    return (perso or "").strip() or AIDE_RUBRIQUES.get(cle, "")
 
 
 # Repli si la config ne fournit pas de seuil (la valeur de référence vit dans
@@ -79,18 +156,27 @@ def sections_tronquees(sections: list[dict], max_car: int = MAX_CAR_SECTION) -> 
     ]
 
 
-def _etat_sections(sections: list[dict], max_car: int = MAX_CAR_SECTION) -> str:
+def _etat_sections(
+    sections: list[dict],
+    max_car: int = MAX_CAR_SECTION,
+    aides: dict[str, str] | None = None,
+) -> str:
     """Contenu réel des rubriques (tronqué au besoin) : le LLM doit savoir ce
-    qui est déjà connu pour ne pas le redemander ni le répéter."""
+    qui est déjà connu pour ne pas le redemander ni le répéter — et ce qu'on
+    range dans chacune, pour router correctement les éléments nouveaux."""
     lignes = []
     for s in sections:
+        entete = f"- {s['cle']} ({s['titre']})"
+        aide = aide_rubrique(s["cle"], aides)
+        if aide:
+            entete += f" — à y ranger : {aide}"
         c = (s.get("contenu") or "").strip()
         if not c:
-            lignes.append(f"- {s['cle']} ({s['titre']}) : (vide)")
+            lignes.append(f"{entete}\n  contenu actuel : (vide)")
             continue
         if len(c) > max_car:
             c = c[:max_car].rstrip() + " […]"
-        lignes.append(f"- {s['cle']} ({s['titre']}) :\n« {c} »")
+        lignes.append(f"{entete}\n  contenu actuel : « {c} »")
     return "\n".join(lignes)
 
 
@@ -114,10 +200,11 @@ def build_structure_user(
     questions_ecartees: list[str] | None = None,
     questions_repondues: list[str] | None = None,
     max_car_section: int = MAX_CAR_SECTION,
+    aides: dict[str, str] | None = None,
 ) -> str:
     """Message utilisateur : état rédigé des rubriques + mémoire du dialogue de
     clarification + éléments nouveaux (dictée et/ou réponses) + repères cliniques."""
-    etat = _etat_sections(sections, max_car_section)
+    etat = _etat_sections(sections, max_car_section, aides)
     reperes = ""
     if patient_desc:
         reperes += (
@@ -169,7 +256,7 @@ def build_structure_user(
         nouveaux += f"\n\nTranscription de la dictée :\n---\n{transcription.strip()}\n---"
     return (
         f"Domaine(s) du bilan : {domaine_titres or 'non précisé'}{reperes}\n\n"
-        f"Rubriques et leur contenu actuel :\n{etat}"
+        f"Rubriques du bilan — ce qu'on y range et leur contenu actuel :\n{etat}"
         f"{dialogue}{nouveaux}\n\n"
         "Propose les ajouts par rubrique et les éventuelles NOUVELLES questions de clarification, en JSON."
     )

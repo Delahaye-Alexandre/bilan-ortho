@@ -1,8 +1,20 @@
-"""Export d'un bilan : Markdown, texte, et Word (.docx) — pour un CR éditable."""
+"""Export d'un bilan : Markdown, texte, Word (.docx) et PDF.
+
+Le compte-rendu de bilan orthophonique est un document adressé au médecin
+prescripteur. Il portait jusqu'ici les seules rubriques : ni identité du
+praticien, ni date, ni destinataire, ni signature — donc rien qui permette de
+l'envoyer tel quel. Le praticien recollait le texte dans son papier à en-tête,
+ce qui reprenait le temps que l'outil venait de faire gagner.
+
+L'en-tête, le destinataire et la signature n'apparaissent que s'ils ont été
+renseignés : aucune identité n'est inventée, et un coffre neuf produit le même
+document qu'avant.
+"""
 from __future__ import annotations
 
 import io
 
+from .bilan import DRAPEAU_LIBELLE, etalonnage_texte
 from .patient import age_texte, date_fr
 
 DISCLAIMER = (
@@ -17,6 +29,11 @@ _TYPE_LBL = {
     "renouvellement": "Bilan de renouvellement",
 }
 
+_COLONNES = ["Test", "Épreuve", "Score brut", "Étalonnage", "Interprétation"]
+
+# Titres déjà porteurs de civilité : n'en ajoutons pas une seconde.
+_CIVILITES = ("dr", "dr.", "docteur", "pr", "pr.", "professeur", "mme", "m.", "mr")
+
 
 def _naissance(p: dict) -> str:
     """Mention de naissance accordée au sexe *enregistré*, sans parenthèse.
@@ -30,6 +47,14 @@ def _naissance(p: dict) -> str:
     return f"{participe} le {date}" if participe else f"date de naissance : {date}"
 
 
+def _date_reference(b: dict) -> str:
+    """Date du bilan, à défaut sa date de création.
+
+    L'âge doit être calculé à la date du bilan : un compte-rendu rédigé une
+    semaine plus tard ne doit pas vieillir le patient d'autant."""
+    return (b.get("date_bilan") or "").strip() or (b.get("created_at") or "")
+
+
 def _patient_ligne(b: dict) -> str:
     p = b.get("patient")
     if not p:
@@ -38,23 +63,125 @@ def _patient_ligne(b: dict) -> str:
     ligne = f"Patient : {ident or '—'}"
     if p.get("date_naissance"):
         ligne += f", {_naissance(p)}"
-        age = age_texte(p["date_naissance"], b.get("created_at"))
+        age = age_texte(p["date_naissance"], _date_reference(b))
         if age:
             ligne += f" ({age} à la date du bilan)"
     return ligne
 
 
-def _content(b: dict) -> list[tuple[str, str]]:
+def _nom_praticien(prat: dict) -> str:
+    return " ".join(
+        x for x in [(prat.get("prenom") or "").strip(), (prat.get("nom") or "").strip()] if x
+    )
+
+
+def _entete_praticien(prat: dict) -> list[str]:
+    """Lignes d'en-tête du cabinet, dans l'ordre d'un papier à lettres.
+
+    Sans nom, pas d'en-tête du tout : `titre` vaut « Orthophoniste » par défaut,
+    et le seul métier ne constitue pas une identité — un coffre neuf produirait
+    un en-tête qui n'identifie personne."""
+    nom = _nom_praticien(prat)
+    if not nom:
+        return []
+    lignes = [nom]
+    if (prat.get("titre") or "").strip():
+        lignes.append(prat["titre"].strip())
+    ville = " ".join(
+        x for x in [(prat.get("code_postal") or "").strip(), (prat.get("ville") or "").strip()] if x
+    )
+    adresse = ", ".join(x for x in [(prat.get("adresse") or "").strip(), ville] if x)
+    if adresse:
+        lignes.append(adresse)
+    contact = " — ".join(
+        x for x in [
+            f"Tél. {prat['telephone'].strip()}" if (prat.get("telephone") or "").strip() else "",
+            (prat.get("email") or "").strip(),
+        ] if x
+    )
+    if contact:
+        lignes.append(contact)
+    ids = " — ".join(
+        x for x in [
+            f"N° ADELI {prat['adeli'].strip()}" if (prat.get("adeli") or "").strip() else "",
+            f"RPPS {prat['rpps'].strip()}" if (prat.get("rpps") or "").strip() else "",
+            f"SIRET {prat['siret'].strip()}" if (prat.get("siret") or "").strip() else "",
+        ] if x
+    )
+    if ids:
+        lignes.append(ids)
+    return lignes
+
+
+def _destinataire(b: dict) -> str:
+    nom = ((b.get("prescripteur") or {}).get("nom") or "").strip()
+    if not nom:
+        return ""
+    premier = nom.split()[0].lower()
+    if premier in _CIVILITES:
+        return f"À l'attention de {nom}"
+    return f"À l'attention du Dr {nom}"
+
+
+def _signature(b: dict, prat: dict) -> list[str]:
+    """« Fait à …, le … » puis l'identité qui signe. Rien sans identité."""
+    nom = _nom_praticien(prat)
+    if not nom:
+        return []
+    lieu = (prat.get("lieu_signature") or "").strip() or (prat.get("ville") or "").strip()
+    quand = date_fr(_date_reference(b)[:10]) if _date_reference(b) else ""
+    formule = ", le ".join(x for x in [f"Fait à {lieu}" if lieu else "Fait", quand] if x)
+    titre = (prat.get("titre") or "").strip()
+    return [formule, f"{nom}, {titre.lower()}" if titre else nom]
+
+
+def _table_epreuves(b: dict) -> list[list[str]] | None:
+    """Lignes du tableau des résultats, ou None s'il n'y a rien à montrer."""
+    lignes: list[list[str]] = []
+    for e in b.get("epreuves") or []:
+        for r in e.get("resultats") or []:
+            interpretation = " ".join(
+                x for x in [
+                    DRAPEAU_LIBELLE.get(r.get("drapeau_seuil") or "", ""),
+                    (r.get("interpretation") or "").strip(),
+                ] if x
+            )
+            lignes.append([
+                e.get("test_nom") or "",
+                r.get("sous_epreuve") or "",
+                r.get("score_brut") or "",
+                etalonnage_texte(r),
+                interpretation,
+            ])
+    return lignes or None
+
+
+def _content(b: dict, cfg: dict | None = None) -> list[tuple[str, object]]:
+    """Document sous forme de blocs (type, contenu), rendus par chaque format."""
+    prat = ((cfg or {}).get("praticien")) or {}
+    blocks: list[tuple[str, object]] = []
+    entete = _entete_praticien(prat)
+    if entete:
+        blocks.append(("entete", entete))
+    dest = _destinataire(b)
+    if dest:
+        blocks.append(("dest", dest))
     doms = b.get("domaine_titres") or "Générique"
-    meta = f"{_TYPE_LBL.get(b.get('type'), b.get('type', ''))} · Domaine(s) : {doms}"
-    blocks: list[tuple[str, str]] = [("h1", "Compte-rendu de bilan orthophonique"), ("p", meta)]
+    blocks.append(("h1", "Compte-rendu de bilan orthophonique"))
+    blocks.append(("p", f"{_TYPE_LBL.get(b.get('type'), b.get('type', ''))} · Domaine(s) : {doms}"))
     patient = _patient_ligne(b)
     if patient:
         blocks.append(("p", patient))
+    if (b.get("date_bilan") or "").strip():
+        blocks.append(("p", f"Date du bilan : {date_fr(b['date_bilan'])}"))
     for s in b.get("sections", []):
         if (s.get("contenu") or "").strip():
             blocks.append(("h2", s["titre"]))
             blocks.append(("p", s["contenu"].strip()))
+    table = _table_epreuves(b)
+    if table:
+        blocks.append(("h2", "Résultats des épreuves"))
+        blocks.append(("table", table))
     cot = b.get("cotation")
     if cot:
         blocks.append(("h2", "Cotation (NGAP)"))
@@ -63,20 +190,36 @@ def _content(b: dict) -> list[tuple[str, str]]:
             f"{cot['code_amo']} — {cot['montant']} € "
             f"(coefficient {cot['coefficient']}, valeur lettre-clé {cot['valeur_lettre_cle']} €)",
         ))
+    sign = _signature(b, prat)
+    if sign:
+        blocks.append(("sign", sign))
     blocks.append(("hr", ""))
     blocks.append(("i", DISCLAIMER))
     return blocks
 
 
-def to_markdown(b: dict) -> str:
-    out = []
-    for k, t in _content(b):
-        if k == "h1":
-            out.append(f"# {t}")
+def to_markdown(b: dict, cfg: dict | None = None) -> str:
+    out: list[str] = []
+    for k, t in _content(b, cfg):
+        if k == "entete":
+            out.append("\n".join(f"**{ligne}**" if i == 0 else ligne
+                                 for i, ligne in enumerate(t)))
+            out.append("\n---")
+        elif k == "dest":
+            out.append(f"\n{t}")
+        elif k == "h1":
+            out.append(f"\n# {t}")
         elif k == "h2":
             out.append(f"\n## {t}")
         elif k == "p":
             out.append(f"\n{t}")
+        elif k == "table":
+            out.append("\n| " + " | ".join(_COLONNES) + " |")
+            out.append("| " + " | ".join("---" for _ in _COLONNES) + " |")
+            for ligne in t:
+                out.append("| " + " | ".join(c or "—" for c in ligne) + " |")
+        elif k == "sign":
+            out.append("\n" + "  \n".join(t))
         elif k == "hr":
             out.append("\n---")
         elif k == "i":
@@ -84,13 +227,30 @@ def to_markdown(b: dict) -> str:
     return "\n".join(out).strip() + "\n"
 
 
-def to_txt(b: dict) -> str:
-    out = []
-    for k, t in _content(b):
-        if k in ("h1", "h2"):
+def to_txt(b: dict, cfg: dict | None = None) -> str:
+    out: list[str] = []
+    for k, t in _content(b, cfg):
+        if k == "entete":
+            out.extend(t)
+            out.append("-" * 40)
+        elif k == "dest":
+            out.append("\n" + t)
+        elif k in ("h1", "h2"):
             out.append("\n" + t.upper())
         elif k == "p":
             out.append(t)
+        elif k == "table":
+            larg = [
+                max(len(_COLONNES[i]), *(len(ligne[i] or "") for ligne in t))
+                for i in range(len(_COLONNES))
+            ]
+            out.append("  ".join(c.ljust(larg[i]) for i, c in enumerate(_COLONNES)))
+            out.append("  ".join("-" * w for w in larg))
+            for ligne in t:
+                out.append("  ".join((c or "—").ljust(larg[i]) for i, c in enumerate(ligne)))
+        elif k == "sign":
+            out.append("")
+            out.extend(t)
         elif k == "hr":
             out.append("-" * 40)
         elif k == "i":
@@ -98,17 +258,44 @@ def to_txt(b: dict) -> str:
     return "\n".join(out).strip() + "\n"
 
 
-def to_docx(b: dict) -> bytes:
+def to_docx(b: dict, cfg: dict | None = None) -> bytes:
     from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     doc = Document()
-    for k, t in _content(b):
-        if k == "h1":
+    for k, t in _content(b, cfg):
+        if k == "entete":
+            for i, ligne in enumerate(t):
+                p = doc.add_paragraph()
+                run = p.add_run(ligne)
+                run.bold = i == 0
+                run.font.size = None if i == 0 else run.font.size
+        elif k == "dest":
+            p = doc.add_paragraph(t)
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        elif k == "h1":
             doc.add_heading(t, level=0)
         elif k == "h2":
             doc.add_heading(t, level=1)
         elif k == "p":
             doc.add_paragraph(t)
+        elif k == "table":
+            table = doc.add_table(rows=1, cols=len(_COLONNES))
+            table.style = "Table Grid"
+            for i, titre in enumerate(_COLONNES):
+                table.rows[0].cells[i].paragraphs[0].add_run(titre).bold = True
+            for ligne in t:
+                cells = table.add_row().cells
+                for i, val in enumerate(ligne):
+                    cells[i].text = val or "—"
+        elif k == "sign":
+            doc.add_paragraph()
+            for ligne in t:
+                p = doc.add_paragraph(ligne)
+                p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            # Espace laissé à la signature manuscrite ou au cachet.
+            doc.add_paragraph()
+            doc.add_paragraph()
         elif k == "hr":
             doc.add_paragraph("_" * 30)
         elif k == "i":
@@ -116,4 +303,85 @@ def to_docx(b: dict) -> bytes:
             p.add_run(t).italic = True
     buf = io.BytesIO()
     doc.save(buf)
+    return buf.getvalue()
+
+
+def to_pdf(b: dict, cfg: dict | None = None) -> bytes:
+    """PDF paginé, format d'envoi habituel d'un compte-rendu au prescripteur.
+
+    reportlab est retenu pour rester compatible avec l'exécutable Windows :
+    c'est une bibliothèque Python pure, sans moteur de rendu HTML ni binaire
+    système à embarquer."""
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_RIGHT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (
+        HRFlowable,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    ss = getSampleStyleSheet()
+    corps = ParagraphStyle("corps", parent=ss["BodyText"], fontSize=10, leading=14)
+    petit = ParagraphStyle("petit", parent=corps, fontSize=8.5, leading=11)
+    droite = ParagraphStyle("droite", parent=corps, alignment=TA_RIGHT)
+    titre1 = ParagraphStyle("t1", parent=ss["Heading1"], fontSize=15, spaceBefore=10)
+    titre2 = ParagraphStyle("t2", parent=ss["Heading2"], fontSize=12, spaceBefore=10)
+
+    def esc(txt: str) -> str:
+        return (txt.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+    flow: list = []
+    for k, t in _content(b, cfg):
+        if k == "entete":
+            for i, ligne in enumerate(t):
+                flow.append(Paragraph(
+                    f"<b>{esc(ligne)}</b>" if i == 0 else esc(ligne),
+                    corps if i == 0 else petit,
+                ))
+            flow.append(Spacer(1, 4))
+            flow.append(HRFlowable(width="100%", color=colors.grey))
+        elif k == "dest":
+            flow.append(Spacer(1, 8))
+            flow.append(Paragraph(esc(t), droite))
+        elif k == "h1":
+            flow.append(Paragraph(esc(t), titre1))
+        elif k == "h2":
+            flow.append(Paragraph(esc(t), titre2))
+        elif k == "p":
+            # Les rubriques dictées contiennent des sauts de ligne signifiants.
+            flow.append(Paragraph(esc(t).replace("\n", "<br/>"), corps))
+        elif k == "table":
+            data = [[Paragraph(f"<b>{esc(c)}</b>", petit) for c in _COLONNES]]
+            data += [[Paragraph(esc(c or "—"), petit) for c in ligne] for ligne in t]
+            table = Table(data, colWidths=[32 * mm, 38 * mm, 28 * mm, 28 * mm, 40 * mm])
+            table.setStyle(TableStyle([
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]))
+            flow.append(table)
+        elif k == "sign":
+            flow.append(Spacer(1, 16))
+            for ligne in t:
+                flow.append(Paragraph(esc(ligne), droite))
+            flow.append(Spacer(1, 24))  # place pour la signature ou le cachet
+        elif k == "hr":
+            flow.append(Spacer(1, 8))
+            flow.append(HRFlowable(width="100%", color=colors.grey))
+        elif k == "i":
+            flow.append(Paragraph(f"<i>{esc(t)}</i>", petit))
+
+    buf = io.BytesIO()
+    SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=20 * mm, rightMargin=20 * mm,
+        topMargin=18 * mm, bottomMargin=18 * mm,
+        title="Compte-rendu de bilan orthophonique",
+    ).build(flow)
     return buf.getvalue()

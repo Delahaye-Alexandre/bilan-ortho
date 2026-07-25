@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 
 from . import config, db
 from .db import dicts as _dicts
@@ -36,18 +37,102 @@ def create(
     patient_id: int | None = None,
     motif: str = "",
     cfg: dict | None = None,
+    date_bilan: str = "",
+    prescripteur: str = "",
+    prescripteur_rpps: str = "",
 ) -> int:
+    # La colonne `date_bilan` existait mais restait nulle : l'export ne portait
+    # donc aucune date, alors qu'un compte-rendu adressé au prescripteur doit
+    # être daté. Vide = aujourd'hui, modifiable ensuite (un CR peut être rédigé
+    # plusieurs jours après la séance).
     cur = con.execute(
-        "INSERT INTO bilan(patient_id, domaines, type, motif) VALUES(?,?,?,?)",
-        (patient_id, json.dumps(domaines), type_, motif),
+        "INSERT INTO bilan(patient_id, domaines, type, motif, date_bilan) "
+        "VALUES(?,?,?,?,COALESCE(NULLIF(?,''), date('now')))",
+        (patient_id, json.dumps(domaines), type_, motif, date_bilan),
     )
     bid = cur.lastrowid
+    if prescripteur.strip() or prescripteur_rpps.strip():
+        set_prescripteur(con, bid, prescripteur, prescripteur_rpps)
     for ordre, (cle, titre) in enumerate(_trame(cfg)):
         con.execute(
             "INSERT INTO section(bilan_id, cle, titre, ordre) VALUES(?,?,?,?)",
             (bid, cle, titre, ordre),
         )
     return bid
+
+
+def set_prescripteur(
+    con, bilan_id: int, nom: str, rpps: str = "", date_prescription: str = ""
+) -> None:
+    """Rattache le prescripteur au bilan via la table `prescription`.
+
+    Cette table et `bilan.prescription_id` existaient dans le schéma sans
+    qu'aucun code ne les remplisse : l'export ne portait donc aucun
+    destinataire, alors que le compte-rendu est adressé au médecin qui a
+    prescrit le bilan. Une seule prescription par bilan : on remplace."""
+    row = con.execute(
+        "SELECT prescription_id, patient_id FROM bilan WHERE id=?", (bilan_id,)
+    ).fetchone()
+    if row is None:
+        return
+    pres_id, patient_id = row[0], row[1]
+    if pres_id:
+        con.execute(
+            "UPDATE prescription SET prescripteur_nom=?, prescripteur_rpps=?, "
+            "date_prescription=? WHERE id=?",
+            (nom.strip(), rpps.strip(), date_prescription.strip() or None, pres_id),
+        )
+        return
+    pres_id = con.execute(
+        "INSERT INTO prescription(patient_id, prescripteur_nom, prescripteur_rpps, "
+        "date_prescription) VALUES(?,?,?,?)",
+        (patient_id, nom.strip(), rpps.strip(), date_prescription.strip() or None),
+    ).lastrowid
+    con.execute("UPDATE bilan SET prescription_id=? WHERE id=?", (pres_id, bilan_id))
+
+
+def maj_entete(
+    con,
+    bilan_id: int,
+    date_bilan: str | None = None,
+    prescripteur: str | None = None,
+    prescripteur_rpps: str | None = None,
+) -> bool:
+    """Met à jour la date du bilan et/ou son prescripteur (None = inchangé)."""
+    if con.execute("SELECT 1 FROM bilan WHERE id=?", (bilan_id,)).fetchone() is None:
+        return False
+    if date_bilan is not None:
+        con.execute(
+            "UPDATE bilan SET date_bilan=COALESCE(NULLIF(?,''), date('now')), "
+            "updated_at=datetime('now') WHERE id=?",
+            (date_bilan, bilan_id),
+        )
+    if prescripteur is not None or prescripteur_rpps is not None:
+        actuel = prescripteur_bilan(con, bilan_id)
+        set_prescripteur(
+            con,
+            bilan_id,
+            prescripteur if prescripteur is not None else actuel.get("nom", ""),
+            prescripteur_rpps if prescripteur_rpps is not None
+            else actuel.get("rpps", ""),
+        )
+        con.execute(
+            "UPDATE bilan SET updated_at=datetime('now') WHERE id=?", (bilan_id,)
+        )
+    return True
+
+
+def prescripteur_bilan(con, bilan_id: int) -> dict:
+    """Prescripteur rattaché au bilan (dict vide si aucun)."""
+    row = con.execute(
+        "SELECT p.prescripteur_nom, p.prescripteur_rpps, p.date_prescription "
+        "FROM bilan b JOIN prescription p ON p.id = b.prescription_id "
+        "WHERE b.id=?",
+        (bilan_id,),
+    ).fetchone()
+    if row is None:
+        return {}
+    return {"nom": row[0] or "", "rpps": row[1] or "", "date": row[2] or ""}
 
 
 def set_statut(con, bilan_id: int, statut: str, destinataire: str = "") -> bool:
@@ -95,6 +180,7 @@ def get(con, bilan_id: int) -> dict | None:
             con.execute("SELECT * FROM resultat WHERE epreuve_id=? ORDER BY id", (e["id"],))
         )
     b["epreuves"] = eps
+    b["prescripteur"] = prescripteur_bilan(con, bilan_id)
     cot = _dicts(con.execute("SELECT * FROM cotation WHERE bilan_id=?", (bilan_id,)))
     b["cotation"] = cot[0] if cot else None
     return b
@@ -116,18 +202,54 @@ def liste(con, limit: int = 20, offset: int = 0) -> list[dict]:
     return rows
 
 
-def apply_updates(con, bilan_id: int, updates: list[dict], source: str = "dictee") -> int:
+def _sans_accents(s: str) -> str:
+    d = unicodedata.normalize("NFD", s)
+    return "".join(c for c in d if unicodedata.category(c) != "Mn")
+
+
+def _cle_comparaison(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", _sans_accents(s).lower())
+
+
+_PREFIXE_TITRE = re.compile(r"^\**\s*([^\n:]{1,60}?)\s*\**\s*:\s*")
+
+
+def nettoyer_prefixe_titre(texte: str, titre: str, cle: str = "") -> str:
+    """Retire le « Titre : » que le modèle place spontanément en tête du texte.
+
+    Le titre de la rubrique est déjà affiché dans l'interface et dans l'export :
+    le laisser produisait « ## Anamnèse » suivi de « Anamnèse : … » dans chaque
+    rubrique de chaque compte-rendu. La consigne le proscrit, ce nettoyage le
+    garantit. Seul un préfixe correspondant au titre ou à la clé de LA rubrique
+    visée est retiré : « Antécédents familiaux : … » dans l'anamnèse est du
+    contenu, et reste intact."""
+    tete = _PREFIXE_TITRE.match(texte.lstrip())
+    if not tete:
+        return texte
+    candidat = _cle_comparaison(tete.group(1))
+    attendus = {_cle_comparaison(titre), _cle_comparaison(cle)} - {""}
+    if candidat and candidat in attendus:
+        return texte.lstrip()[tete.end():].lstrip()
+    return texte
+
+
+def apply_updates(
+    con, bilan_id: int, updates: list[dict], source: str = "dictee",
+) -> int:
     """Ajoute les textes proposés aux rubriques correspondantes (statut propose_ia)."""
     applied = 0
     for u in updates:
         row = con.execute(
-            "SELECT id, contenu FROM section WHERE bilan_id=? AND cle=?",
+            "SELECT id, contenu, titre FROM section WHERE bilan_id=? AND cle=?",
             (bilan_id, u["section"]),
         ).fetchone()
         if not row:
             continue
         sid, contenu = row[0], (row[1] or "")
-        nouveau = (contenu + ("\n\n" if contenu else "") + u["texte"]).strip()
+        texte = nettoyer_prefixe_titre(u["texte"], row[2] or "", u["section"])
+        if not texte.strip():
+            continue
+        nouveau = (contenu + ("\n\n" if contenu else "") + texte).strip()
         con.execute(
             "UPDATE section SET contenu=?, statut='propose_ia', source=?, "
             "updated_at=datetime('now') WHERE id=?",
@@ -223,19 +345,30 @@ def interpret_drapeau(etalonnage_type: str | None, valeur, cfg: dict) -> str:
     return "norme"
 
 
+def etalonnage_texte(r: dict) -> str:
+    """Valeur d'étalonnage suivie de son unité (« -1,5 ET », « 25e percentile »).
+
+    Source unique de cette mise en forme : la phrase-type et le tableau des
+    résultats de l'export doivent afficher la même unité, faute de quoi le
+    praticien ne pourrait plus relire l'échelle sur laquelle il a coté."""
+    v = r.get("etalonnage_valeur")
+    if not v:
+        return ""
+    if r.get("etalonnage_type") == "percentile":
+        # collé à la valeur : « 25e percentile », pas « 25 e percentile »
+        return f"{v}e percentile"
+    return f"{v} {_ET_LBL.get(r.get('etalonnage_type'), '')}".strip()
+
+
 def resultat_phrase(test_nom: str, r: dict) -> str:
     """Phrase-type de restitution d'un résultat (déterministe, sans LLM)."""
     tete = test_nom + (f" — {r['sous_epreuve']}" if r.get("sous_epreuve") else "") + " :"
     parts = []
     if r.get("score_brut"):
         parts.append(f"score {r['score_brut']}")
-    if r.get("etalonnage_valeur"):
-        if r.get("etalonnage_type") == "percentile":
-            # collé à la valeur : « 25e percentile », pas « 25 e percentile »
-            parts.append(f"{r['etalonnage_valeur']}e percentile")
-        else:
-            lbl = _ET_LBL.get(r.get("etalonnage_type"), "")
-            parts.append(f"{r['etalonnage_valeur']} {lbl}".strip())
+    etal = etalonnage_texte(r)
+    if etal:
+        parts.append(etal)
     line = tete + (" " + ", ".join(parts) if parts else "")
     drap = r.get("drapeau_seuil")
     if drap in DRAPEAU_LIBELLE:
@@ -249,13 +382,19 @@ def add_epreuve(
     con, bilan_id: int, domaine: str, test_nom: str, version: str,
     resultats: list[dict], cfg: dict,
 ) -> dict:
-    """Enregistre une épreuve + ses résultats (drapeau auto) et ajoute les
-    phrases-types à la rubrique « épreuves »."""
+    """Enregistre une épreuve et ses résultats, drapeau de sévérité déduit.
+
+    Les résultats ne sont plus recopiés en phrases dans la rubrique
+    « épreuves » : à l'usage, ces lignes s'empilaient à la suite de la prose
+    de l'IA et ressortaient telles quelles dans le .docx adressé au
+    prescripteur. Ils sont désormais rendus comme un **tableau** à l'export
+    (cf. `export.py`), ce qui les tient à leur place et laisse la rubrique au
+    commentaire clinique. `resultat_phrase` sert toujours ce rendu."""
     eid = con.execute(
         "INSERT INTO epreuve(bilan_id, domaine, test_nom, version) VALUES(?,?,?,?)",
         (bilan_id, domaine, test_nom, version),
     ).lastrowid
-    stored, phrases = [], []
+    stored = []
     for r in resultats:
         drap = r.get("drapeau_seuil") or interpret_drapeau(
             r.get("etalonnage_type"), r.get("etalonnage_valeur"), cfg
@@ -268,21 +407,7 @@ def add_epreuve(
              r.get("etalonnage_valeur"), r.get("percentile"), r.get("note_standard"),
              r.get("age_dev"), r.get("interpretation"), drap),
         )
-        rr = {**r, "drapeau_seuil": drap}
-        stored.append(rr)
-        phrases.append(resultat_phrase(test_nom, rr))
-    if phrases:
-        row = con.execute(
-            "SELECT id, contenu FROM section WHERE bilan_id=? AND cle='epreuves'", (bilan_id,)
-        ).fetchone()
-        if row:
-            contenu = (row[1] or "")
-            nouveau = (contenu + ("\n" if contenu else "") + "\n".join(phrases)).strip()
-            con.execute(
-                "UPDATE section SET contenu=?, statut='propose_ia', source='structured', "
-                "updated_at=datetime('now') WHERE id=?",
-                (nouveau, row[0]),
-            )
+        stored.append({**r, "drapeau_seuil": drap})
     con.execute("UPDATE bilan SET updated_at=datetime('now') WHERE id=?", (bilan_id,))
     return {"id": eid, "test_nom": test_nom, "domaine": domaine,
             "version": version, "resultats": stored}
