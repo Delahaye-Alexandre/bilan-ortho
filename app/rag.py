@@ -126,6 +126,15 @@ def retrieve(
     return out
 
 
+def a_des_references(con) -> bool:
+    """True si au moins un extrait de référence est indexé.
+
+    Sert à ne signaler l'indisponibilité du style qu'aux praticiens qui ont
+    effectivement importé des bilans : sans base de référence, il n'y a aucun
+    style à réinjecter et l'avertissement serait du bruit."""
+    return con.execute("SELECT 1 FROM bilan_reference LIMIT 1").fetchone() is not None
+
+
 def liste(con) -> list[dict]:
     return _dicts(con.execute(
         "SELECT id, source, domaine, section_cle, titre, length(texte) AS taille, created_at "

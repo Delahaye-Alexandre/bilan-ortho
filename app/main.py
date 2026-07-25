@@ -555,17 +555,34 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
     # Récupère des extraits du praticien pour inspirer le style (best-effort).
     # L'embedding (appel réseau) est calculé HORS du verrou : un Ollama lent
     # ne gèle plus le serveur (audit C3).
-    style = []
-    try:
-        dom = b["domaines"][0] if b["domaines"] else None
-        k = cfg["style"]["few_shot_k"]
-        if texte_tour and k:
+    #
+    # Un échec ne bloque pas l'analyse, mais il n'est plus silencieux : le
+    # style du praticien est l'argument central du produit, et le voir cesser
+    # de s'appliquer sans un mot laissait croire à une IA qui « écrit moins
+    # bien » sans cause visible.
+    style, style_indisponible = [], ""
+    dom = b["domaines"][0] if b["domaines"] else None
+    k = cfg["style"]["few_shot_k"]
+    a_des_refs = False
+    if texte_tour and k:
+        with security.transaction() as con:
+            a_des_refs = rag.a_des_references(con)
+    if a_des_refs:
+        try:
             emb = await rag.embed(texte_tour, cfg)
             with security.transaction() as con:
                 refs = rag.retrieve(con, emb, domaine=dom, k=k)
             style = [r["texte"][:800] for r in refs]
-    except Exception:
-        style = []
+        except security.CoffreVerrouille:
+            raise  # géré globalement en 423
+        except rag.EmbeddingUnavailable as exc:
+            logger.warning("Style du praticien non réinjecté : %s", exc)
+            style_indisponible = str(exc)
+        except Exception:
+            logger.exception("Style du praticien non réinjecté (erreur inattendue)")
+            style_indisponible = (
+                "Vos bilans de référence n'ont pas pu être consultés pour ce passage."
+            )
     # Données patient minimisées pour le LLM : âge (clé des étalonnages) et
     # sexe uniquement — jamais l'identité.
     patient_desc = ""
@@ -619,6 +636,8 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
         # Rubriques trop longues, transmises seulement en partie au modèle :
         # l'interface le signale discrètement (l'anti-répétition en pâtit).
         "rubriques_tronquees": result.get("rubriques_tronquees", []),
+        # Vide si le style a bien été réinjecté ; sinon, la cause à afficher.
+        "style_indisponible": style_indisponible,
     }
 
 
@@ -762,15 +781,19 @@ async def delete_reference(ref_id: int) -> OkResponse:
 
 @app.get("/api/models", dependencies=[Depends(require_unlock)])
 async def get_models() -> dict:
+    """Modèles installés sur l'hôte Ollama *configuré* (et non celui du module) :
+    le sélecteur doit refléter la configuration praticien effective."""
+    with security.transaction() as con:
+        cfg = config.ConfigStore(con).effective()
     try:
-        models = await llm.list_models()
+        models = await llm.list_models(cfg["llm"].get("host"))
     except httpx.HTTPError:
         raise HTTPException(
             503,
             "Le moteur d'IA local (Ollama) ne répond pas. Vérifiez qu'il est "
             "bien démarré, puis réessayez.",
         )
-    return {"models": models, "default": llm.OLLAMA_MODEL}
+    return {"models": models, "default": cfg["llm"]["model"]}
 
 
 @app.get("/")

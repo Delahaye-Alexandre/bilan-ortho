@@ -724,6 +724,37 @@ def test_structure_signale_rubriques_tronquees(client, monkeypatch, mock_embed):
     assert "[…]" in captured["user"]
 
 
+def test_structure_signale_le_style_indisponible(client, monkeypatch, mock_embed):
+    """Embeddings en panne : l'analyse aboutit quand même, mais la perte du
+    style du praticien est signalée au lieu d'être avalée en silence. Rien
+    n'est signalé à qui n'a importé aucun bilan de référence (pas de bruit)."""
+    async def fake_chat(system, user, **kw):
+        return '{"updates": [], "questions": []}'
+
+    monkeypatch.setattr(llm, "chat_json", fake_chat)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+
+    # aucune référence importée : pas de style attendu, donc rien à signaler
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.status_code == 200 and r.json()["style_indisponible"] == ""
+
+    client.post(
+        "/api/references",
+        files={"file": ("ref.txt", b"Extrait de style.", "text/plain")},
+    )
+    # embeddings de nouveau opérationnels : toujours rien à signaler
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.json()["style_indisponible"] == ""
+
+    async def embed_ko(text, cfg):
+        raise rag.EmbeddingUnavailable("Modèle d'embeddings « x » absent.")
+
+    monkeypatch.setattr(rag, "embed", embed_ko)
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.status_code == 200
+    assert "absent" in r.json()["style_indisponible"]
+
+
 def test_structure_verrouillage_pendant_analyse(client, monkeypatch, mock_embed):
     """Si le coffre se verrouille pendant l'analyse LLM, le résultat n'est
     plus jeté en 500 opaque : 423 explicite (l'UI ré-affiche l'écran de
@@ -775,13 +806,31 @@ def test_endpoints_legacy_supprimes(client):
 
 
 def test_models_exige_le_deverrouillage(client, monkeypatch):
-    async def fake_models():
+    async def fake_models(host=None):
         return ["m1", "m2"]
 
     monkeypatch.setattr(llm, "list_models", fake_models)
     assert client.get("/api/models").json()["models"] == ["m1", "m2"]
     client.post("/api/lock")
     assert client.get("/api/models").status_code == 423
+
+
+def test_models_suit_la_config_praticien(client, monkeypatch):
+    """Le sélecteur interroge l'hôte Ollama *configuré* et annonce le modèle
+    configuré : interroger la constante du module affichait sinon une liste
+    sans rapport avec la configuration effective."""
+    vus = {}
+
+    async def fake_models(host=None):
+        vus["host"] = host
+        return ["m1"]
+
+    monkeypatch.setattr(llm, "list_models", fake_models)
+    client.put("/api/config", json={"overrides": {
+        "llm": {"host": "http://127.0.0.1:11500", "model": "mon-modele"}
+    }})
+    assert client.get("/api/models").json()["default"] == "mon-modele"
+    assert vus["host"] == "http://127.0.0.1:11500"
 
 
 def test_transcribe_audio_vide(client):

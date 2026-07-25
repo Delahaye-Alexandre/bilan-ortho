@@ -23,10 +23,14 @@ class ReponseIllisible(RuntimeError):
     (les deux tentatives de parsing ont échoué)."""
 
 
-async def list_models() -> list[str]:
-    """Retourne la liste des modèles disponibles localement."""
+async def list_models(host: str | None = None) -> list[str]:
+    """Retourne la liste des modèles disponibles localement.
+
+    ``host`` vient de la config praticien (``llm.host``), comme pour la
+    structuration : interroger l'hôte du module alors qu'un autre est
+    configuré afficherait un sélecteur qui ne correspond à rien."""
     async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(f"{OLLAMA_HOST}/api/tags")
+        resp = await client.get(f"{host or OLLAMA_HOST}/api/tags")
         resp.raise_for_status()
         data = resp.json()
     return [m["name"] for m in data.get("models", [])]

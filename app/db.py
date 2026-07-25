@@ -113,7 +113,8 @@ CREATE TABLE IF NOT EXISTS resultat (
     epreuve_id INTEGER REFERENCES epreuve(id) ON DELETE CASCADE,
     sous_epreuve TEXT,
     score_brut TEXT,
-    etalonnage_type TEXT,          -- ecart_type | percentile | note_standard | age_dev
+    etalonnage_type TEXT,          -- ecart_type | percentile | note_standard (moy. 10)
+                                   -- | note_standard_100 (moy. 100) | age_dev
     etalonnage_valeur TEXT,
     percentile TEXT,
     note_standard TEXT,

@@ -46,6 +46,18 @@ def test_drapeau_percentile_et_note_standard():
     assert interpret_drapeau("note_standard", "10", CFG) == "norme"
 
 
+def test_drapeau_note_standard_moyenne_100():
+    """Échelle moyenne 100 / ET 15 (Vineland…) : sans type dédié, une note de
+    85 (= -1 ET, zone de fragilité) était lue sur l'échelle 10/3 et ressortait
+    « dans la norme » — fausse réassurance dans un document médico-légal."""
+    assert interpret_drapeau("note_standard_100", "100", CFG) == "norme"
+    assert interpret_drapeau("note_standard_100", "85", CFG) == "fragilite"
+    assert interpret_drapeau("note_standard_100", "77", CFG) == "pathologique"
+    assert interpret_drapeau("note_standard_100", "70", CFG) == "severe"
+    # les deux échelles restent bien distinctes
+    assert interpret_drapeau("note_standard", "85", CFG) == "norme"
+
+
 def test_drapeau_entree_invalide():
     assert interpret_drapeau(None, "-2", CFG) == ""
     assert interpret_drapeau("ecart_type", "abc", CFG) == ""

@@ -171,7 +171,7 @@ DRAPEAU_LIBELLE = {
     "severe": "déficit sévère",
 }
 _ET_LBL = {
-    "ecart_type": "ET", "note_standard": "NS",
+    "ecart_type": "ET", "note_standard": "NS", "note_standard_100": "NS (moy. 100)",
     "age_dev": "(âge dév.)", "age_lecture": "(âge de lecture)",
 }
 
@@ -184,7 +184,14 @@ def _parse_num(v) -> float | None:
 
 
 def interpret_drapeau(etalonnage_type: str | None, valeur, cfg: dict) -> str:
-    """Déduit norme/fragilité/pathologique/sévère depuis l'étalonnage + seuils config."""
+    """Déduit norme/fragilité/pathologique/sévère depuis l'étalonnage + seuils config.
+
+    Deux échelles de notes standard coexistent en orthophonie et ne sont PAS
+    interchangeables : les batteries françaises (EXALANG, EVALEO…) cotent en
+    moyenne 10 / ET 3, d'autres outils (Vineland…) en moyenne 100 / ET 15. Une
+    note de 85 vaut −1 ET sur la seconde et sortirait « dans la norme » sur la
+    première : l'échelle est donc choisie explicitement à la saisie, jamais
+    devinée."""
     n = _parse_num(valeur)
     if n is None or not etalonnage_type:
         return ""
@@ -194,6 +201,8 @@ def interpret_drapeau(etalonnage_type: str | None, valeur, cfg: dict) -> str:
         et = n
     elif etalonnage_type == "note_standard":  # moyenne 10, ET 3
         et = (n - 10) / 3.0
+    elif etalonnage_type == "note_standard_100":  # moyenne 100, ET 15
+        et = (n - 100) / 15.0
     elif etalonnage_type == "percentile":
         # Seuils percentile configurables, comme leurs équivalents écart-type.
         if n <= s.get("severe_percentile", 2):

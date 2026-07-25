@@ -6,8 +6,9 @@ import io
 from .patient import age_texte, date_fr
 
 DISCLAIMER = (
-    "Document généré comme aide à la rédaction, relu et validé par l'orthophoniste, "
-    "seul responsable du contenu. L'outil ne pose aucun diagnostic."
+    "Document généré comme aide à la rédaction, relu et validé par l'orthophoniste : "
+    "la responsabilité du contenu lui revient entièrement. "
+    "L'outil ne pose aucun diagnostic."
 )
 
 _TYPE_LBL = {

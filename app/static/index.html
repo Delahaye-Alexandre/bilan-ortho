@@ -931,11 +931,22 @@ function renderBilan() {
   document.getElementById('coteInfo').textContent = cot ? `${cot.code_amo} · ${cot.montant} €` : '';
 }
 
+// Unité de l'étalonnage, affichée à côté de la valeur : deux échelles de note
+// standard coexistent (moy. 10 et moy. 100) et une valeur nue ne permettrait
+// pas de vérifier laquelle a été saisie — donc pas de relire le drapeau.
+// Suffixe complet (espace incluse quand il en faut) : mêmes conventions que
+// resultat_phrase() côté serveur — « 25e percentile », « -1,5 ET ».
+const ETAL_LBL = {
+  ecart_type: ' ET', percentile: 'e percentile', note_standard: ' NS',
+  note_standard_100: ' NS (moy. 100)', age_dev: ' (âge dév.)',
+  age_lecture: ' (âge de lecture)',
+};
 function epreuvesCardHtml() {
   const list = (CUR.epreuves || []).map(e => {
     const rs = (e.resultats || []).map(r => {
       const drap = r.drapeau_seuil ? ` <span class="badge ${drap2cls(r.drapeau_seuil)}">${r.drapeau_seuil}</span>` : '';
-      return `${escapeHtml(r.sous_epreuve || '')} : ${escapeHtml(r.score_brut || '')} ${escapeHtml(r.etalonnage_valeur || '')}${drap}`;
+      const unite = r.etalonnage_valeur ? (ETAL_LBL[r.etalonnage_type] || '') : '';
+      return `${escapeHtml(r.sous_epreuve || '')} : ${escapeHtml(r.score_brut || '')} ${escapeHtml(r.etalonnage_valeur || '')}${escapeHtml(unite)}${drap}`;
     }).join(' · ');
     return `<div class="muted" style="margin:2px 0"><b>${escapeHtml(e.test_nom)}</b> — ${rs}</div>`;
   }).join('');
@@ -952,7 +963,8 @@ function epreuvesCardHtml() {
             <option value="">étalonnage…</option>
             <option value="ecart_type">Écart-type</option>
             <option value="percentile">Percentile</option>
-            <option value="note_standard">Note standard</option>
+            <option value="note_standard">Note standard (moy. 10, ET 3)</option>
+            <option value="note_standard_100">Note standard (moy. 100, ET 15)</option>
             <option value="age_dev">Âge dév.</option>
             <option value="age_lecture">Âge de lecture</option>
           </select>
@@ -960,7 +972,7 @@ function epreuvesCardHtml() {
           <button id="epAdd">Ajouter</button>
           <span class="status" id="epStatus"></span>
         </div>
-        <div class="muted" style="margin-top:6px">Le drapeau (norme/fragilité/pathologique/sévère) est déduit automatiquement de l'étalonnage.</div>
+        <div class="muted" style="margin-top:6px">Le drapeau (norme/fragilité/pathologique/sévère) est déduit automatiquement de l'étalonnage. Pour une note standard, vérifiez l'échelle de votre test : les batteries françaises cotent en moyenne 10 (ET 3), la Vineland en moyenne 100 (ET 15).</div>
         <datalist id="testList"></datalist>
       </div>
     </div>`;
@@ -1113,9 +1125,14 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     const tronque = (res.rubriques_tronquees || []).length
       ? ' — Certaines rubriques longues n\'ont été transmises que partiellement au modèle.'
       : '';
+    // Le style du praticien n'a pas pu être réinjecté : le dire plutôt que de
+    // laisser croire à une IA qui rédige moins bien sans raison apparente.
+    const style = res.style_indisponible
+      ? ' — Vos bilans de référence n\'ont pas inspiré ce passage : ' + res.style_indisponible
+      : '';
     majStatut((answeredIds.length
       ? `✓ réponse(s) intégrée(s)${fresh.length ? ` — ${fresh.length} nouvelle(s) question(s)` : ''}`
-      : `✓ ${fresh.length} question(s) de clarification`) + tronque);
+      : `✓ ${fresh.length} question(s) de clarification`) + tronque + style);
     if (fromDictee) document.getElementById('dicteeText').value = '';
   } catch (e) { majStatut('Erreur : ' + e.message); }
   finally { STRUCTURING = false; clearInterval(chrono); document.getElementById('structBtn').disabled = false; setQuestionBtns(false); }
@@ -1632,7 +1649,8 @@ document.getElementById('trameReset').addEventListener('click', e => avecBouton(
 // par « Revenir au catalogue intégré ».
 const METRIQUES = [
   ['ecart_type', 'écart-type'], ['percentile', 'percentile'],
-  ['note_standard', 'note standard'], ['age_dev', 'âge de développement'],
+  ['note_standard', 'note standard (moy. 10)'], ['note_standard_100', 'note standard (moy. 100)'],
+  ['age_dev', 'âge de développement'],
   ['age_lecture', 'âge de lecture'], ['qualitatif', 'qualitatif'],
 ];
 function lireCatEdit() {

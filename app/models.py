@@ -225,7 +225,7 @@ class TestCatalogue(BaseModel):
     tranche: str = ""
     mesure: str = ""
     metriques: list[
-        Literal["ecart_type", "percentile", "note_standard",
+        Literal["ecart_type", "percentile", "note_standard", "note_standard_100",
                 "age_dev", "age_lecture", "qualitatif"]
     ] = []
 
@@ -305,7 +305,8 @@ class PatientIn(BaseModel):
 class ResultatIn(BaseModel):
     sous_epreuve: str | None = None
     score_brut: str | None = None
-    etalonnage_type: str | None = None   # ecart_type|percentile|note_standard|age_dev|age_lecture
+    # note_standard = moyenne 10 / ET 3 ; note_standard_100 = moyenne 100 / ET 15
+    etalonnage_type: str | None = None   # ecart_type|percentile|note_standard[_100]|age_dev|age_lecture
     etalonnage_valeur: str | None = None
     percentile: str | None = None
     note_standard: str | None = None

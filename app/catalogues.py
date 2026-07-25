@@ -4,7 +4,12 @@ Données issues de la recherche (`docs/recherche-bilan-ortho.md`). Éditable et
 extensible (Phase 5 : édition depuis l'UI). Sert à : (1) orienter la structuration
 IA (tests connus par domaine), (2) proposer des tests dans la saisie structurée.
 
-Métriques : ecart_type | percentile | note_standard | age_dev | age_lecture | qualitatif
+Métriques : ecart_type | percentile | note_standard | note_standard_100 | age_dev
+| age_lecture | qualitatif
+
+Les deux échelles de notes standard sont distinguées : `note_standard` = moyenne
+10 / ET 3 (batteries françaises), `note_standard_100` = moyenne 100 / ET 15
+(Vineland…). Les confondre fausse le drapeau de sévérité (cf. bilan.py).
 """
 from __future__ import annotations
 
@@ -109,7 +114,7 @@ CATALOGUES: dict[str, dict] = {
         "tests": [
             {"nom": "ECSP", "tranche": "jeune enfant", "mesure": "communication sociale précoce", "metriques": ["qualitatif"]},
             {"nom": "CCC-2", "tranche": "enfant", "mesure": "pragmatique (questionnaire)", "metriques": ["qualitatif"]},
-            {"nom": "Vineland", "tranche": "tous", "mesure": "comportements adaptatifs", "metriques": ["note_standard", "qualitatif"]},
+            {"nom": "Vineland", "tranche": "tous", "mesure": "comportements adaptatifs", "metriques": ["note_standard_100", "qualitatif"]},
         ],
     },
     "surdite": {
