@@ -79,6 +79,14 @@ async def coffre_verrouille_handler(request, exc: security.CoffreVerrouille):
     return JSONResponse(status_code=423, content={"detail": "Application verrouillée."})
 
 
+@app.exception_handler(sauvegarde.SupportIntrouvable)
+async def support_introuvable_handler(request, exc: sauvegarde.SupportIntrouvable):
+    """Dossier de sauvegarde sur un support non monté (clé USB débranchée) :
+    400 avec un message actionnable, plutôt qu'une arborescence fabriquée en
+    silence sur le disque interne."""
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
 # La base chiffrée lève les exceptions de sqlcipher3, distinctes de celles du
 # module sqlite3 standard : les deux classes sont mappées.
 @app.exception_handler(sqlite3.OperationalError)
@@ -432,8 +440,8 @@ async def creer_sauvegarde() -> dict:
     # hors de security._state : compromis de sécurité refusé.
     try:
         return await run_in_threadpool(_creer)
-    except security.CoffreVerrouille:
-        raise  # géré globalement en 423
+    except (security.CoffreVerrouille, sauvegarde.SupportIntrouvable):
+        raise  # gérés globalement (423 / 400)
     except (sqlite3.OperationalError, sqlcipher3.OperationalError):
         raise  # géré globalement en 503 (disque plein ?)
     except Exception as exc:
@@ -471,8 +479,8 @@ async def restaurer_sauvegarde(req: RestaurationRequest) -> dict:
     except security.RestaurationImpossible as exc:
         # Demande invalide (fichier, passphrase, version) : base intacte.
         raise HTTPException(400, str(exc))
-    except security.CoffreVerrouille:
-        raise  # géré globalement en 423
+    except (security.CoffreVerrouille, sauvegarde.SupportIntrouvable):
+        raise  # gérés globalement (423 / 400)
     except (sqlite3.OperationalError, sqlcipher3.OperationalError):
         raise  # géré globalement en 503 (disque plein ?)
     except RuntimeError as exc:

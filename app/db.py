@@ -9,6 +9,8 @@ from __future__ import annotations
 import sqlcipher3
 import sqlite_vec
 
+from . import config
+
 SCHEMA_VERSION = 1
 # La table vectorielle `reference_embedding` est créée à la demande par rag.py,
 # avec la dimension réelle du modèle d'embeddings choisi (nomic=768, bge-m3=1024).
@@ -228,16 +230,36 @@ def connect(path, passphrase: str):
     except Exception:
         con.close()
         raise
+    # Après connect() seulement : le WAL vient d'être (re)créé, et ses annexes
+    # portent les mêmes données que la base.
+    config.restreindre_acces(path)
+    for suffixe in ("-wal", "-shm"):
+        config.restreindre_acces(str(path) + suffixe)
     return con
 
 
+# Tables sans lesquelles un fichier n'est pas un coffre : leur présence est
+# ce qui distingue une vraie base d'un fichier vide ou tronqué.
+_TABLES_ATTENDUES = ("patient", "bilan", "audit_log")
+
+
 def verify(con) -> bool:
-    """True si la passphrase déchiffre bien la base (lecture d'une table)."""
+    """True si la passphrase déchiffre bien la base **et** que le schéma y est.
+
+    Lire ``sqlite_master`` ne suffit pas : sur un fichier VIDE, SQLCipher pose
+    la clé sans rien avoir à déchiffrer et la lecture réussit avec n'importe
+    quelle passphrase. Une « sauvegarde » de 0 octet — copie USB interrompue,
+    fichier de synchronisation en attente — passait donc la vérification qui
+    précède la restauration, et écrasait le coffre courant par du vide. La
+    présence des tables est le seul contrôle qui distingue les deux cas."""
     try:
-        con.execute("SELECT count(*) FROM sqlite_master").fetchone()
-        return True
+        n = con.execute(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN (?,?,?)",
+            _TABLES_ATTENDUES,
+        ).fetchone()[0]
     except sqlcipher3.DatabaseError:
         return False
+    return n == len(_TABLES_ATTENDUES)
 
 
 def init_schema(con) -> None:

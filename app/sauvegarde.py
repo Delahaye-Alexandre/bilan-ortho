@@ -19,19 +19,54 @@ PREFIXE = "bilan-ortho-sauvegarde-"
 _META_KEY = "derniere_sauvegarde"
 
 
+class SupportIntrouvable(RuntimeError):
+    """Le dossier de sauvegarde configuré vit sur un support absent (clé USB
+    débranchée, disque réseau non monté). Mappée en 400 par le serveur."""
+
+
 def dossier(cfg: dict) -> Path:
-    """Dossier de sauvegarde (créé au besoin). Vide = <données>/sauvegardes."""
+    """Dossier de sauvegarde (créé au besoin). Vide = <données>/sauvegardes.
+
+    Le dossier est créé, mais **pas son parent** quand celui-ci est un point
+    de montage absent : ``mkdir(parents=True)`` sur « /mnt/usb/bilan-ortho »
+    clé débranchée fabriquait l'arborescence sur le disque interne, et l'app
+    annonçait des sauvegardes « idéalement sur un autre support » qui n'ont
+    jamais quitté la machine — puis la clé rebranchée les masquait."""
     d = ((cfg.get("sauvegarde") or {}).get("dossier") or "").strip()
-    p = Path(d).expanduser() if d else config.data_dir() / "sauvegardes"
+    if not d:
+        p = config.data_dir() / "sauvegardes"
+        p.mkdir(parents=True, exist_ok=True)
+        config.restreindre_acces(p, 0o700)
+        return p
+    p = Path(d).expanduser()
+    if not p.exists() and not p.parent.exists():
+        raise SupportIntrouvable(
+            f"Le dossier de sauvegarde « {p} » est inaccessible : son support "
+            "n'est pas monté. La clé USB ou le disque externe est-il branché ? "
+            "Vous pouvez aussi changer le dossier dans ⚙️ Paramètres."
+        )
     p.mkdir(parents=True, exist_ok=True)
+    config.restreindre_acces(p, 0o700)
     return p
 
 
-def _rotation(d: Path, retention: int) -> None:
-    if retention <= 0:
+def _rotation(d: Path, retention: int, garder: Path | None = None) -> None:
+    """Ne conserve que les ``retention`` sauvegardes les plus récentes.
+
+    Le tri porte sur la date de modification, **jamais sur le nom** : le
+    suffixe anti-collision (« …-143005-2.db ») trie AVANT le fichier sans
+    suffixe (« …-143005.db »), si bien qu'une rotation alphabétique pouvait
+    supprimer la copie qu'on venait d'écrire.
+
+    ``garder`` est épargné en toutes circonstances : c'est le filet créé juste
+    avant une restauration, et le perdre annulerait la seule promesse qui
+    rende la restauration réversible."""
+    if retention <= 0:  # 0 = rotation désactivée (sémantique documentée)
         return
-    fichiers = sorted(d.glob(PREFIXE + "*.db"))
-    for f in fichiers[:-retention]:
+    fichiers = [f for f in d.glob(PREFIXE + "*.db") if garder is None or f != garder]
+    fichiers.sort(key=lambda f: (f.stat().st_mtime, f.name))
+    surplus = len(fichiers) + (0 if garder is None else 1) - retention
+    for f in fichiers[: max(0, surplus)]:
         try:
             f.unlink()
         except OSError:
@@ -62,13 +97,14 @@ def creer(con, cfg: dict) -> dict:
         except OSError:
             pass
         raise
+    config.restreindre_acces(cible)
     con.execute(
         "INSERT INTO meta(key, value) VALUES(?, datetime('now')) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (_META_KEY,),
     )
     retention = int((cfg.get("sauvegarde") or {}).get("retention") or 0)
-    _rotation(d, retention)
+    _rotation(d, retention, garder=cible)
     return {"fichier": str(cible), "octets": cible.stat().st_size}
 
 

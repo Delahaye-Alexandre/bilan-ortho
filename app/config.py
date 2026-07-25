@@ -40,7 +40,25 @@ def data_dir() -> Path:
     """Répertoire des données (créé au besoin). Hors du dépôt git par défaut."""
     d = Path(os.environ.get("BILAN_ORTHO_DATA_DIR") or _data_dir_defaut())
     d.mkdir(parents=True, exist_ok=True)
+    restreindre_acces(d, 0o700)
     return d
+
+
+def restreindre_acces(chemin, mode: int = 0o600) -> None:
+    """Réserve un fichier ou un dossier du coffre à son propriétaire.
+
+    Le chiffrement protège le contenu, pas la copie : sur un poste de cabinet
+    ou un ordinateur familial, un fichier lisible par les autres comptes se
+    recopie en une commande et se casse ensuite hors ligne, à loisir. Le
+    registre RGPD annonce le chiffrement au repos sans cette réserve.
+
+    Best-effort volontaire : FAT/exFAT (dossier de sauvegarde sur clé USB) et
+    Windows ignorent ``chmod``, et un échec ne doit jamais empêcher d'écrire
+    une sauvegarde."""
+    try:
+        os.chmod(chemin, mode)
+    except OSError:
+        pass
 
 
 def db_path() -> Path:

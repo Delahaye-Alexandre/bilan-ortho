@@ -7,6 +7,7 @@ La passphrase n'est jamais persistée sur le disque.
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import threading
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from . import config, db
 
+logger = logging.getLogger(__name__)
 _lock = threading.RLock()
 _state: dict = {"con": None, "last_activity": 0.0}
 
@@ -40,14 +42,23 @@ def is_unlocked() -> bool:
         return _state["con"] is not None
 
 
-def unlock(passphrase: str) -> bool:
-    """Déverrouille (ou crée au 1er lancement) la base. False si passphrase KO."""
+def unlock(passphrase: str, purge: bool = True) -> bool:
+    """Déverrouille (ou crée au 1er lancement) la base. False si passphrase KO.
+
+    ``purge=False`` désarme la purge RGPD pour ce seul déverrouillage : c'est
+    le cas d'une base qu'on vient de restaurer (cf. :func:`restaurer`).
+    """
     with _lock:
         if _state["con"] is not None:
             return True
-        first_run = not db_exists()
+        chemin = config.db_path()
+        # Un fichier de 0 octet est un premier lancement interrompu, pas un
+        # coffre : ``sqlcipher3.connect()`` crée le fichier AVANT d'y écrire
+        # quoi que ce soit. Le traiter comme une base existante le rendrait
+        # définitivement inouvrable maintenant que verify() exige le schéma.
+        first_run = not chemin.exists() or chemin.stat().st_size == 0
         try:
-            con = db.connect(config.db_path(), passphrase)
+            con = db.connect(chemin, passphrase)
         except Exception:
             # Base illisible : mauvaise passphrase (ou fichier corrompu).
             return False
@@ -66,10 +77,27 @@ def unlock(passphrase: str) -> bool:
             raise
         _state["con"] = con
         _state["last_activity"] = time.monotonic()
-        audit("unlock", "app", None, "premier lancement" if first_run else "")
-        _purge_conservation(con)
+        try:
+            audit("unlock", "app", None, "premier lancement" if first_run else "")
+            if purge:
+                _purge_conservation(con)
+            con.commit()
+        except Exception:
+            # Échec APRÈS la pose de _state["con"] (disque plein au commit,
+            # journal illisible) : le client reçoit une erreur et reste devant
+            # l'écran de verrouillage, mais le coffre serait resté ouvert — un
+            # simple F5 donnerait alors accès au dossier patient sans
+            # passphrase. Refermer avant de propager.
+            try:
+                con.rollback()
+            finally:
+                con.close()
+                _state["con"] = None
+                _state["last_activity"] = 0.0
+            raise
+        # Hors du bloc protégé, et volontairement : une sauvegarde qui échoue
+        # ne doit pas refermer un coffre correctement ouvert.
         _sauvegarde_auto(con)
-        con.commit()
         return True
 
 
@@ -107,6 +135,18 @@ def _verifier_copie(chemin: Path, passphrase: str) -> None:
         "Vérifiez la passphrase ; si elle est correcte, le fichier est "
         "peut-être endommagé."
     )
+    # Un coffre réel pèse au moins quelques pages SQLite. Refuser d'emblée le
+    # fichier vide ou tronqué (copie USB interrompue, placeholder de
+    # synchronisation) : sans cette borne, il est ouvrable avec N'IMPORTE
+    # QUELLE passphrase, puisqu'il n'y a rien à déchiffrer.
+    try:
+        if chemin.stat().st_size < 4096:
+            raise RestaurationImpossible(
+                "Ce fichier de sauvegarde est vide ou incomplet : la copie a "
+                "probablement été interrompue. Choisissez une autre sauvegarde."
+            )
+    except OSError:
+        raise illisible
     try:
         con = db.connect(chemin, passphrase)
     except Exception:
@@ -132,9 +172,14 @@ def restaurer(nom_fichier: str, passphrase: str) -> dict:
 
     Toute la séquence tient sous ``_lock`` (RLock : ``lock()`` et ``unlock()``
     restent appelables depuis ce thread) — comme le VACUUM de /api/sauvegarde,
-    les autres requêtes attendent ; gel borné et assumé. La réouverture rejoue
-    la purge RGPD et la sauvegarde auto sur la base restaurée : comportement
-    normal d'un déverrouillage.
+    les autres requêtes attendent ; gel borné et assumé.
+
+    La réouverture se fait **purge désarmée**. Rejouer la purge RGPD sur une
+    base qu'on vient de restaurer supprimait sur-le-champ tout ce qui y était
+    plus vieux que ``conservation_jours`` — et le filet, créé avant l'échange,
+    ne contient que la base de l'incident. Restaurer une sauvegarde ancienne
+    la vidait donc intégralement, l'API répondant ``{"ok": true}``. Le seul
+    chemin de récupération du produit ne doit pas détruire ce qu'il restaure.
     """
     from . import sauvegarde  # import tardif (évite un cycle au chargement)
 
@@ -179,7 +224,7 @@ def restaurer(nom_fichier: str, passphrase: str) -> dict:
                     "intactes. Réessayez, ou redémarrez l'application."
                 )
             try:
-                reouvert = unlock(passphrase)
+                reouvert = unlock(passphrase, purge=False)
             except Exception as exc:
                 raise RuntimeError(
                     "La sauvegarde a bien été restaurée, mais la réouverture "
@@ -239,27 +284,51 @@ def enforce_inactivity() -> bool:
         return False
 
 
+def bilans_a_purger(con) -> list[int]:
+    """Identifiants des bilans que la purge RGPD supprimerait maintenant.
+
+    Exposé pour que l'écran Paramètres puisse annoncer le nombre de comptes
+    rendus qu'une durée de conservation va détruire, AVANT de l'enregistrer :
+    un compte rendu est une pièce du dossier de soins, sa suppression est
+    définitive et le réglage ressemble à un simple filtre d'affichage."""
+    try:
+        jours = int(config.ConfigStore(con).effective()["rgpd"]["conservation_jours"])
+    except (KeyError, TypeError, ValueError):
+        return []
+    if jours <= 0:
+        return []
+    return [
+        r[0]
+        for r in con.execute(
+            "SELECT id FROM bilan WHERE updated_at < datetime('now', ?)",
+            (f"-{jours} days",),
+        )
+    ]
+
+
 def _purge_conservation(con) -> None:
     """Purge RGPD : supprime les bilans inactifs depuis plus de
     ``rgpd.conservation_jours`` jours (0 = conservation illimitée). Les
     rubriques, épreuves, résultats et dictées suivent par cascade."""
-    try:
-        jours = int(config.ConfigStore(con).effective()["rgpd"]["conservation_jours"])
-    except (KeyError, TypeError, ValueError):
+    ids = bilans_a_purger(con)
+    if not ids:
         return
-    if jours <= 0:
-        return
-    cur = con.execute(
-        "DELETE FROM bilan WHERE updated_at < datetime('now', ?)",
-        (f"-{jours} days",),
+    jours = int(config.ConfigStore(con).effective()["rgpd"]["conservation_jours"])
+    trous = ",".join("?" * len(ids))  # identifiants entiers, jamais interpolés
+    con.execute(f"DELETE FROM bilan WHERE id IN ({trous})", ids)
+    # Journaliser les identifiants, pas un décompte : la suppression définitive
+    # de pièces du dossier de soins doit laisser une trace de CE QUI est parti.
+    audit(
+        "purge_conservation", "bilan", None,
+        f"{len(ids)} bilan(s) > {jours} j — n° " + ", ".join(str(i) for i in ids),
     )
-    if cur.rowcount:
-        audit("purge_conservation", "bilan", None, f"{cur.rowcount} bilan(s) > {jours} j")
 
 
 def _sauvegarde_auto(con) -> None:
     """Sauvegarde chiffrée automatique au déverrouillage (si due). Ne doit
-    jamais empêcher le déverrouillage : best-effort."""
+    jamais empêcher le déverrouillage : best-effort — mais plus jamais
+    silencieuse. Une sauvegarde qui échoue semaine après semaine sans un mot
+    laisse croire à une copie de secours qui n'existe pas."""
     from . import sauvegarde  # import tardif (évite un cycle au chargement)
 
     try:
@@ -267,8 +336,15 @@ def _sauvegarde_auto(con) -> None:
         res = sauvegarde.auto_si_due(con, cfg)
         if res:
             audit("sauvegarde_auto", "app", None, f"{res['octets']} octets")
-    except Exception:
-        pass
+        con.commit()
+    except Exception as exc:
+        logger.warning("Sauvegarde automatique impossible : %s", exc)
+        try:
+            con.rollback()
+            audit("sauvegarde_auto_echec", "app", None, str(exc)[:200])
+            con.commit()
+        except Exception:
+            pass
 
 
 @contextmanager
