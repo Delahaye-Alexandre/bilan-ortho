@@ -12,7 +12,7 @@ sqlcipher3>=0.6.2 ; sys_platform == "win32"
 sqlite-vec>=0.1.9
 
 # --- Phase 1 : dictée vocale locale ---
-faster-whisper>=1.0          # STT (CTranslate2)
+faster-whisper>=1.2.1          # STT (CTranslate2)
 
 # --- Phase 3 : export ---
 python-docx>=1.1             # export Word (.docx)
