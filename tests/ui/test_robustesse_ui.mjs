@@ -590,5 +590,29 @@ check("consigne : erreur serveur → message français dans le statut",
 editeurResponder = null;
 document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
+// === 25. Écran d'aide : formulaires de retour ================================
+// Règle produit : l'application n'émet jamais rien d'elle-même vers l'extérieur.
+// Les liens de retour s'ouvrent sur clic seulement, vers le dépôt du projet, et
+// l'URL est écrite en dur dans la page (jamais reprise d'une réponse réseau).
+const ouvertures = [];
+globalThis.open = (url, cible) => { ouvertures.push({ url, cible }); return null; };
+document.getElementById("helpBtn").click();
+await settle();
+check("aide : ouvrir l'écran n'ouvre rien vers l'extérieur",
+  ouvertures.length === 0);
+document.getElementById("aideRetourLien").click();
+document.getElementById("aideBugLien").click();
+check("aide : les deux boutons ouvrent un formulaire du dépôt du projet",
+  ouvertures.length === 2
+  && ouvertures.every((o) =>
+       o.url.startsWith("https://github.com/Delahaye-Alexandre/bilan-ortho/issues/new")
+       && o.cible === "_blank")
+  && ouvertures[0].url.includes("retour-de-test.yml")
+  && ouvertures[1].url.includes("bug.yml"));
+check("aide : un courriel reste proposé (sans compte GitHub)",
+  !!document.querySelector('#helpOverlay a[href^="mailto:"]'));
+check("aide : l'avertissement « aucun élément identifiant » accompagne les liens",
+  document.getElementById("helpOverlay").textContent.includes("aucun élément identifiant"));
+
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

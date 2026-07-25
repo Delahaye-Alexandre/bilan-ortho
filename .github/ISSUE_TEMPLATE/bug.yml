@@ -1,0 +1,67 @@
+name: Dysfonctionnement
+description: Un message d'erreur, un bouton sans effet, une fonction qui ne marche pas.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### ⚠️ Aucune donnée de patient ici
+
+        Cette page est **publique et indexée par les moteurs de recherche**.
+        Pas d'extrait de bilan réel, pas de nom, pas d'initiales, pas de date
+        de naissance, pas de capture d'écran non floutée. Le journal
+        `serveur.log` demandé plus bas peut contenir des chemins de fichiers :
+        relisez-le avant de coller quoi que ce soit, et n'en prenez que les
+        dernières lignes.
+
+        Une **faille de sécurité** ne se signale pas ici : voir
+        [SECURITY.md](https://github.com/Delahaye-Alexandre/bilan-ortho/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: probleme
+    attributes:
+      label: Que s'est-il passé ?
+      description: Le message affiché, mot pour mot si possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Comment le reproduire
+      description: Les étapes qui mènent au problème. Si c'est arrivé une seule fois, dites-le — c'est une information en soi.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version installée
+      description: Affichée en haut de l'application, à côté du titre.
+      placeholder: v1.7.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation
+      options:
+        - Windows — installeur BilanOrtho-Setup
+        - Linux / WSL — lancée depuis le dépôt (./run.sh)
+        - Autre / je ne sais pas
+    validations:
+      required: true
+
+  - type: textarea
+    id: journal
+    attributes:
+      label: Dernières lignes du journal (facultatif)
+      description: >
+        `%LOCALAPPDATA%\bilan-ortho\serveur.log` sous Windows,
+        `~/.local/share/bilan-ortho/serveur.log` sous Linux. Relisez-les avant
+        de les coller.
+      render: text
+    validations:
+      required: false

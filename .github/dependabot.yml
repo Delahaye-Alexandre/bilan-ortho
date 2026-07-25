@@ -1,0 +1,44 @@
+# Surveillance des dépendances.
+#
+# L'application manipule des données de santé : une faille dans une dépendance
+# doit remonter d'elle-même, sans attendre qu'on y pense. Ce fichier ne couvre
+# que les *mises à jour* ; les *alertes* de vulnérabilité s'activent à part
+# (Settings → Code security → Dependabot alerts).
+#
+# LIMITE CONNUE — `requirements.lock` n'est pas lu par Dependabot : l'outil ne
+# reconnaît pas cette extension. Les propositions ci-dessous portent donc sur
+# `requirements.txt` (versions souples), alors que la CI et le build installent
+# le fichier verrouillé. En acceptant une proposition Python, régénérer le
+# verrou dans la foulée (procédure en tête de `requirements.lock`), sans quoi
+# rien ne change pour le logiciel réellement construit.
+version: 2
+updates:
+  # --- Dépendances Python -----------------------------------------------------
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "Dépendances"
+    groups:
+      # Une seule proposition groupée pour les montées mineures et correctives :
+      # le bruit hebdomadaire est le premier ennemi d'une veille tenue dans le
+      # temps. Les montées majeures restent séparées — elles se relisent une par
+      # une (sqlcipher3 et faster-whisper touchent au coffre et à la dictée).
+      python-mineures:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # --- Actions GitHub (chaîne de build) ---------------------------------------
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "CI"
+    groups:
+      actions:
+        patterns: ["*"]

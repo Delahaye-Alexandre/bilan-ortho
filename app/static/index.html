@@ -448,6 +448,13 @@
       <h3>Confidentialité & sauvegardes</h3>
       <p>Tout est chiffré (SQLCipher) et tout tourne en local : aucune donnée ne quitte votre machine. L'application se verrouille seule après inactivité. Pensez à votre passphrase : elle est <b>irrécupérable</b>.</p>
       <p>Seule exception réseau, transparente et sans aucune donnée transmise : la <b>vérification de mise à jour</b> (⚙️ Paramètres → Mises à jour) interroge la page des versions du projet sur GitHub — uniquement quand vous cliquez « Vérifier maintenant », ou au démarrage si vous avez coché l'option (décochée par défaut).</p>
+      <h3>Signaler un problème, proposer une amélioration</h3>
+      <p>Vos retours sont ce qui fait avancer l'outil — en particulier les étapes qui vous font perdre du temps, les libellés obscurs et les relectures plus fastidieuses que la rédaction directe. Deux chemins au choix : le <b>formulaire public du projet</b> (un compte GitHub est nécessaire) ou un <b>courriel</b> à <a href="mailto:alexandre-delahaye@outlook.fr">alexandre-delahaye@outlook.fr</a>.</p>
+      <p>⚠️ <b>Dans les deux cas, aucun élément identifiant</b> : ni nom, ni initiales, ni date de naissance, ni extrait de bilan réel, ni capture d'écran non floutée. Décrire la situation suffit toujours à comprendre le problème (« bilan de langage oral, enfant de 5 ans, dictée de deux minutes »). Le formulaire est une page publique et indexée ; rien ne s'en efface vraiment.</p>
+      <p>
+        <button class="ghost" id="aideRetourLien">💬 Formulaire de retour</button>
+        <button class="ghost" id="aideBugLien">🐞 Signaler un dysfonctionnement</button>
+      </p>
       <p>Une <b>sauvegarde chiffrée</b> du coffre est créée automatiquement au déverrouillage (par défaut : au plus tous les 7 jours) ; configurez le dossier dans ⚙️ Paramètres — idéalement sur un autre support (clé USB). Pour revenir à une sauvegarde : ⚙️ Paramètres → Sauvegarde du coffre → « Restaurer… » (une copie de vos données actuelles est créée avant). Supprimer un patient efface définitivement tous ses bilans (droit à l'effacement).</p>
     </div>
   </div>
@@ -1365,6 +1372,15 @@ document.getElementById('helpBtn').addEventListener('click', () => {
   document.getElementById('helpOverlay').hidden = false;
   document.querySelector('#helpOverlay .close').focus();
 });
+// Formulaires de retour (écran d'aide) : mêmes règles que le lien Ollama et le
+// bouton de téléchargement d'une mise à jour — URL écrite en dur ici (jamais
+// reprise d'une réponse réseau), ouverte dans le navigateur sur clic seulement.
+// L'application n'émet rien : c'est la personne qui décide, et qui rédige.
+const DEPOT_PUBLIC = 'https://github.com/Delahaye-Alexandre/bilan-ortho';
+document.getElementById('aideRetourLien').addEventListener('click',
+  () => window.open(DEPOT_PUBLIC + '/issues/new?template=retour-de-test.yml', '_blank'));
+document.getElementById('aideBugLien').addEventListener('click',
+  () => window.open(DEPOT_PUBLIC + '/issues/new?template=bug.yml', '_blank'));
 
 const $ = id => document.getElementById(id);
 function fillSettings(c) {

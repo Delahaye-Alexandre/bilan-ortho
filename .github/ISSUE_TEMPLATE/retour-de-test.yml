@@ -1,0 +1,82 @@
+name: Retour d'expérience
+description: Raconter un essai de l'application — ce qui a fonctionné, ce qui a gêné, ce qui manque.
+title: "[Retour] "
+labels: ["retour"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### ⚠️ Aucune donnée de patient ici
+
+        Cette page est **publique et indexée par les moteurs de recherche**, et
+        rien ne s'en efface vraiment. N'y déposez jamais d'extrait de bilan
+        réel, de nom, d'initiales, de date de naissance, ni de capture d'écran
+        non floutée.
+
+        Décrire la situation suffit toujours à comprendre le problème :
+        « un bilan de langage oral, enfant de 5 ans, dictée d'environ deux
+        minutes » en dit assez. Si un élément confidentiel est indispensable,
+        écrivez plutôt à **alexandre-delahaye@outlook.fr** — l'application est
+        conçue pour que vos données ne quittent jamais votre machine, ce
+        formulaire ne fait pas exception.
+
+  - type: textarea
+    id: parcours
+    attributes:
+      label: Ce que vous faisiez
+      description: Le parcours suivi, étape par étape — au besoin, dans le désordre.
+      placeholder: |
+        1. Nouveau bilan, domaine « langage oral »
+        2. Dictée d'environ 2 minutes
+        3. Clic sur « Structurer »
+    validations:
+      required: true
+
+  - type: textarea
+    id: constat
+    attributes:
+      label: Ce à quoi vous vous attendiez, et ce qui s'est passé
+      description: Les deux, même si l'écart vous paraît évident.
+    validations:
+      required: true
+
+  - type: textarea
+    id: ressenti
+    attributes:
+      label: Ce qui vous a fait gagner ou perdre du temps
+      description: >
+        Le point le plus utile du formulaire. Une étape inutile, un libellé
+        obscur, une attente trop longue, une relecture plus fastidieuse que la
+        rédaction directe — dites-le franchement, c'est exactement ce qui
+        manque pour améliorer l'outil.
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version installée
+      description: Affichée en haut de l'application, à côté du titre.
+      placeholder: v1.7.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation
+      options:
+        - Windows — installeur BilanOrtho-Setup
+        - Linux / WSL — lancée depuis le dépôt (./run.sh)
+        - Autre / je ne sais pas
+    validations:
+      required: true
+
+  - type: input
+    id: modele
+    attributes:
+      label: Modèle de langage utilisé
+      description: ⚙️ Paramètres → Modèle. Utile pour comprendre les écarts de qualité et de durée.
+      placeholder: qwen3.5:4b
+    validations:
+      required: false
