@@ -6,8 +6,8 @@ questions** quand il manque une donnée, s'inspire du **style de vos propres
 bilans**, puis vous **relisez, validez, cotez et exportez**.
 
 > ⚠️ **Aide à la rédaction, pas un dispositif de diagnostic.** L'IA *propose* ;
-> l'orthophoniste *relit, corrige, valide et signe*. Vous restez seul(e)
-> responsable du contenu. Aucune donnée ne quitte votre machine (pas
+> l'orthophoniste *relit, corrige, valide et signe*. La responsabilité du
+> contenu vous revient entièrement. Aucune donnée ne quitte votre machine (pas
 > d'obligation HDS ; RGPD par conception). Voir `docs/notice-medico-legale.md`
 > et `docs/RGPD-registre-traitements.md`.
 
@@ -184,7 +184,7 @@ bilan-ortho/
 ├── packaging/          # spec PyInstaller + installeur Inno Setup (Windows)
 ├── tests/              # pytest (hors ligne) + tests UI happy-dom (bun) dans ui/
 ├── lanceur.py          # point d'entrée natif (PyInstaller) : port, fenêtre, journal
-├── requirements.txt    # dépendances (souples) — versions figées : requirements.lock
+├── requirements.txt    # dépendances (souples) — versions figées : requirements-lock.txt
 └── run.sh
 ```
 

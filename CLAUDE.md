@@ -5,9 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commandes
 
 ```bash
-# Installation (Python 3.11+ ; la CI fait foi avec requirements.lock)
+# Installation (Python 3.11+ ; la CI fait foi avec requirements-lock.txt)
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.lock && pip install pytest
+pip install -r requirements-lock.txt && pip install pytest
 
 # Lancer l'app (nécessite Ollama : `ollama serve` dans un autre terminal)
 ./run.sh                          # uvicorn sur 127.0.0.1:8000

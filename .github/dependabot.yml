@@ -5,12 +5,10 @@
 # que les *mises à jour* ; les *alertes* de vulnérabilité s'activent à part
 # (Settings → Code security → Dependabot alerts).
 #
-# LIMITE CONNUE — `requirements.lock` n'est pas lu par Dependabot : l'outil ne
-# reconnaît pas cette extension. Les propositions ci-dessous portent donc sur
-# `requirements.txt` (versions souples), alors que la CI et le build installent
-# le fichier verrouillé. En acceptant une proposition Python, régénérer le
-# verrou dans la foulée (procédure en tête de `requirements.lock`), sans quoi
-# rien ne change pour le logiciel réellement construit.
+# Le fichier verrouillé s'appelle `requirements-lock.txt` (et non `.lock`)
+# précisément pour que Dependabot le lise : c'est lui que la CI et le build
+# installent, donc lui qui détermine le logiciel réellement construit. Une
+# proposition qui ne toucherait que `requirements.txt` ne changerait rien.
 version: 2
 updates:
   # --- Dépendances Python -----------------------------------------------------

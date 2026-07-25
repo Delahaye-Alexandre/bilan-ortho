@@ -35,7 +35,7 @@ En trois points :
 
 ## Mises à jour de dépendances
 
-- Les versions sont figées dans `requirements.lock`, utilisé par la CI et le build.
+- Les versions sont figées dans `requirements-lock.txt`, utilisé par la CI et le build (surveillé par Dependabot).
 - La **CI s'exécute sur chaque pull request** (lint, tests Python multi-versions et multi-OS, tests UI).
 - **Dependabot sera activé à la publication du dépôt** pour surveiller les dépendances.
 

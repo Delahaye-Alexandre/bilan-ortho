@@ -43,7 +43,7 @@ jobs:
           cache: pip
       - name: Dépendances (verrouillées)
         run: |
-          pip install -r requirements.lock
+          pip install -r requirements-lock.txt
           pip install pytest
       - name: Dépendances OCR (Linux — le test OCR ne doit plus être sauté)
         if: runner.os == 'Linux'
@@ -86,7 +86,7 @@ jobs:
           }
       - name: Dépendances (verrouillées — build reproductible)
         run: |
-          pip install -r requirements.lock
+          pip install -r requirements-lock.txt
           pip install pyinstaller pillow
       - name: Icône
         run: python packaging/windows/genere_icone.py packaging/windows/icone.ico

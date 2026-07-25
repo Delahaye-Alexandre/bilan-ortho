@@ -142,7 +142,9 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
 
 - [~] **Préparation du passage en dépôt public (2026-07-25)** — en cours
   - Audit pré-publication (lecture seule) : **aucun bloquant**. Historique git propre (aucun `.db`, `.env`, document interne ni credential n'a jamais été committé) ; `data/reference/` ne contient que des bilans explicitement fictifs ; les données personnelles présentes (nom, mail) sont volontaires et destinées à être publiques.
-  - Corrections : `.gitignore` complété, message de mise à jour honnête quand aucune release n'est accessible, § Distribution du README remis à jour, `permissions` de la CI ramenées au moindre privilège, Dependabot, formulaires d'issue en français avec garde-fou « jamais de données patient ».
+  - Corrections : `.gitignore` complété, message de mise à jour honnête quand aucune release n'est accessible, § Distribution du README remis à jour, `permissions` de la CI ramenées au moindre privilège, Dependabot, formulaires d'issue en français avec garde-fou « jamais de données patient », section « Signaler un problème » dans l'écran ❓ Aide.
+  - `requirements.lock` renommé **`requirements-lock.txt`** : Dependabot ne surveille pas un fichier « .lock » générique, et c'est ce fichier-là que la CI et le build installent — une veille qui n'aurait porté que sur `requirements.txt` n'aurait rien changé au logiciel réellement construit.
+  - Formulation genrée « seul(e) responsable » retirée du README et de l'écran d'aide (règle du vocabulaire neutre).
   - **Reste humain** : relecture juridique des documents de conformité, bascule du dépôt en public, activation des alertes Dependabot / secret scanning / Security Advisories, envoi du lien à 2-3 orthophonistes avec `docs/guide-test.md`.
 
 ## Lancer
