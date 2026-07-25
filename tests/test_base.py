@@ -321,6 +321,21 @@ def test_import_fichier_vide_leve(con):
         importer.decouper(b"   ", "vide.txt")
 
 
+def test_pack_exemples_coherent():
+    """Garde-fou du pack embarqué (data/reference) : tout fichier ajouté doit
+    porter une clé de domaine connue et se découper dans le tronc commun —
+    sinon « Charger les bilans d'exemple » indexerait du bruit."""
+    from app import config, importer
+
+    fichiers = importer.pack_fichiers()
+    assert {d for _, d, _ in fichiers} == {d["cle"] for d in config.DOMAINES}
+    tronc = {"anamnese", "observations", "epreuves", "analyse", "diagnostic", "projet"}
+    for nom, _, data in fichiers:
+        assert "FICTIF" in data.decode("utf-8"), f"{nom} : mention FICTIF absente"
+        cles = {c[0] for c in importer.decouper(data, nom)}
+        assert len(cles & tronc) >= 5, f"{nom} : rubriques détectées {cles}"
+
+
 def test_fake_vec_est_stable():
     assert fake_vec("abc") == fake_vec("abc")
     assert fake_vec("abc") != fake_vec("abd")

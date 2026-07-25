@@ -1,0 +1,19 @@
+BILAN ORTHOPHONIQUE DE COGNITION MATHÉMATIQUE — DOCUMENT FICTIF (données inventées)
+
+Anamnèse
+L., fille de 8 ans et 9 mois scolarisée en CE2, nous est adressée par l'équipe enseignante, avec l'accord du médecin scolaire, devant des difficultés persistantes en mathématiques contrastant avec un bon niveau général. Les acquisitions du langage oral et de la lecture se sont faites sans heurt. Les parents décrivent des devoirs de mathématiques « qui tournent au conflit », des doigts encore indispensables pour les petits calculs et une incompréhension durable de la monnaie. Il n'y a pas d'antécédent médical notable ; la vision a été contrôlée récemment. Un bilan psychométrique réalisé en début d'année situe l'efficience intellectuelle dans la norme, de façon homogène.
+
+Observations cliniques
+L. est une enfant appliquée, qui s'engage dans les épreuves avec sérieux mais manifeste une anxiété visible dès que le matériel numérique apparaît : elle soupire, dit « je suis nulle en maths » et cherche l'approbation après chaque réponse. Ce comportement contraste avec son aisance dans les échanges conversationnels et les tâches non numériques.
+
+Épreuves et résultats
+Au ZAREKI-R, le comptage à rebours et le transcodage sont déficitaires : la dictée de nombres chute à -2,6 écarts-types, avec des erreurs lexicales et syntaxiques (« quatre-vingt-douze » écrit 8012). Le calcul mental additif se situe à -2,1 écarts-types, le subitizing est absent au-delà de trois éléments et la comparaison de quantités reste lente quoique exacte. Au TEDI-MATH Grands, la résolution de problèmes s'effondre dès que l'énoncé comporte deux étapes (-2,3 écarts-types), tandis que la lecture de nombres arabes simples est préservée (-0,9 écart-type). Les faits multiplicatifs ne sont pas automatisés.
+
+Analyse
+L'ensemble dessine une atteinte élective et durable de la construction du nombre : le transcodage, le calcul mental et la résolution de problèmes sont déficitaires malgré une scolarisation régulière, une efficience intellectuelle préservée et un langage oral et écrit sans faiblesse. L'écart aux attentes dépasse deux écarts-types dans plusieurs composantes numériques, chez une enfant exposée à un enseignement adapté depuis le CP. La composante anxieuse, désormais installée, entretient l'évitement et prive L. des situations d'entraînement.
+
+Diagnostic orthophonique
+Nous concluons à un trouble spécifique de la cognition mathématique (dyscalculie développementale) d'intensité modérée à sévère, avec retentissement scolaire et émotionnel.
+
+Projet thérapeutique
+Nous proposons une prise en charge hebdomadaire structurée autour de la consolidation du système numérique de base : transcodage, ligne numérique mentale, décomposition des quantités, puis automatisation progressive des faits arithmétiques en appui sur la manipulation. Un lien régulier avec l'enseignante permettra d'ajuster les aménagements (matériel de manipulation autorisé, allègement du calcul mental chronométré). Une réévaluation est prévue dans un an.

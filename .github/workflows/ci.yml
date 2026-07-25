@@ -107,6 +107,15 @@ jobs:
           $afm = Get-ChildItem "dist\BilanOrtho\_internal\reportlab" -Recurse -Filter "*.afm" -ErrorAction SilentlyContinue
           if (-not $afm) { throw "Métriques de polices reportlab absentes du build — l'export PDF planterait (collect_all('reportlab') dans le spec)" }
           Write-Host "Polices reportlab embarquées : $($afm.Count) fichier(s) .afm"
+      - name: Données embarquées — le pack de bilans d'exemple est dans le build
+        shell: pwsh
+        run: |
+          # « Charger les bilans d'exemple » lit data/reference au runtime :
+          # sans ces fichiers dans le build, le bouton échouerait dans l'app
+          # compilée seulement.
+          $pack = Get-ChildItem "dist\BilanOrtho\_internal\data\reference\*.txt" -ErrorAction SilentlyContinue
+          if (-not $pack -or $pack.Count -lt 11) { throw "Pack de bilans d'exemple incomplet dans le build ($($pack.Count) fichier(s), 11 attendus) — datas du spec" }
+          Write-Host "Pack embarqué : $($pack.Count) bilan(s) fictif(s)"
       - name: Fumée — le binaire compilé démarre et répond
         shell: pwsh
         run: |
@@ -191,6 +200,29 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Notes en fichier : la page de release est souvent la première (voire
+          # la seule) page vue — un chemin relatif en texte brut n'y est pas
+          # cliquable, d'où le lien complet vers le guide, épinglé sur le tag.
+          # Here-string à quotes simples : les backticks Markdown y sont
+          # littéraux ; ${{ github.ref_name }} est substitué par Actions avant
+          # que pwsh ne voie le script.
+          # NB : YAML désindente le bloc `run` — ces lignes arrivent en colonne
+          # zéro dans le script, y compris le terminateur '@ (exigence pwsh).
+          $notes = @'
+          ## 📥 Installation
+
+          **Téléchargez le fichier `BilanOrtho-Setup-x.y.z.exe` ci-dessous (section « Assets »)** — pas « Source code », qui n'est que le code du logiciel.
+
+          Deux avertissements Windows sont normaux (application non signée, pas dangereuse) :
+
+          1. **au téléchargement** (« fichier pas fréquemment téléchargé ») : « ⋯ » → « Conserver » → « Conserver quand même » ;
+          2. **au premier lancement** (« Windows a protégé votre ordinateur ») : « Informations complémentaires » → « Exécuter quand même ».
+
+          📖 **Guide pas à pas : [docs/guide-test.md](https://github.com/Delahaye-Alexandre/bilan-ortho/blob/${{ github.ref_name }}/docs/guide-test.md)**
+
+          Premier lancement : connexion internet nécessaire (téléchargement d'Ollama et des modèles d'IA). Un problème ? Écrivez à alexandre-delahaye@outlook.fr.
+          '@
+          Set-Content -Path notes-release.md -Value $notes -Encoding utf8
           gh release create "${{ github.ref_name }}" (Get-Item packaging/windows/Output/*.exe).FullName `
             --title "Bilan Ortho ${{ github.ref_name }}" `
-            --notes "Installeur Windows par utilisateur (non signé : SmartScreen affichera un avertissement — voir docs/guide-test.md). Prérequis premier lancement : connexion internet pour Ollama + modèles."
+            --notes-file notes-release.md

@@ -837,6 +837,61 @@ async def list_references() -> list[dict]:
         return rag.liste(con)
 
 
+def _decouper_pack(fichiers: list[tuple[str, str, bytes]]) -> list[tuple[str, str, str, str]]:
+    """(domaine, clé de rubrique, titre, contenu) pour chaque extrait du pack.
+
+    Les extraits « global » sont écartés : dans ces fichiers entièrement
+    sectionnés, il ne reste avant le premier en-tête que la ligne-titre
+    « DOCUMENT FICTIF » — du bruit, pas un extrait de style."""
+    return [
+        (domaine, cle, titre, contenu)
+        for nom, domaine, data in fichiers
+        for cle, titre, contenu in importer.decouper(data, nom)
+        if cle != "global"
+    ]
+
+
+# Déclarées AVANT /api/references/{ref_id} : sinon « pack » serait happé par
+# le paramètre de chemin ref_id.
+@app.post("/api/references/pack", dependencies=[Depends(require_unlock)])
+async def import_pack() -> dict:
+    """Indexe le pack de bilans fictifs embarqué (amorces de style).
+
+    Re-cliquer remplace le pack (suppression des « fictif » puis réinsertion) :
+    jamais de doublon, et une mise à jour de l'app rafraîchit les exemples.
+    Les bilans importés par le praticien (source « import ») sont intouchés."""
+    fichiers = importer.pack_fichiers()
+    if not fichiers:
+        raise HTTPException(500, "Pack d'exemples introuvable dans cette installation.")
+    with security.transaction() as con:
+        cfg = config.ConfigStore(con).effective()
+    # Même chorégraphie en 3 temps que l'import d'un fichier : découpage dans
+    # le threadpool, embeddings (réseau local) hors verrou, insertion rapide.
+    extraits = await run_in_threadpool(_decouper_pack, fichiers)
+    try:
+        embs = [await rag.embed(contenu, cfg) for _, _, _, contenu in extraits]
+    except rag.EmbeddingUnavailable as exc:
+        raise HTTPException(503, str(exc))
+    with security.transaction() as con:
+        rag.delete_par_source(con, "fictif")
+        for (domaine, cle, titre, contenu), emb in zip(extraits, embs):
+            rag.add_reference(con, None, "fictif", domaine, cle, titre, contenu, emb)
+        security.audit(
+            "import_pack", "reference", None,
+            f"{len(extraits)} extraits · {len(fichiers)} fichiers",
+        )
+    return {"n_fichiers": len(fichiers), "n_extraits": len(extraits)}
+
+
+@app.delete("/api/references/pack", dependencies=[Depends(require_unlock)])
+async def delete_pack() -> dict:
+    with security.transaction() as con:
+        n = rag.delete_par_source(con, "fictif")
+        if n:
+            security.audit("delete_pack", "reference", None, f"{n} extraits")
+    return {"n": n}
+
+
 @app.delete("/api/references/{ref_id}", dependencies=[Depends(require_unlock)])
 async def delete_reference(ref_id: int) -> OkResponse:
     with security.transaction() as con:

@@ -1,5 +1,6 @@
-"""Import des bilans du praticien : extraction texte (PDF natif / OCR / texte),
-découpage par rubrique, puis ingestion dans le RAG (rag.add_reference).
+"""Import des bilans du praticien : extraction texte (PDF natif / OCR,
+.docx/.odt, texte), découpage par rubrique, puis ingestion dans le RAG
+(rag.add_reference).
 """
 from __future__ import annotations
 
@@ -9,6 +10,9 @@ import re
 import shutil
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
+import zipfile
+from pathlib import Path
 
 # Mots-clés d'en-tête -> clé de rubrique (tronc commun).
 _HEADINGS: list[tuple[str, str]] = [
@@ -86,7 +90,7 @@ def _ocr_pdf(data: bytes) -> str:
 
 _PDF_ILLISIBLE = (
     "PDF illisible ou protégé par mot de passe. Réexportez-le sans protection, "
-    "ou importez le document en .docx ou .txt."
+    "ou importez le document en .docx, .odt ou .txt."
 )
 
 
@@ -114,7 +118,33 @@ def _docx_text(data: bytes) -> str:
     return "\n".join(p.text for p in doc.paragraphs)
 
 
-_FORMATS_ACCEPTES = ".pdf, .docx, .txt, .md"
+def _odt_text(data: bytes) -> str:
+    """Texte d'un .odt (LibreOffice/OpenOffice) : zip contenant content.xml.
+    Extraction en stdlib (zipfile + ElementTree) — pas de dépendance dédiée."""
+    ns = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            racine = ET.fromstring(z.read("content.xml"))
+    except Exception as exc:
+        raise ValueError("Fichier .odt illisible (corrompu ?).") from exc
+    # L'ODF encode tabulations, espaces multiples et sauts de ligne en éléments
+    # vides, invisibles pour itertext() : sans traduction, « EVALO⇥-2,1 »
+    # ressortirait collé (« EVALO-2,1 ») dans les extraits de style.
+    for el in racine.iter():
+        if el.tag in (ns + "s", ns + "tab"):
+            el.text = " "
+        elif el.tag == ns + "line-break":
+            el.text = "\n"
+    # Un paragraphe (text:p) ou un titre (text:h) = une ligne : les en-têtes
+    # restent seuls sur leur ligne, condition pour que sectionize() les repère.
+    return "\n".join(
+        "".join(el.itertext())
+        for el in racine.iter()
+        if el.tag in (ns + "p", ns + "h")
+    )
+
+
+_FORMATS_ACCEPTES = ".pdf, .docx, .odt, .txt, .md"
 
 
 def extract_text(data: bytes, filename: str) -> str:
@@ -131,6 +161,8 @@ def extract_text(data: bytes, filename: str) -> str:
         return text
     if ext == ".docx":
         return _docx_text(data)
+    if ext == ".odt":
+        return _odt_text(data)
     if ext in ("", ".txt", ".md", ".markdown"):
         # Un binaire décodé en errors="ignore" polluait la base RAG : rejet.
         if b"\x00" in data:
@@ -193,3 +225,22 @@ def decouper(data: bytes, filename: str) -> list[tuple[str, str, str]]:
                     "(apt install tesseract-ocr tesseract-ocr-fra ocrmypdf).")
         raise ValueError(f"Aucun texte extrait. PDF scanné ? {aide}")
     return [c for c in sectionize(text) if c[2].strip()]
+
+
+# --- Pack de démarrage (bilans fictifs embarqués) ----------------------------
+
+# Résolu depuis app/ : vaut aussi bien en dev qu'en application gelée, où le
+# spec PyInstaller embarque data/reference au même chemin relatif.
+PACK_DIR = Path(__file__).parent.parent / "data" / "reference"
+
+
+def pack_fichiers() -> list[tuple[str, str, bytes]]:
+    """Fichiers du pack embarqué : (nom, clé de domaine, contenu).
+
+    La clé de domaine se déduit du nom — ``bilan-fictif-<domaine>.txt``,
+    tirets → underscores (convention documentée dans data/reference/README.md)."""
+    out = []
+    for p in sorted(PACK_DIR.glob("*.txt")):
+        domaine = p.stem.removeprefix("bilan-fictif-").replace("-", "_")
+        out.append((p.name, domaine, p.read_bytes()))
+    return out

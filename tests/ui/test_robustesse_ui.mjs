@@ -55,6 +55,8 @@ let restaurationCalls = [];
 let restaurationResponder = () => ({ ok: true, fichier: "f", filet: "g" });
 let editeurCalls = [];       // PUT/DELETE des routes /api/config/{trame,catalogues,prompts}
 let editeurResponder = null; // null = succès (config effective renvoyée)
+let refsList = [];           // GET /api/references
+let packPosts = 0, packDeletes = 0;
 const SAUVEGARDES = {
   dossier: "", derniere: "2026-07-20 10:00:00",
   fichiers: [{ fichier: "bilan-ortho-sauvegarde-20260720-100000.db", octets: 4096 }],
@@ -112,6 +114,29 @@ globalThis.fetch = async (p, o = {}) => {
     editeurCalls.push({ cible: mEd[1], method: o.method, body: o.body ? JSON.parse(o.body) : null });
     return rep(editeurResponder ? editeurResponder() : structuredClone(CFG));
   }
+  if (url.includes("/api/references/pack")) {
+    if (o.method === "POST") {
+      packPosts++;
+      refsList = refsList.filter((r) => r.source !== "fictif").concat([
+        { id: 101, titre: "Anamnèse", section_cle: "anamnese", source: "fictif" },
+        { id: 102, titre: "Projet thérapeutique", section_cle: "projet", source: "fictif" },
+      ]);
+      return rep({ n_fichiers: 11, n_extraits: 2 });
+    }
+    if (o.method === "DELETE") {
+      packDeletes++;
+      const n = refsList.filter((r) => r.source === "fictif").length;
+      refsList = refsList.filter((r) => r.source !== "fictif");
+      return rep({ n });
+    }
+  }
+  if (url.includes("/api/references")) {
+    if (o.method === "DELETE") {
+      refsList = refsList.filter((r) => r.id !== +url.split("/").pop());
+      return rep({ ok: true });
+    }
+    return rep(refsList.map((r) => ({ ...r })));
+  }
   if (url.includes("/api/domaines"))
     return rep([{ cle: "langage_oral", titre: "Langage oral" }, { cle: "voix", titre: "Voix" }]);
   if (url.includes("/api/catalogues/"))
@@ -138,7 +163,7 @@ const body = scriptBody.replace(/gate\(\);\s*$/, "") + `
 ;globalThis.__t = {
   get QS() { return QS; }, set QS(v) { QS = v; },
   get CUR() { return CUR; }, set CUR(v) { CUR = v; },
-  renderQuestions, renderBilan, structure, saisieEnCours, loadRecents,
+  renderQuestions, renderBilan, structure, saisieEnCours, loadRecents, loadRefs,
 };`;
 new Function(body)();
 
@@ -613,6 +638,41 @@ check("aide : un courriel reste proposé (sans compte GitHub)",
   !!document.querySelector('#helpOverlay a[href^="mailto:"]'));
 check("aide : l'avertissement « aucun élément identifiant » accompagne les liens",
   document.getElementById("helpOverlay").textContent.includes("aucun élément identifiant"));
+
+// === 26. Bilans de référence : pack d'exemples (charger / badge / retirer) ===
+document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+const refList = () => document.getElementById("refList");
+const refStatus = () => document.getElementById("refStatus").textContent;
+refsList = [{ id: 1, titre: "Mon anamnèse", section_cle: "anamnese", source: "import" }];
+await __t.loadRefs();
+check("références : l'import du praticien s'affiche sans badge « exemple »",
+  refList().textContent.includes("Mon anamnèse")
+  && !refList().textContent.includes("exemple"));
+check("références : pas de lien de retrait sans pack chargé",
+  !document.getElementById("refPackRetirer"));
+
+document.getElementById("refPack").click();
+await settle();
+check("pack : un clic → un POST, statut ✓ avec le compte d'extraits",
+  packPosts === 1 && refStatus().includes("✓") && refStatus().includes("11 bilans fictifs"));
+check("pack : les extraits fictifs portent le badge « exemple »",
+  refList().textContent.includes("exemple"));
+check("pack : le lien « Retirer les exemples » apparaît",
+  !!document.getElementById("refPackRetirer"));
+
+document.getElementById("refPackRetirer").click();
+await settle();
+check("retrait : DELETE envoyé, exemples retirés, import du praticien conservé",
+  packDeletes === 1 && !refList().textContent.includes("exemple")
+  && refList().textContent.includes("Mon anamnèse")
+  && !document.getElementById("refPackRetirer"));
+
+reseauCoupe = true;
+document.getElementById("refPack").click();
+await settle();
+check("pack : erreur réseau → message français dans le statut, pas de crash",
+  refStatus().startsWith("Erreur"));
+reseauCoupe = false;
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

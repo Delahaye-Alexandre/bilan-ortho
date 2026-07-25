@@ -146,3 +146,18 @@ def delete(con, ref_id: int) -> None:
     con.execute("DELETE FROM bilan_reference WHERE id=?", (ref_id,))
     if _table_exists(con):
         con.execute("DELETE FROM reference_embedding WHERE rowid=?", (ref_id,))
+
+
+def delete_par_source(con, source: str) -> int:
+    """Supprime toutes les références d'une source (ex. le pack « fictif »).
+    Retourne le nombre d'extraits supprimés."""
+    ids = [r[0] for r in con.execute(
+        "SELECT id FROM bilan_reference WHERE source=?", (source,)
+    ).fetchall()]
+    if not ids:
+        return 0
+    ph = ",".join("?" * len(ids))
+    con.execute(f"DELETE FROM bilan_reference WHERE id IN ({ph})", ids)
+    if _table_exists(con):
+        con.execute(f"DELETE FROM reference_embedding WHERE rowid IN ({ph})", ids)
+    return len(ids)

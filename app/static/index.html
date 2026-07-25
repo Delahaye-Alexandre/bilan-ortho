@@ -173,9 +173,10 @@
     <div id="sttInfo" class="status"></div>
 
     <label for="refFile">Mes bilans de référence</label>
-    <div class="muted">Importez vos propres bilans : l'IA s'inspire de votre style (100 % local).</div>
-    <input type="file" id="refFile" accept=".pdf,.docx,.txt,.md" style="margin-top:6px" />
+    <div class="muted">Importez vos propres bilans : l'IA s'inspire de votre style (100 % local). Pour démarrer sans rien sous la main, chargez les bilans d'exemple (fictifs).</div>
+    <input type="file" id="refFile" accept=".pdf,.docx,.odt,.txt,.md" style="margin-top:6px" />
     <div class="row" style="margin-top:6px"><button id="refImport" class="ghost" style="width:100%">Importer</button></div>
+    <div class="row" style="margin-top:6px"><button id="refPack" class="ghost" style="width:100%">Charger les bilans d'exemple</button></div>
     <div id="refStatus" class="status"></div>
     <div id="refList" class="reclist muted"></div>
 
@@ -480,7 +481,7 @@
       <h3>5. Relisez, validez, exportez</h3>
       <p>Chaque rubrique proposée par l'IA est marquée « à valider » : <b>vous relisez, corrigez et validez</b> — la responsabilité du contenu vous revient entièrement. Puis cotez (NGAP), exportez en Word ou Markdown, et marquez le bilan « validé » puis « envoyé » (le destinataire est tracé).</p>
       <h3>Vos bilans de référence (votre style)</h3>
-      <p>Importez vos propres bilans (PDF, Word .docx, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Les PDF scannés nécessitent Tesseract : sous Windows, utilisez l'installeur UB-Mannheim (<code>github.com/UB-Mannheim/tesseract</code>) puis relancez l'import ; sous Linux : <code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>.</p>
+      <p>Importez vos propres bilans (PDF, Word .docx, LibreOffice .odt, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Pour démarrer sans bilans sous la main, « Charger les bilans d'exemple » indexe des bilans <b>entièrement fictifs</b> livrés avec l'application (marqués « exemple ») — retirez-les une fois vos propres bilans importés, votre style prendra toute la place. Les PDF scannés nécessitent Tesseract : sous Windows, utilisez l'installeur UB-Mannheim (<code>github.com/UB-Mannheim/tesseract</code>) puis relancez l'import ; sous Linux : <code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>.</p>
       <h3>Confidentialité & sauvegardes</h3>
       <p>Tout est chiffré (SQLCipher) et tout tourne en local : aucune donnée ne quitte votre machine. L'application se verrouille seule après inactivité. Pensez à votre passphrase : elle est <b>irrécupérable</b>.</p>
       <p>Seule exception réseau, transparente et sans aucune donnée transmise : la <b>vérification de mise à jour</b> (⚙️ Paramètres → Mises à jour) interroge la page des versions du projet sur GitHub — uniquement quand vous cliquez « Vérifier maintenant », ou au démarrage si vous avez coché l'option (décochée par défaut).</p>
@@ -808,8 +809,10 @@ async function loadRefs() {
   try {
     const list = await (await api('/api/references')).json();
     const el = document.getElementById('refList');
-    el.innerHTML = list.length ? list.map(r =>
-      `<a href="#"><span data-open>${escapeHtml(r.titre || 'extrait')} <span class="muted">(${escapeHtml(r.section_cle || '')})</span></span><span class="delref" data-id="${r.id}" role="button" tabindex="0" aria-label="Supprimer la référence ${escapeHtml(r.titre || 'extrait')}" style="float:right;cursor:pointer">✕</span></a>`).join('') : 'Aucun.';
+    const aPack = list.some(r => r.source === 'fictif');
+    el.innerHTML = (list.length ? list.map(r =>
+      `<a href="#"><span data-open>${escapeHtml(r.titre || 'extrait')} <span class="muted">(${escapeHtml(r.section_cle || '')}${r.source === 'fictif' ? ' · exemple' : ''})</span></span><span class="delref" data-id="${r.id}" role="button" tabindex="0" aria-label="Supprimer la référence ${escapeHtml(r.titre || 'extrait')}" style="float:right;cursor:pointer">✕</span></a>`).join('') : 'Aucun.')
+      + (aPack ? '<a href="#" id="refPackRetirer" role="button" tabindex="0">🗑 Retirer les exemples</a>' : '');
     el.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.preventDefault()));
     el.querySelectorAll('.delref').forEach(x => x.addEventListener('click', async e => {
       e.preventDefault(); e.stopPropagation();
@@ -817,6 +820,16 @@ async function loadRefs() {
       catch (err) { document.getElementById('refStatus').textContent = 'Erreur : ' + err.message; return; }
       loadRefs();
     }));
+    const retirer = el.querySelector('#refPackRetirer');
+    if (retirer) retirer.addEventListener('click', async e => {
+      e.preventDefault();
+      const st = document.getElementById('refStatus');
+      try {
+        const s = await (await api('/api/references/pack', { method: 'DELETE' })).json();
+        st.textContent = `✓ ${s.n} extrait(s) d'exemple retiré(s)`;
+      } catch (err) { st.textContent = 'Erreur : ' + err.message; return; }
+      loadRefs();
+    });
     activerBoutonsClavier(el);
   } catch {}
 }
@@ -830,6 +843,16 @@ document.getElementById('refImport').addEventListener('click', e => avecBouton(e
     const r = await api('/api/references', { method: 'POST', body: fd });
     const s = await r.json(); st.textContent = `✓ ${s.n} extrait(s) indexé(s)`;
     document.getElementById('refFile').value = ''; loadRefs();
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+}));
+document.getElementById('refPack').addEventListener('click', e => avecBouton(e.target, async () => {
+  const st = document.getElementById('refStatus');
+  st.textContent = 'Indexation locale des exemples…';
+  try {
+    const r = await api('/api/references/pack', { method: 'POST' });
+    const s = await r.json();
+    st.textContent = `✓ ${s.n_extraits} extrait(s) indexé(s) (${s.n_fichiers} bilans fictifs)`;
+    loadRefs();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }));
 
@@ -1301,7 +1324,7 @@ async function toggleAnsRec(qid) {
   if (ansRec) { if (ansRec.qid === qid) stopAnsRec(); return; }
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch { document.getElementById('structStatus').textContent = 'Micro indisponible.'; return; }
+  catch { document.getElementById('structStatus').textContent = 'Micro refusé ou indisponible — autorisez le micro (icône de réglages dans la barre de titre), ou tapez votre réponse.'; return; }
   const chunks = [];
   const rec = new MediaRecorder(stream);
   ansRec = { rec, stream, qid };
@@ -1410,7 +1433,7 @@ async function toggleRec() {
   }
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch { recStatus.textContent = 'Micro indisponible.'; return; }
+  catch { recStatus.textContent = 'Micro refusé ou indisponible — autorisez le micro (icône de réglages dans la barre de titre), ou tapez votre texte ci-dessous.'; return; }
   // Borne de la dictée : le ping keepalive maintient le coffre déverrouillé —
   // sans limite, un micro oublié neutraliserait le verrouillage d'inactivité.
   let maxMin = 30;

@@ -131,6 +131,50 @@ def test_extract_text_txt():
     assert "bonjour" in importer.extract_text(b"bonjour", "notes.txt")
 
 
+def _odt_minimal(corps_xml: str) -> bytes:
+    """Construit un .odt minimal en mémoire (zip + content.xml) : pas de
+    fixture binaire dans le dépôt, et pas de dépendance à LibreOffice."""
+    import io as _io
+    import zipfile
+
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<office:document-content'
+        ' xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"'
+        ' xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">'
+        f"<office:body><office:text>{corps_xml}</office:text></office:body>"
+        "</office:document-content>"
+    )
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("mimetype", "application/vnd.oasis.opendocument.text")
+        z.writestr("content.xml", content)
+    return buf.getvalue()
+
+
+def test_extract_text_odt():
+    # Titres en text:h ET en text:p : LibreOffice produit les deux selon que
+    # l'utilisateur a stylé ses titres ou non. Les blancs encodés en éléments
+    # vides (text:tab, text:s) doivent redevenir des séparateurs.
+    data = _odt_minimal(
+        "<text:h>Anamnèse</text:h>"
+        "<text:p>Enfant né à terme, marche à 12 mois.</text:p>"
+        "<text:p>Épreuves et résultats</text:p>"
+        "<text:p>EVALO<text:tab/>-2,1 écarts-types</text:p>"
+        "<text:p>Projet thérapeutique</text:p>"
+        "<text:p>Deux<text:s/>séances par semaine.</text:p>"
+    )
+    texte = importer.extract_text(data, "bilan.odt")
+    assert "marche à 12 mois" in texte
+    assert "EVALO -2,1" in texte and "Deux séances" in texte
+    assert [c[0] for c in importer.sectionize(texte)] == ["anamnese", "epreuves", "projet"]
+
+
+def test_extract_text_odt_corrompu():
+    with pytest.raises(ValueError, match=r"\.odt illisible"):
+        importer.extract_text(b"PK\x03\x04pas un odt", "bilan.odt")
+
+
 def _pil_disponible() -> bool:
     try:
         import PIL  # noqa: F401

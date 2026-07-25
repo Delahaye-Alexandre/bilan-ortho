@@ -356,6 +356,41 @@ def test_import_docx(client, mock_embed):
     assert "anamnese" in {x["section_cle"] for x in refs}
 
 
+def test_import_odt(client, mock_embed):
+    """Le .odt — format par défaut de LibreOffice, courant chez les
+    praticiens — doit s'importer comme le .docx."""
+    import io
+    import zipfile
+
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<office:document-content'
+        ' xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"'
+        ' xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">'
+        "<office:body><office:text>"
+        "<text:h>Anamnèse</text:h>"
+        "<text:p>Enfant né à terme, marche à 12 mois.</text:p>"
+        "</office:text></office:body></office:document-content>"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("mimetype", "application/vnd.oasis.opendocument.text")
+        z.writestr("content.xml", content)
+    r = client.post(
+        "/api/references",
+        files={"file": ("bilan.odt", buf.getvalue(),
+                        "application/vnd.oasis.opendocument.text")},
+        data={"domaine": "langage_oral"},
+    )
+    assert r.status_code == 200 and r.json()["n"] >= 1
+    refs = client.get("/api/references").json()
+    assert "anamnese" in {x["section_cle"] for x in refs}
+    # .odt corrompu -> 400 explicite, comme le PDF corrompu
+    r = client.post("/api/references",
+                    files={"file": ("casse.odt", b"PK\x03\x04casse", "application/octet-stream")})
+    assert r.status_code == 400 and ".odt illisible" in r.json()["detail"]
+
+
 def test_export_docx_reimportable(client, mock_embed):
     """Aller-retour complet : un bilan exporté en Word se réimporte tel quel."""
     bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
@@ -375,6 +410,40 @@ def test_import_binaire_rejete(client, mock_embed):
     r = client.post("/api/references",
                     files={"file": ("piege.txt", b"abc\x00def", "text/plain")})
     assert r.status_code == 400
+
+
+def test_pack_exemples_import_remplacement_retrait(client, mock_embed):
+    """Le pack embarqué s'indexe en un clic, se remplace sans doublon au
+    re-clic, et se retire sans toucher aux bilans importés par le praticien."""
+    # Une référence du praticien, qui doit survivre à toutes les opérations.
+    r = client.post(
+        "/api/references",
+        files={"file": ("mien.txt", BILAN_TXT.encode(), "text/plain")},
+        data={"domaine": "langage_oral"},
+    )
+    n_perso = r.json()["n"]
+
+    r = client.post("/api/references/pack")
+    assert r.status_code == 200
+    s = r.json()
+    assert s["n_fichiers"] == 11
+    assert s["n_extraits"] >= s["n_fichiers"] * 5  # ≥ 5 rubriques par bilan
+    refs = client.get("/api/references").json()
+    assert len([x for x in refs if x["source"] == "fictif"]) == s["n_extraits"]
+
+    # Re-clic : remplacement à l'identique, jamais d'addition.
+    s2 = client.post("/api/references/pack").json()
+    refs2 = client.get("/api/references").json()
+    assert s2["n_extraits"] == s["n_extraits"]
+    assert len([x for x in refs2 if x["source"] == "fictif"]) == s["n_extraits"]
+    assert len([x for x in refs2 if x["source"] == "import"]) == n_perso
+
+    # Retrait du pack : seuls les extraits fictifs disparaissent.
+    assert client.delete("/api/references/pack").json()["n"] == s["n_extraits"]
+    refs3 = client.get("/api/references").json()
+    assert len(refs3) == n_perso and all(x["source"] == "import" for x in refs3)
+    # Retrait d'un pack déjà retiré : 0, sans erreur.
+    assert client.delete("/api/references/pack").json()["n"] == 0
 
 
 def test_import_pdf_corrompu(client, mock_embed):
