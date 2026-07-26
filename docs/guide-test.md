@@ -12,21 +12,28 @@ donnée ne part sur internet, tout est chiffré sur votre machine.
 - Windows 10 ou 11
 - 8 Go de RAM minimum (16 Go recommandés : l'assistant sera plus pertinent)
 - ~10 Go d'espace disque libre
-- Une connexion internet **pour l'installation uniquement** (téléchargement
-  des modèles d'IA ; ensuite tout fonctionne hors ligne)
+- Une connexion internet **pour l'installation et la toute première dictée**
+  (téléchargement des modèles d'IA ; ensuite tout fonctionne hors ligne)
 - Un micro (celui du portable suffit) pour la dictée
 
 ## 1. Installer l'application
 
 1. Téléchargez `BilanOrtho-Setup-x.y.z.exe` depuis la page des
    téléchargements — <https://github.com/Delahaye-Alexandre/bilan-ortho/releases/latest> —
-   ou depuis le lien qu'Alexandre vous a envoyé.
-2. Double-cliquez. **Windows affichera un avertissement bleu « Windows a
-   protégé votre ordinateur »** : c'est normal — l'application n'est pas
-   encore « signée » auprès de Microsoft (procédure payante), pas dangereuse.
+   ou depuis le lien qu'Alexandre vous a envoyé. Sur la page, prenez bien le
+   fichier `.exe` de la section « Assets » (pas « Source code », qui n'est
+   que le code du logiciel).
+2. Votre navigateur peut afficher un avertissement du type « ce fichier
+   n'est pas fréquemment téléchargé » : c'est normal — l'application est
+   récente et n'est pas encore « signée » auprès de Microsoft (procédure
+   payante), pas dangereuse. Cliquez sur les **« ⋯ »** en face du fichier
+   téléchargé, puis **« Conserver »** et, si l'écran suivant s'affiche,
+   « Afficher plus » → **« Conserver quand même »**.
+3. Double-cliquez. **Windows affichera un avertissement bleu « Windows a
+   protégé votre ordinateur »** : même raison, toujours pas dangereux.
    Cliquez sur **« Informations complémentaires »** puis **« Exécuter quand
    même »**.
-3. L'installation ne demande aucun droit administrateur. Elle télécharge et
+4. L'installation ne demande aucun droit administrateur. Elle télécharge et
    installe aussi automatiquement le moteur d'IA local (**Ollama**, ~1 Go) —
    patientez. Une icône « Bilan Ortho » apparaît sur le Bureau.
 
@@ -57,6 +64,8 @@ irrécupérable** (personne, pas même Alexandre, ne peut la retrouver).
 2. Choisissez un domaine (ex. Langage écrit) → **+ Nouveau bilan**.
 3. **🎙️ Dictez** naturellement, comme si vous racontiez le dossier à voix
    haute : anamnèse, ce que vous avez observé, les tests passés, les scores…
+   À la première dictée, la fenêtre demande l'accès au micro : cliquez
+   **« Autoriser »**. (Vous pouvez aussi taper votre texte au clavier.)
 4. **➡️ Structurer** : l'assistant répartit vos propos dans la trame et vous
    pose des **questions** quand il manque quelque chose — répondez-y.
 5. Saisissez une épreuve dans **🧪 Épreuves & scores** (le drapeau
@@ -69,7 +78,7 @@ irrécupérable** (personne, pas même Alexandre, ne peut la retrouver).
 
 ## En cas de problème
 
-Envoyez à Alexandre :
+Envoyez à Alexandre (**alexandre-delahaye@outlook.fr**) :
 1. Ce que vous faisiez + ce qui s'est passé (capture d'écran si possible) ;
 2. Le fichier `serveur.log` situé dans le dossier
    `%LOCALAPPDATA%\bilan-ortho` (tapez ce chemin dans la barre de
@@ -77,6 +86,11 @@ Envoyez à Alexandre :
 
 Si l'application ne s'ouvre pas : vérifiez qu'Ollama tourne (icône lama près
 de l'horloge), puis relancez Bilan Ortho.
+
+Si la dictée affiche « Micro refusé ou indisponible » : l'accès au micro a
+été bloqué pour la fenêtre. Cliquez sur l'icône de réglages (ou le cadenas)
+dans la barre de titre → « Autorisations » → « Micro » → « Autoriser », puis
+relancez la dictée. En attendant, vous pouvez toujours taper votre texte.
 
 ## Ce qu'il faut savoir
 

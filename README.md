@@ -8,15 +8,19 @@ bilans**, puis vous **relisez, validez, cotez et exportez**.
 > ⚠️ **Aide à la rédaction, pas un dispositif de diagnostic.** L'IA *propose* ;
 > l'orthophoniste *relit, corrige, valide et signe*. La responsabilité du
 > contenu vous revient entièrement. Aucune donnée ne quitte votre machine (pas
-> d'obligation HDS ; RGPD par conception). Voir `docs/notice-medico-legale.md`
-> et `docs/RGPD-registre-traitements.md`.
+> d'obligation HDS ; RGPD par conception). Voir la
+> [notice médico-légale](docs/notice-medico-legale.md) et le
+> [registre RGPD](docs/RGPD-registre-traitements.md).
 
 ## ⬇️ Télécharger (Windows)
 
 **[Télécharger Bilan Ortho — installeur Windows](https://github.com/Delahaye-Alexandre/bilan-ortho/releases/latest)**
 (Windows 10/11 · installation par utilisateur, sans droits administrateur · le
-moteur d'IA local Ollama est installé automatiquement). Guide pas à pas :
-[docs/guide-test.md](docs/guide-test.md).
+moteur d'IA local Ollama est installé automatiquement). Sur la page, prenez le
+fichier `BilanOrtho-Setup-x.y.z.exe` de la section « Assets » — pas « Source
+code ». Les avertissements de Windows au téléchargement et au premier
+lancement sont normaux (application non signée) ; le guide pas à pas les
+détaille : [docs/guide-test.md](docs/guide-test.md).
 
 Sous Linux/WSL : voir [Installation & lancement](#installation--lancement)
 ci-dessous.
@@ -64,7 +68,10 @@ ci-dessous.
   tests** et la **consigne de structuration**, chacun avec son éditeur dédié —
   sans toucher au code.
 
-## Prérequis
+## Prérequis (installation depuis les sources)
+
+> Avec l'installeur Windows ci-dessus, tout ceci est automatique : passez
+> cette section, votre guide est [docs/guide-test.md](docs/guide-test.md).
 
 - Python 3.12+, [Ollama](https://ollama.com) lancé (`ollama serve`)
 - Modèles Ollama :
@@ -95,7 +102,11 @@ pip install -r requirements.txt
 ./run.sh            # → http://localhost:8000 (bind 127.0.0.1 uniquement)
 ```
 
-### Lancement en un clic (Windows/WSL)
+### Lancement en un clic depuis WSL (poste de développement)
+
+> Réservé au poste de développement où l'app tourne dans WSL. Avec
+> l'installeur Windows, l'icône du Bureau est créée automatiquement — rien à
+> faire ici.
 
 `BilanOrtho.exe` (sur le Bureau, source dans `packaging/windows/`) : double-clic
 → démarre le serveur dans WSL s'il ne tourne pas déjà (via
@@ -204,15 +215,26 @@ Actions : tests sur Windows + Linux, binaire PyInstaller (`lanceur.py` →
 `dist/BilanOrtho/`), fumage du binaire, installeur Inno Setup
 (`packaging/windows/installeur.iss`, installation par utilisateur sans
 droits admin). Un tag `v*` **publie** la Release avec son installeur sur la
-[page des versions](https://github.com/Delahaye-Alexandre/bilan-ortho/releases),
-accompagnée de `docs/guide-test.md` (SmartScreen, premier lancement guidé,
-parcours d'essai). Les données vivent dans `%LOCALAPPDATA%\bilan-ortho` (préservées à
+[page des versions](https://github.com/Delahaye-Alexandre/bilan-ortho/releases) ;
+les notes de version, générées par la CI, guident le téléchargement
+(bon fichier, avertissements Windows) et pointent vers `docs/guide-test.md`. Les données vivent dans `%LOCALAPPDATA%\bilan-ortho` (préservées à
 la désinstallation).
 
 > **Publier la release, ne pas la laisser en brouillon.** L'API
 > `releases/latest` ignore les brouillons : la vérification de mise à jour
 > intégrée à l'application (`app/maj.py`) ne verrait pas la nouvelle version,
 > et les personnes déjà équipées ne sauraient pas qu'elle existe.
+
+## Questions & contact
+
+Un problème, une question, une idée ? Écrivez à
+**alexandre-delahaye@outlook.fr** (capture d'écran bienvenue), ou ouvrez une
+[issue GitHub](https://github.com/Delahaye-Alexandre/bilan-ortho/issues) si
+vous en avez l'habitude. Le projet est maintenu bénévolement : les demandes
+sont triées chaque mois (voir [SECURITY.md](SECURITY.md)).
+
+**Faille de sécurité** : n'ouvrez pas d'issue publique — suivez la
+[politique de sécurité](SECURITY.md).
 
 ## Licence & engagements
 
