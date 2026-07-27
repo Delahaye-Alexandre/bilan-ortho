@@ -9,8 +9,8 @@
 # L'extension .txt n'est pas cosmétique : Dependabot ne surveille pas un
 # fichier « .lock » générique. C'est ce fichier-ci qu'il doit proposer de
 # monter, puisque c'est celui qui est installé.
-fastapi==0.139.0
-uvicorn[standard]==0.49.0
+fastapi==0.140.0
+uvicorn[standard]==0.51.0
 httpx==0.28.1
 pydantic==2.13.4
 python-multipart==0.0.32
