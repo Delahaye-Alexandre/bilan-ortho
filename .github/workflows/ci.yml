@@ -16,8 +16,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Ruff (config dans pyproject.toml)
@@ -36,8 +36,8 @@ jobs:
             python: "3.12"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -57,7 +57,7 @@ jobs:
   tests-ui:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - name: Tests UI (happy-dom — seule couverture du frontend)
         run: |
@@ -70,8 +70,8 @@ jobs:
     permissions:
       contents: write  # `gh release create` sur tag (étape « Release publiée »)
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -180,7 +180,7 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
             /DAppVersion=${{ steps.version.outputs.version }} `
             packaging\windows\installeur.iss
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: BilanOrtho-Setup
           path: packaging/windows/Output/*.exe
