@@ -158,6 +158,30 @@ def set_statut(con, bilan_id: int, statut: str, destinataire: str = "") -> bool:
     return True
 
 
+def _lire_signalements(brut) -> list[str]:
+    """Signalements « à vérifier » persistés avec la rubrique (JSON → liste)."""
+    if not brut:
+        return []
+    try:
+        valeurs = json.loads(brut)
+    except (TypeError, ValueError):
+        return []
+    return [str(v) for v in valeurs] if isinstance(valeurs, list) else []
+
+
+def set_signalements(con, bilan_id: int, cle: str, messages: list[str]) -> None:
+    """Enregistre (ou efface) les avertissements de traçabilité d'une rubrique.
+
+    Ils portent la promesse centrale du produit — « aucun chiffre inventé » —
+    et ne vivaient qu'en mémoire du navigateur : un F5, un verrouillage
+    d'inactivité ou un changement de bilan les effaçait, laissant un
+    compte-rendu « à valider » sans que rien n'indique où regarder."""
+    con.execute(
+        "UPDATE section SET signalements=? WHERE bilan_id=? AND cle=?",
+        (json.dumps(messages, ensure_ascii=False) if messages else None, bilan_id, cle),
+    )
+
+
 def get(con, bilan_id: int) -> dict | None:
     rows = _dicts(con.execute("SELECT * FROM bilan WHERE id=?", (bilan_id,)))
     if not rows:
@@ -172,6 +196,8 @@ def get(con, bilan_id: int) -> dict | None:
     b["sections"] = _dicts(
         con.execute("SELECT * FROM section WHERE bilan_id=? ORDER BY ordre", (bilan_id,))
     )
+    for s in b["sections"]:
+        s["signalements"] = _lire_signalements(s.get("signalements"))
     eps = _dicts(
         con.execute("SELECT * FROM epreuve WHERE bilan_id=? ORDER BY id", (bilan_id,))
     )
@@ -297,15 +323,18 @@ def apply_updates(
 def update_section(
     con, bilan_id: int, cle: str, contenu: str, statut: str | None = None
 ) -> bool:
+    # Enregistrer une rubrique, c'est l'avoir relue : l'avertissement de
+    # traçabilité a joué son rôle et disparaît (même règle que dans l'interface).
     if statut:
         cur = con.execute(
             "UPDATE section SET contenu=?, statut=?, source='manuel', "
-            "updated_at=datetime('now') WHERE bilan_id=? AND cle=?",
+            "signalements=NULL, updated_at=datetime('now') "
+            "WHERE bilan_id=? AND cle=?",
             (contenu, statut, bilan_id, cle),
         )
     else:
         cur = con.execute(
-            "UPDATE section SET contenu=?, source='manuel', "
+            "UPDATE section SET contenu=?, source='manuel', signalements=NULL, "
             "updated_at=datetime('now') WHERE bilan_id=? AND cle=?",
             (contenu, bilan_id, cle),
         )

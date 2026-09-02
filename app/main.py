@@ -47,6 +47,8 @@ from . import (
     stt,
     systeme,
     verif_chiffres,
+    verif_tests,
+    verif_texte,
 )
 from .models import (
     BilanCreate,
@@ -704,26 +706,57 @@ async def _structurer(
     sources = (
         [req.transcription]
         + [f"{r.question} {r.reponse}" for r in req.reponses]
-        + [s.get("contenu") or "" for s in b["sections"]]
+        # Contenu déjà rédigé — mais SEULEMENT les rubriques qui ne portent plus
+        # d'avertissement en attente. Sans cette restriction, un chiffre
+        # halluciné au tour N (pas même encore relu) devenait une source
+        # légitime au tour N+1 et cessait d'être signalé : le garde-fou
+        # blanchissait sa propre alerte.
+        + [
+            s.get("contenu") or ""
+            for s in b["sections"]
+            if not s.get("signalements")
+        ]
+        # Les épreuves saisies à la main sont du matériau du praticien : un test
+        # coté dans le tableau n'a pas à être signalé comme « non dicté ».
+        + [e.get("test_nom") or "" for e in b.get("epreuves") or []]
     )
+    # Noms de tests que le modèle a sous les yeux (prompt) — donc ceux qu'il
+    # peut substituer. La vérification porte sur tous les domaines : le modèle
+    # ne s'interdit pas de citer un test hors du domaine du bilan.
+    noms_tests = catalogues.tous_les_noms(cfg)
     titres = {s["cle"]: s["titre"] for s in b["sections"]}
-    chiffres_a_verifier = []
+    rubriques_a_verifier = []
     for u in result["updates"]:
-        msgs = verif_chiffres.signalements(u["texte"], sources)
+        msgs = (
+            verif_chiffres.signalements(u["texte"], sources)
+            # Un nom de test substitué ne portait jusqu'ici aucun signalement
+            # exploitable : « chiffres absents : 6, -15 » pour « EVALEO 6-15 ».
+            + verif_tests.signalements(u["texte"], sources, noms_tests)
+            # Une prose entièrement inventée ne contient aucun chiffre : elle
+            # passait sans un mot.
+            + verif_texte.signalements(u["texte"], sources)
+        )
         if msgs:
-            chiffres_a_verifier.append({
+            rubriques_a_verifier.append({
                 "section": u["section"],
                 "titre": titres.get(u["section"], u["section"]),
                 "signalements": msgs,
             })
     with security.transaction() as con:
         bilan.apply_updates(con, bilan_id, result["updates"])
+        # Les avertissements suivent le texte qu'ils concernent, dans le coffre :
+        # ils doivent survivre à un F5, à un verrouillage d'inactivité et à un
+        # changement de dossier — c'est là qu'on revient relire « à valider ».
+        par_section = {c["section"]: c["signalements"] for c in rubriques_a_verifier}
+        for u in result["updates"]:
+            bilan.set_signalements(con, bilan_id, u["section"],
+                                   par_section.get(u["section"], []))
         security.audit(
             "structure", "bilan", bilan_id,
             f"{len(result['updates'])} maj, {len(result['questions'])} questions"
             + (f", {len(req.reponses)} réponse(s) intégrée(s)" if req.reponses else "")
-            + (f", {len(chiffres_a_verifier)} rubrique(s) à vérifier"
-               if chiffres_a_verifier else ""),
+            + (f", {len(rubriques_a_verifier)} rubrique(s) à vérifier"
+               if rubriques_a_verifier else ""),
         )
         b2 = bilan.get(con, bilan_id)
     return {
@@ -734,14 +767,18 @@ async def _structurer(
         "rubriques_tronquees": result.get("rubriques_tronquees", []),
         # Vide si le style a bien été réinjecté ; sinon, la cause à afficher.
         "style_indisponible": style_indisponible,
-        # Chiffres proposés que l'app n'a pas pu retrouver dans la dictée.
-        "chiffres_a_verifier": chiffres_a_verifier,
+        # Ce que l'app n'a pas pu retrouver dans la dictée : chiffres, noms de
+        # tests, ou rubrique entière trop peu adossée au matériau dicté.
+        "rubriques_a_verifier": rubriques_a_verifier,
         # Rubriques rendues par le modèle sous un nom inconnu : le texte n'a pas
         # pu être placé. Signalé plutôt que perdu en silence.
         "updates_non_placees": result.get("updates_non_placees", []),
         # Le modèle s'est vraisemblablement arrêté en cours de route : le
         # praticien doit le savoir avant de relire un compte-rendu amputé.
         "analyse_incomplete": llm.couverture_suspecte(texte_tour, result["updates"]),
+        # Le prompt approche la fenêtre de contexte : Ollama tronque alors le
+        # DÉBUT du prompt, donc les consignes système, sans que rien ne le dise.
+        "prompt_trop_long": result.get("prompt_trop_long", False),
     }
 
 

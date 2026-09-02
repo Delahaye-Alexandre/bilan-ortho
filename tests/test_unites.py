@@ -9,6 +9,7 @@ import pytest
 
 from app import (
     anonymisation,
+    catalogues,
     config,
     cotation,
     export,
@@ -16,6 +17,8 @@ from app import (
     llm,
     prompts,
     verif_chiffres,
+    verif_tests,
+    verif_texte,
 )
 from app import db as _db
 from app.bilan import (
@@ -242,9 +245,24 @@ def test_parse_structure_illisible_leve_une_erreur():
     assert llm._parse_structure('{"updates":[],"questions":[]}') == {
         "updates": [], "questions": [],
     }
-    # updates sans texte ou sans section sont écartés
+    # un update sans texte n'apporte rien : écarté ; un update sans rubrique
+    # garde son texte (section vide → remonté « non placé », jamais perdu en
+    # silence — revue 2026-08-11, point 4.6) ; une question vide est écartée
     r = llm._parse_structure('{"updates":[{"section":"a"},{"texte":"b"}],"questions":[{}]}')
-    assert r["updates"] == [] and r["questions"] == []
+    assert r["updates"] == [{"section": "", "texte": "b"}]
+    assert r["questions"] == []
+
+
+def test_parse_structure_tolere_un_dictionnaire_au_lieu_d_une_liste():
+    """`{"updates": {"anamnese": "texte"}}` (forme rendue par certains modèles
+    locaux) ne doit plus lever une AttributeError → 500 opaque (point 4.6)."""
+    r = llm._parse_structure('{"updates":{"anamnese":"ok"},"questions":{"x":"Âge ?"}}')
+    assert r["updates"] == [{"section": "anamnese", "texte": "ok"}]
+    assert r["questions"] == [{"section": "x", "question": "Âge ?", "pourquoi": ""}]
+    # scalaires ou entrées non-objets : ignorés sans erreur
+    assert llm._parse_structure('{"updates":"n/a","questions":[1,"a",null]}') == {
+        "updates": [], "questions": [],
+    }
 
 
 def test_chat_json_modele_absent(monkeypatch):
@@ -761,6 +779,92 @@ def test_caviardage_suit_le_prenom_au_fil_du_texte():
     corps = "Léa se décourage vite ; Mme Durand s'inquiète."
     out, _ = anonymisation.caviarder(corps, noms)
     assert "Léa" not in out and "Durand" not in out
+
+
+# --- audit 2026-08-11, lot 4 : noms de tests et prose non adossée -------------
+
+NOMS_TESTS = catalogues.tous_les_noms(None)
+DICTEE_BATELEM = (
+    "J'ai fait l'Alouette, elle lit 112 mots. En orthographe, dictée de la "
+    "Batelem, elle est au percentile cinq."
+)
+
+
+def test_nom_de_test_substitue_est_signale_nommement():
+    """Cas reproduit deux fois sur deux : « Batelem » dicté ressort en
+    « EVALEO 6-15 », nom pris dans la liste que le prompt fournit lui-même.
+    L'ancien garde-fou ne voyait là que « 6 » et « -15 »."""
+    propose = ("Le bilan comprend l'Alouette-R et l'EVALEO 6-15 "
+               "(dictée de la Batelem au percentile cinq).")
+    assert verif_tests.tests_non_sources(propose, [DICTEE_BATELEM], NOMS_TESTS) \
+        == ["EVALEO 6-15"]
+    assert "EVALEO 6-15" in verif_tests.signalements(
+        propose, [DICTEE_BATELEM], NOMS_TESTS)[0]
+
+
+def test_test_dicte_sans_son_numero_de_version_nest_pas_signale():
+    """On dicte « l'Alouette », le modèle écrit « Alouette-R » : c'est
+    exactement la reconnaissance que l'outil doit permettre."""
+    propose = "L'épreuve Alouette-R situe la lecture au percentile 5."
+    assert verif_tests.tests_non_sources(propose, [DICTEE_BATELEM], NOMS_TESTS) == []
+
+
+def test_tranche_d_age_substituee_reste_visible():
+    """La tolérance s'arrête au numéro de version : « EXALANG 8-11 » et
+    « EXALANG 3-6 » sont deux tests différents."""
+    assert verif_tests.tests_non_sources(
+        "EXALANG 8-11 a été passé.", ["j'ai passé l'EXALANG 3-6"], NOMS_TESTS,
+    ) == ["EXALANG 8-11"]
+
+
+def test_test_sans_chiffre_dans_son_nom_est_couvert():
+    """Un test purement qualitatif ne déclenchait strictement rien."""
+    assert verif_tests.tests_non_sources(
+        "L'évaluation perceptive GRBAS montre un grade 2.",
+        ["j'ai coté la voix à l'oreille"], NOMS_TESTS,
+    ) == ["GRBAS / GIRBAS"]
+
+
+def test_nom_de_test_court_ne_matche_pas_un_mot_ordinaire():
+    """« ELO » ne doit pas être reconnu dans « melon » ni « ELFE » dans
+    « elfes » — un garde-fou bruyant finit ignoré."""
+    assert verif_tests.tests_non_sources(
+        "Le patient a mangé un melon et parlé des elfes.", [""], NOMS_TESTS,
+    ) == []
+
+
+def test_rubrique_sans_aucun_ancrage_dans_la_dictee_est_signalee():
+    """Cas vérifié : une dictée sans contenu clinique produit une plainte
+    entièrement inventée, qu'aucun chiffre ne trahit."""
+    dictee = "euh, bonjour, je ne sais pas trop quoi dire, il fait beau aujourd'hui."
+    propose = (
+        "plainte actuelle : le patient rapporte des difficultés à la passation "
+        "d'activités langagières, notamment lorsqu'il doit parler librement ou "
+        "s'exprimer devant un groupe. Il évite ces situations et cela lui cause "
+        "une certaine souffrance."
+    )
+    assert verif_texte.adossement(propose, [dictee]) < verif_texte.SEUIL
+    assert "très peu adossée" in verif_texte.signalements(propose, [dictee])[0]
+
+
+def test_redaction_fidele_nest_pas_signalee():
+    """Reformuler est le travail attendu : le garde-fou ne doit pas punir une
+    rédaction clinique construite à partir de la dictée."""
+    dictee = ("L'Alouette-R donne un percentile 5, la lecture est lente et hachée, "
+              "avec des confusions sourdes-sonores. En orthographe, nombreuses "
+              "erreurs phonologiques.")
+    propose = ("L'épreuve de lecture Alouette-R situe les performances au 5e "
+               "percentile, ce qui traduit un déficit sévère de l'identification "
+               "des mots écrits. La lecture est lente et hachée, avec des confusions "
+               "entre sourdes et sonores. En orthographe, les erreurs phonologiques "
+               "sont nombreuses.")
+    assert verif_texte.signalements(propose, [dictee]) == []
+
+
+def test_rubrique_courte_nest_pas_jugee():
+    """Une phrase brève ne permet aucune mesure de recouvrement fiable."""
+    assert verif_texte.adossement("Audition normale.", ["autre chose"]) is None
+    assert verif_texte.signalements("Audition normale.", ["autre chose"]) == []
 
 
 # --- nettoyage du « Titre : » en tête de rubrique --------------------------------

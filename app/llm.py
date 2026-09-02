@@ -112,21 +112,58 @@ def _parse_structure(raw: str) -> dict:
                 "si cela se reproduit, essayez un autre modèle (⚙️ Paramètres)."
             )
         data = {}
-    updates = [
-        {"section": u.get("section"), "texte": (u.get("texte") or "").strip()}
-        for u in (data.get("updates") or [])
-        if u.get("section") and (u.get("texte") or "").strip()
-    ]
-    questions = [
-        {
-            "section": q.get("section") or "",
-            "question": (q.get("question") or "").strip(),
-            "pourquoi": (q.get("pourquoi") or "").strip(),
-        }
-        for q in (data.get("questions") or [])
-        if (q.get("question") or "").strip()
-    ]
-    return {"updates": updates, "questions": questions}
+    return {
+        "updates": _liste_updates(data.get("updates")),
+        "questions": _liste_questions(data.get("questions")),
+    }
+
+
+def _liste_objets(brut, cle_valeur: str) -> list[dict]:
+    """Normalise ce que le modèle a rendu en liste de dictionnaires.
+
+    Un modèle local rend parfois ``{"updates": {"anamnese": "texte"}}`` au lieu
+    d'une liste : l'ancien code levait alors une ``AttributeError`` non
+    rattrapée, donc un 500 opaque au praticien."""
+    if isinstance(brut, dict):
+        return [{"section": k, cle_valeur: v} for k, v in brut.items()]
+    if not isinstance(brut, list):
+        return []
+    return [o for o in brut if isinstance(o, dict)]
+
+
+def _liste_updates(brut) -> list[dict]:
+    """Textes proposés, **sans jamais en écarter un en silence**.
+
+    Un update dont la rubrique est absente ou nulle conservait son texte
+    clinique et disparaissait sans trace : c'était le dernier point du pipeline
+    où du contenu pouvait s'évaporer. Il est désormais rendu avec une section
+    vide — l'appelant le remonte comme « non placé » et l'interface le dit."""
+    out = []
+    for u in _liste_objets(brut, "texte"):
+        texte = (u.get("texte") or "")
+        texte = texte.strip() if isinstance(texte, str) else str(texte).strip()
+        if not texte:
+            continue
+        section = u.get("section")
+        out.append({"section": section if isinstance(section, str) else "", "texte": texte})
+    return out
+
+
+def _liste_questions(brut) -> list[dict]:
+    out = []
+    for q in _liste_objets(brut, "question"):
+        question = (q.get("question") or "")
+        question = question.strip() if isinstance(question, str) else str(question).strip()
+        if not question:
+            continue
+        section = q.get("section") or ""
+        pourquoi = q.get("pourquoi") or ""
+        out.append({
+            "section": section if isinstance(section, str) else "",
+            "question": question,
+            "pourquoi": pourquoi.strip() if isinstance(pourquoi, str) else "",
+        })
+    return out
 
 
 # Seuils de rattachement d'une clé de rubrique approximative (cf. resoudre_cle).
@@ -231,6 +268,31 @@ def couverture_suspecte(
     return propose < seuil * len(source)
 
 
+# Estimation grossière mais suffisante : en français, un tokenizer BPE produit
+# environ un token pour trois caractères. On ne cherche pas la valeur exacte —
+# seulement à savoir qu'on approche du plafond.
+_CAR_PAR_TOKEN = 3.0
+_PART_CONTEXTE_ALERTE = 0.9
+
+
+def prompt_depasse_contexte(system: str, user: str, num_ctx) -> bool:
+    """Le prompt approche-t-il la fenêtre de contexte du modèle ?
+
+    Au-delà, Ollama tronque le **début** du prompt — donc les consignes système :
+    les règles CHIFFRES, EXHAUSTIVITÉ et l'interdiction de poser un diagnostic
+    partent les premières, tandis que ``format:"json"`` maintient une sortie
+    bien formée. Rien ne trahit alors la perte : d'où ce contrôle, signalé au
+    praticien au même titre qu'une rubrique tronquée."""
+    try:
+        plafond = int(num_ctx or 0)
+    except (TypeError, ValueError):
+        return False
+    if plafond <= 0:
+        return False
+    tokens = (len(system) + len(user)) / _CAR_PAR_TOKEN
+    return tokens > _PART_CONTEXTE_ALERTE * plafond
+
+
 def _aides_trame(cfg: dict) -> dict[str, str]:
     """Repères « à y ranger » définis par le praticien dans sa trame (champ
     `aide` d'une rubrique). Les rubriques sans aide retombent sur les repères
@@ -311,12 +373,16 @@ async def structure(
         if cle:
             placees.append({**u, "section": cle})
         else:
-            non_placees.append(u["section"])
+            non_placees.append(u["section"] or "rubrique non précisée")
             logger.warning(
-                "Rubrique inconnue rendue par le modèle : %r — texte non placé", u["section"]
+                "Rubrique inconnue rendue par le modèle : %r — texte non placé (%d car.)",
+                u["section"], len(u["texte"]),
             )
     result["updates"] = placees
     result["updates_non_placees"] = non_placees
+    result["prompt_trop_long"] = prompt_depasse_contexte(
+        system, user, llmcfg.get("num_ctx")
+    )
     result["questions"] = [
         q for q in result["questions"]
         if (not q["section"] or resoudre_cle(q["section"], sections))

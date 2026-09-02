@@ -974,6 +974,40 @@ def test_structure_signale_rubriques_tronquees(client, monkeypatch, mock_embed):
     assert "[…]" in captured["user"]
 
 
+def test_structure_signale_test_substitue_et_prose_inventee(client, monkeypatch, mock_embed):
+    """Les deux angles morts du garde-fou, mesurés le 2026-08-11 : un nom de
+    test pris dans le catalogue du prompt, et une rubrique qui ne doit rien à
+    la dictée. Aucun des deux ne portait de chiffre exploitable."""
+    reponse = (
+        '{"updates":[{"section":"epreuves","texte":"Alouette-R et EVALEO 6-15 '
+        '(dictée de la Batelem au percentile cinq)."},'
+        '{"section":"anamnese","texte":"Plainte actuelle : le patient rapporte des '
+        "difficultés à la passation d'activités langagières, notamment lorsqu'il doit "
+        'parler librement ou s\'exprimer devant un groupe. Il évite ces situations et '
+        'cela lui cause une certaine souffrance."}],"questions":[]}'
+    )
+
+    async def fake_chat(system, user, **kw):
+        return reponse
+
+    monkeypatch.setattr(llm, "chat_json", fake_chat)
+    bid = client.post("/api/bilans", json={"domaines": ["langage_ecrit"]}).json()["id"]
+    r = client.post(f"/api/bilans/{bid}/structure", json={
+        "transcription": "J'ai fait l'Alouette, elle lit 112 mots. En orthographe, "
+                         "dictée de la Batelem, elle est au percentile cinq.",
+    })
+    assert r.status_code == 200
+    par_section = {c["section"]: " ".join(c["signalements"])
+                   for c in r.json()["rubriques_a_verifier"]}
+    # Le test substitué est nommé — et « Alouette-R », dicté sans son suffixe,
+    # ne l'est pas.
+    assert "EVALEO 6-15" in par_section["epreuves"]
+    assert "Alouette" not in par_section["epreuves"]
+    # La rubrique inventée est signalée comme telle, sans qu'aucun chiffre
+    # n'ait pu la trahir.
+    assert "très peu adossée" in par_section["anamnese"]
+
+
 def test_structure_signale_le_style_indisponible(client, monkeypatch, mock_embed):
     """Embeddings en panne : l'analyse aboutit quand même, mais la perte du
     style du praticien est signalée au lieu d'être avalée en silence. Rien

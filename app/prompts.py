@@ -214,7 +214,16 @@ def build_structure_user(
     if guidance:
         reperes += f"\nRepères d'évaluation pour ce domaine : {guidance}"
     if tests_connus:
-        reperes += f"\nTests usuels de ce domaine (reconnais-les s'ils sont cités) : {tests_connus}"
+        # Cette liste est fournie pour *reconnaître* un test mal transcrit, pas
+        # pour en choisir un : sans la mise en garde, le modèle y puisait le nom
+        # le plus proche (« Batelem » dicté → « EVALEO 6-15 » écrit, reproduit
+        # deux fois sur deux). `verif_tests` reste le garde-fou déterministe.
+        reperes += (
+            f"\nTests usuels de ce domaine, donnés pour t'aider à reconnaître un nom "
+            f"mal transcrit : {tests_connus}. N'écris JAMAIS un nom de cette liste "
+            "qui n'a pas été prononcé ; si le nom entendu ne correspond à aucun "
+            "d'eux, reprends-le tel quel."
+        )
     if style_prefs:
         detail = _NIVEAU_DETAIL.get(style_prefs.get("niveau_detail", "standard"))
         if detail:

@@ -40,9 +40,28 @@ _UNITES: dict[str, int] = {
 }
 _DIZAINES: dict[str, int] = {
     "trente": 30, "quarante": 40, "cinquante": 50, "soixante": 60,
-    "cent": 100, "cents": 100,
 }
-_MOTS_NOMBRE = set(_UNITES) | set(_DIZAINES) | {"vingt", "vingts", "demi", "demie"}
+# « cent » et « mille » sont multiplicatifs, pas additifs : « deux cents » vaut
+# 200 (et non 102), « deux mille vingt-quatre » vaut 2024 (et non {2, 24}).
+_MULTIPLICATEURS: dict[str, int] = {
+    "cent": 100, "cents": 100, "mille": 1000, "milles": 1000,
+}
+_MOTS_NOMBRE = (
+    set(_UNITES) | set(_DIZAINES) | set(_MULTIPLICATEURS)
+    | {"vingt", "vingts", "demi", "demie"}
+)
+
+# Dates : leurs composants ne sont pas des mesures. Les laisser entrer dans les
+# sources faisait passer pour « dicté » n'importe quel nombre qui s'y trouve
+# (« 12/03/2018 » couvrait un « 12ᵉ percentile » inventé) ; les laisser dans le
+# texte proposé aurait signalé la date du jour à chaque compte-rendu.
+_DATE = re.compile(
+    r"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b"
+)
+
+
+def _sans_dates(texte: str) -> str:
+    return _DATE.sub(" ", texte or "")
 
 # Mots qui *modifient* le nombre suivant sans en faire partie.
 _NEGATIFS = {"moins", "-"}
@@ -80,6 +99,17 @@ def _valeur_mots(mots: list[str]) -> float:
             else:
                 total += 20
             precedent = 20
+            continue
+        mult = _MULTIPLICATEURS.get(m)
+        if mult is not None:
+            # « deux cents » → 200 ; « cent » seul → 100 ; « deux mille
+            # vingt-quatre » → 2000 puis +24 (le reliquat s'ajoute ensuite).
+            if mult == 1000:
+                total = (total or 1) * 1000
+            else:
+                unite = precedent if precedent is not None and precedent < 100 else 0
+                total = total - unite + max(unite, 1) * 100
+            precedent = None
             continue
         u = _UNITES.get(m)
         if u is not None:
@@ -123,7 +153,10 @@ def _nombres_en_mots(texte: str) -> set[str]:
                 k += 1
             if decimales:
                 frac = _valeur_mots(decimales)
-                entier += frac / (10 ** len(str(int(frac))))
+                # Un mot = un chiffre après la virgule : « zéro cinq » → 0,05,
+                # « vingt-cinq » → 0,25. Compter les décimales sur la *valeur*
+                # (comme avant) rendait « zéro virgule zéro cinq » = 0,5.
+                entier += frac / (10 ** len(decimales))
                 j = k
         negatif = i > 0 and jetons[i - 1] in _NEGATIFS
         valeurs.add(_canonique(-entier if negatif else entier))
@@ -147,8 +180,11 @@ def _nombres_en_chiffres(texte: str) -> set[str]:
 
 
 def valeurs_numeriques(texte: str) -> set[str]:
-    """Toutes les valeurs numériques d'un texte, chiffres ET mots confondus."""
-    return _nombres_en_chiffres(texte) | _nombres_en_mots(texte)
+    """Toutes les valeurs numériques d'un texte, chiffres ET mots confondus.
+
+    Les dates sont retirées d'abord : ce sont des repères, pas des mesures."""
+    propre = _sans_dates(texte)
+    return _nombres_en_chiffres(propre) | _nombres_en_mots(propre)
 
 
 # --- Vérifications ----------------------------------------------------------
@@ -163,7 +199,7 @@ def chiffres_non_sources(propose: str, sources: Iterable[str]) -> list[str]:
     for s in sources:
         connues |= valeurs_numeriques(s or "")
     suspects: list[str] = []
-    for m in _NOMBRE_CHIFFRES.finditer(_sans_accents(propose.lower())):
+    for m in _NOMBRE_CHIFFRES.finditer(_sans_dates(_sans_accents(propose.lower()))):
         brut = float(m.group(2).replace(",", "."))
         # Contrôle au signe près : un « -3 » proposé alors que la dictée ne
         # contenait qu'un « trois » (dans « trois minutes ») est précisément le

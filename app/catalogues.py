@@ -160,6 +160,21 @@ def tests_noms(domaines: list[str], cfg: dict | None = None) -> list[str]:
     return noms
 
 
+def tous_les_noms(cfg: dict | None = None) -> list[str]:
+    """Tous les noms de tests connus, domaines intégrés et surcharges comprises.
+
+    Sert au garde-fou anti-substitution (`verif_tests`) : ce sont les noms que
+    le modèle a sous les yeux dans son prompt, donc ceux qu'il peut citer — y
+    compris hors du domaine du bilan en cours."""
+    from . import config
+
+    cles = [d["cle"] for d in config.DOMAINES]
+    for c in ((cfg or {}).get("catalogues") or {}):
+        if c not in cles:
+            cles.append(c)
+    return tests_noms(cles, cfg)
+
+
 def guidance(domaines: list[str], cfg: dict | None = None) -> str:
     parts = [get(c, cfg).get("guidance", "") for c in domaines if get(c, cfg).get("guidance")]
     return " ".join(parts) if parts else GENERIC_GUIDANCE

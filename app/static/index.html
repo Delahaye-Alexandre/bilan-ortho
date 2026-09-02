@@ -1478,7 +1478,7 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     // Avant le rendu : les avertissements de traçabilité doivent apparaître
     // en même temps que le texte qu'ils concernent.
     VERIF = {}; VERIF_BILAN = res.bilan.id;
-    (res.chiffres_a_verifier || []).forEach(c => { VERIF[c.section] = c.signalements || []; });
+    (res.rubriques_a_verifier || []).forEach(c => { VERIF[c.section] = c.signalements || []; });
     CUR = res.bilan; renderBilan();
     // Les questions répondues ne sont retirées qu'ici, une fois l'analyse réussie
     // (en cas d'erreur, rien n'est perdu — et ANSWERED n'est enrichi qu'ici aussi).
@@ -1499,11 +1499,13 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     const style = res.style_indisponible
       ? ' — Vos bilans de référence n\'ont pas inspiré ce passage : ' + res.style_indisponible
       : '';
-    // Un chiffre non retrouvé dans la dictée est signalé jusque dans le
-    // statut : c'est le point de relecture le plus important de l'écran.
-    const nbVerif = (res.chiffres_a_verifier || []).length;
+    // Ce que l'app n'a pas retrouvé dans la dictée — un chiffre, un nom de
+    // test, ou une rubrique entière trop peu adossée à ce qui a été dit — est
+    // signalé jusque dans le statut : c'est le point de relecture le plus
+    // important de l'écran.
+    const nbVerif = (res.rubriques_a_verifier || []).length;
     const verif = nbVerif
-      ? ` — ⚠️ ${nbVerif} rubrique(s) contiennent des chiffres absents de votre dictée : à vérifier`
+      ? ` — ⚠️ ${nbVerif} rubrique(s) à vérifier : elles contiennent des éléments absents de votre dictée`
       : '';
     // Le modèle a rendu un nom de rubrique inconnu : le texte n'a pas pu être
     // placé. Le dire, plutôt que de laisser disparaître un passage clinique.
