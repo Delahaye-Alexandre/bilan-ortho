@@ -6,6 +6,7 @@ de notes reste disponible (elle ne touche pas la base).
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import logging
 import sqlite3
@@ -15,7 +16,7 @@ from typing import Literal
 
 import httpx
 import sqlcipher3
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import (
     FileResponse,
@@ -347,6 +348,41 @@ async def prompt_structure_defaut() -> dict:
     return {"prompt": prompts.STRUCTURE_SYSTEM.replace("{{", "{").replace("}}", "}")}
 
 
+# --- Abandon d'une analyse par le navigateur ---------------------------------
+# Fréquence à laquelle on regarde si le navigateur a fermé la requête pendant
+# que le modèle travaille.
+_PAS_SURVEILLANCE_S = 0.5
+
+
+class AnalyseAbandonnee(Exception):
+    """Le navigateur a fermé la requête (bouton « Annuler », onglet fermé)."""
+
+
+async def _jusqu_au_depart_du_client(request: Request, coro):
+    """Exécute `coro` en surveillant la connexion du navigateur.
+
+    S'il ferme la requête (« Annuler », onglet fermé), la tâche est annulée —
+    ce qui coupe aussi l'appel HTTP vers Ollama, qui cesse alors de générer —
+    et rien n'est écrit en base. Sans cela, une analyse « annulée » à l'écran
+    continuait jusqu'à dix minutes côté serveur, puis persistait son résultat
+    dans le bilan, éventuellement par-dessus une nouvelle dictée."""
+    tache = asyncio.ensure_future(coro)
+    try:
+        while True:
+            fini, _ = await asyncio.wait({tache}, timeout=_PAS_SURVEILLANCE_S)
+            if fini:
+                return tache.result()
+            if await request.is_disconnected():
+                tache.cancel()
+                # `wait` (et non `await tache`) : on attend la fin de la tâche
+                # sans relever son CancelledError.
+                await asyncio.wait({tache})
+                raise AnalyseAbandonnee()
+    except asyncio.CancelledError:
+        tache.cancel()
+        raise
+
+
 # --- Dictée vocale locale ----------------------------------------------------
 
 @app.get("/api/stt/info", dependencies=[Depends(require_unlock)])
@@ -557,7 +593,7 @@ _analyses_lock = threading.Lock()
 
 
 @app.post("/api/bilans/{bilan_id}/structure", dependencies=[Depends(require_unlock)])
-async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
+async def structure_bilan(bilan_id: int, req: StructureRequest, request: Request) -> dict:
     if not req.transcription.strip() and not req.reponses:
         raise HTTPException(400, "Rien à structurer : ni dictée, ni réponse.")
     with security.transaction() as con:
@@ -570,13 +606,15 @@ async def structure_bilan(bilan_id: int, req: StructureRequest) -> dict:
             raise HTTPException(409, "Une analyse est déjà en cours pour ce bilan.")
         _analyses_en_cours.add(bilan_id)
     try:
-        return await _structurer(bilan_id, req, b, cfg)
+        return await _structurer(bilan_id, req, b, cfg, request)
     finally:
         with _analyses_lock:
             _analyses_en_cours.discard(bilan_id)
 
 
-async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) -> dict:
+async def _structurer(
+    bilan_id: int, req: StructureRequest, b: dict, cfg: dict, request: Request,
+) -> dict:
     # Texte de ce tour (dictée + réponses) : sert à retrouver des extraits proches.
     texte_tour = " ".join(
         [req.transcription.strip()]
@@ -624,14 +662,19 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
     if p.get("sexe"):
         patient_desc += (", " if patient_desc else "") + f"sexe : {p['sexe']}"
     try:
-        result = await llm.structure(
+        result = await _jusqu_au_depart_du_client(request, llm.structure(
             req.transcription, b["sections"], b["domaines"], cfg,
             style_examples=style, patient_desc=patient_desc,
             reponses=[r.model_dump() for r in req.reponses],
             questions_en_attente=req.questions_en_attente,
             questions_ecartees=req.questions_ecartees,
             questions_repondues=req.questions_repondues,
-        )
+        ))
+    except AnalyseAbandonnee:
+        # Personne n'écoute plus la réponse : on journalise l'abandon et on
+        # sort sans rien écrire. 499 = « client closed request ».
+        logger.info("Analyse du bilan %s abandonnée par le navigateur", bilan_id)
+        raise HTTPException(499, "Analyse annulée.")
     except llm.ModeleIntrouvable as exc:
         raise HTTPException(
             503,

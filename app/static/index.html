@@ -201,6 +201,7 @@
         <textarea id="dicteeText" class="out" rows="5" aria-label="Dictée transcrite" placeholder="Votre dictée transcrite apparaîtra ici — vous pouvez aussi taper directement…"></textarea>
         <div class="row" style="margin-top:8px">
           <button id="structBtn">➡️ Structurer dans le bilan</button>
+          <button class="ghost" id="structCancel" hidden title="Interrompt l'analyse ; votre dictée reste dans le champ">✕ Annuler l'analyse</button>
           <button class="ghost" id="dicteeClear">Effacer</button>
           <span class="status" id="structStatus"></span>
         </div>
@@ -507,7 +508,10 @@
 async function api(p, o) {
   let r;
   try { r = await fetch(p, o); }
-  catch { throw new Error("serveur injoignable — l'application est-elle lancée ?"); }
+  catch (e) {
+    if (e && e.name === 'AbortError') throw e; // annulation volontaire (bouton « Annuler »)
+    throw new Error("serveur injoignable — l'application est-elle lancée ?");
+  }
   if (r.status === 423) {
     montrerVerrouillage();
     throw new Error('session verrouillée (inactivité) — déverrouillez pour reprendre.');
@@ -718,7 +722,18 @@ document.getElementById('passEye').addEventListener('click', () => {
 });
 pass.addEventListener('keydown', e => { if (e.key === 'Enter' && pass2.hidden) doUnlock(); });
 pass2.addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); });
+// Le rechargement qui suit un verrouillage (ou une restauration) ne doit pas
+// être intercepté par le garde-fou `beforeunload` : si la personne annulait
+// le dialogue natif « quitter le site ? », le coffre était verrouillé côté
+// serveur mais le nom du patient, la dictée et le bilan restaient à l'écran.
+// On pose donc la question nous-mêmes, AVANT de verrouiller, et on lève le
+// garde-fou ensuite.
+let QUITTER_SANS_GARDE = false;
 document.getElementById('lockBtn').addEventListener('click', async () => {
+  if (saisieEnCours() && !confirm(
+    "Une saisie est en cours (dictée non analysée, rubrique ou en-tête non enregistrés) : "
+    + "elle sera perdue au verrouillage.\n\nVerrouiller quand même ?")) return;
+  QUITTER_SANS_GARDE = true;
   try { await api('/api/lock', { method: 'POST' }); } finally { location.reload(); }
 });
 
@@ -881,7 +896,38 @@ document.getElementById('llmModel').addEventListener('change', async e => {
 });
 
 // ---------- Bilan ----------
+// Changer de dossier avec du travail en cours : le pire incident possible pour
+// cet outil est du contenu clinique rangé dans le dossier d'un autre patient.
+// La dictée transcrite ne dépend pas du bilan affiché — sans ce garde-fou, elle
+// survit au changement de dossier et part dans le suivant. Renvoie false si le
+// changement doit être abandonné.
+function quitterBilanOk() {
+  if (recording || ansRec) {
+    document.getElementById('curBilan').textContent =
+      'Arrêtez d\'abord l\'enregistrement en cours avant de changer de dossier.';
+    return false;
+  }
+  if (!CUR) return true;
+  const raisons = [];
+  if (dicteeText.value.trim()) raisons.push('une dictée transcrite non analysée');
+  const nb = sectionsNonEnregistrees().length;
+  if (nb) raisons.push(`${nb} rubrique(s) modifiée(s) non enregistrée(s)`);
+  if (enteteModifie()) raisons.push('un en-tête (date, prescripteur) non enregistré');
+  if (saisieEpreuveEnCours()) raisons.push('une épreuve en cours de saisie');
+  if (!raisons.length) return true;
+  const ok = confirm(
+    `Ce dossier contient ${raisons.join(' et ')}.\n\n`
+    + `Ce contenu ne suit pas le changement de dossier : il sera abandonné. `
+    + `Il ne doit en aucun cas se retrouver dans le bilan d'un autre patient.\n\n`
+    + `OK : abandonner ce contenu et changer de dossier.\n`
+    + `Annuler : rester sur ce dossier (vous pourrez analyser ou enregistrer).`);
+  // Abandon confirmé : la dictée est effacée ici même, pour qu'aucune ligne du
+  // dossier précédent ne subsiste à l'écran du suivant.
+  if (ok) dicteeText.value = '';
+  return ok;
+}
 document.getElementById('newBilan').addEventListener('click', e => avecBouton(e.target, async () => {
+  if (!quitterBilanOk()) return;
   const dom = document.getElementById('domaine').value;
   const type = document.getElementById('btype').value;
   const pid = +document.getElementById('patientSel').value || null;
@@ -892,6 +938,7 @@ document.getElementById('newBilan').addEventListener('click', e => avecBouton(e.
   } catch (err) { document.getElementById('curBilan').textContent = 'Erreur : ' + err.message; }
 }));
 async function loadBilan(id) {
+  if (CUR && String(CUR.id) !== String(id) && !quitterBilanOk()) return;
   try {
     CUR = await (await api('/api/bilans/' + id)).json();
   } catch (e) { document.getElementById('curBilan').textContent = 'Erreur : ' + e.message; return; }
@@ -984,6 +1031,19 @@ function verifHtml(cle) {
 // doit pas effacer une date en cours de saisie (même précaution que les
 // brouillons de rubriques).
 let ENT_BILAN = null;
+let ENT_RENDERED = {};  // valeurs enregistrées affichées (détection des saisies)
+function enteteChamps() {
+  const v = id => { const el = document.getElementById(id); return el ? el.value : undefined; };
+  return { date: v('entDate'), presc: v('entPresc'), rpps: v('entPrescRpps') };
+}
+// Date du bilan et prescripteur sont deux mentions obligatoires du
+// compte-rendu : les perdre sans avertissement (F5, verrouillage) revient à
+// livrer un document incomplet.
+function enteteModifie() {
+  const cur = enteteChamps();
+  return Object.keys(ENT_RENDERED).some(
+    k => cur[k] !== undefined && cur[k] !== ENT_RENDERED[k]);
+}
 function renderEntete() {
   const el = document.getElementById('enteteView');
   if (!CUR) { el.innerHTML = ''; ENT_BILAN = null; return; }
@@ -1011,6 +1071,7 @@ function renderEntete() {
     </div>`;
   document.getElementById('entSave')
     .addEventListener('click', e => avecBouton(e.target, saveEntete));
+  ENT_RENDERED = enteteChamps();
 }
 async function saveEntete() {
   const st = document.getElementById('entStatus');
@@ -1026,6 +1087,7 @@ async function saveEntete() {
     });
     const b = await r.json();
     CUR.date_bilan = b.date_bilan; CUR.prescripteur = b.prescripteur;
+    ENT_RENDERED = enteteChamps();  // l'affiché est désormais l'enregistré
     st.textContent = '✓';
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }
@@ -1045,6 +1107,10 @@ function renderBilan() {
       if (ta && ref !== undefined && ta.value !== ref) drafts[sec.dataset.cle] = ta.value;
     });
   }
+  // Même précaution pour la ligne de saisie d'une épreuve : elle est régénérée
+  // en entier, et une analyse qui se termine effaçait un score en cours de
+  // frappe.
+  const epSaisie = (CUR && SEC_BILAN === CUR.id) ? lireChampsEpreuve() : {};
   SEC_RENDERED = {}; SEC_BILAN = CUR ? CUR.id : null;
   if (!CUR) { root.innerHTML = '<div class="bilan-empty">Créez un nouveau bilan pour commencer.</div>'; return; }
   const sectionsHtml = CUR.sections.map(s => `
@@ -1075,6 +1141,7 @@ function renderBilan() {
   document.getElementById('epAdd').addEventListener('click', e => avecBouton(e.target, addEpreuve));
   root.querySelectorAll('[data-ep-del]').forEach(b =>
     b.addEventListener('click', () => supprimerEpreuve(b.dataset.epDel)));
+  ecrireChampsEpreuve(epSaisie);
   marquerStatuts(); // les statuts recréés (savest, epStatus) restent annoncés
   activerBoutonsClavier(root); // les ✕ des épreuves répondent à Entrée/Espace
   loadTestList();
@@ -1345,9 +1412,17 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
   }, 1000);
   document.getElementById('structBtn').disabled = true;
   setQuestionBtns(true);
+  // Une analyse peut durer plusieurs minutes (jusqu'au timeout serveur) :
+  // l'interrompre doit rester possible sans F5 — qui perdrait la dictée.
+  // Fermer la requête suffit : le serveur surveille la connexion et annule
+  // l'appel au modèle sans rien écrire en base.
+  const ctrl = new AbortController();
+  const cancelBtn = document.getElementById('structCancel');
+  cancelBtn.hidden = false; cancelBtn.disabled = false;
+  cancelBtn.onclick = () => { cancelBtn.disabled = true; ctrl.abort(); };
   try {
     const pendingQ = QS.filter(q => !answeredIds.includes(q.id)).map(q => q.question);
-    const r = await api(`/api/bilans/${bilanId}/structure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    const r = await api(`/api/bilans/${bilanId}/structure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal, body: JSON.stringify({
       transcription, reponses,
       questions_en_attente: pendingQ,
       questions_ecartees: [...DISMISSED.values()],
@@ -1357,8 +1432,14 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     if (!CUR || CUR.id !== bilanId) {
       // Réponse tardive après changement de bilan : le texte est bien enregistré
       // dans le bilan d'origine, mais on ne touche pas à l'écran actuel.
+      // La dictée est effacée ici sans réserve : elle appartient au dossier
+      // précédent, la garder à l'écran d'un autre patient serait pire que la
+      // perdre — et son contenu est enregistré dans le bilan d'origine.
       if (fromDictee) document.getElementById('dicteeText').value = '';
-      majStatut(`✓ analyse intégrée au bilan #${bilanId} (vous avez changé de bilan entre-temps).`);
+      const reserve = (res.analyse_incomplete || (res.updates_non_placees || []).length)
+        ? ' ⚠️ L\'analyse y semble incomplète : rouvrez ce bilan pour la relancer.'
+        : '';
+      majStatut(`✓ analyse intégrée au bilan #${bilanId} (vous avez changé de bilan entre-temps).${reserve}`);
       return;
     }
     // Avant le rendu : les avertissements de traçabilité doivent apparaître
@@ -1405,11 +1486,23 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     majStatut((answeredIds.length
       ? `✓ réponse(s) intégrée(s)${fresh.length ? ` — ${fresh.length} nouvelle(s) question(s)` : ''}`
       : `✓ ${fresh.length} question(s) de clarification`) + verif + perdues + incomplete + tronque + style);
-    // La dictée n'est effacée que si l'analyse paraît complète : sinon le
-    // praticien doit pouvoir relancer sans avoir à tout redicter.
-    if (fromDictee && !res.analyse_incomplete) document.getElementById('dicteeText').value = '';
-  } catch (e) { majStatut('Erreur : ' + e.message); }
-  finally { STRUCTURING = false; clearInterval(chrono); document.getElementById('structBtn').disabled = false; setQuestionBtns(false); }
+    // La dictée n'est effacée que si l'analyse paraît complète ET que tout a
+    // trouvé sa rubrique : le message ci-dessus invite à relancer l'analyse,
+    // or `dicteeText` en est la seule copie — la vider ici rendrait la consigne
+    // impossible à suivre.
+    if (fromDictee && !res.analyse_incomplete && !(res.updates_non_placees || []).length) {
+      document.getElementById('dicteeText').value = '';
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      majStatut('Analyse annulée — votre dictée est conservée ; relancez « Structurer » quand vous voulez.');
+    } else majStatut('Erreur : ' + e.message);
+  }
+  finally {
+    STRUCTURING = false; clearInterval(chrono);
+    document.getElementById('structBtn').disabled = false; setQuestionBtns(false);
+    cancelBtn.hidden = true; cancelBtn.onclick = null;
+  }
 }
 function setQuestionBtns(disabled) {
   document.querySelectorAll('#questions button').forEach(b => {
@@ -1745,6 +1838,7 @@ document.getElementById('restConfirm').addEventListener('click', e => avecBouton
     });
     $('restPass').value = '';
     st.textContent = '✓ Sauvegarde restaurée. La page va se recharger…';
+    QUITTER_SANS_GARDE = true; // l'écran affiche encore les données remplacées
     setTimeout(() => location.reload(), 1200);
   } catch (err) { st.textContent = 'Erreur : ' + err.message; }
 }));
@@ -2206,6 +2300,8 @@ document.getElementById('cfgReset').addEventListener('click', async () => {
 function saisieEnCours() {
   if (recording || ansRec) return true;
   if (dicteeText.value.trim()) return true;
+  if (enteteModifie()) return true;
+  if (saisieEpreuveEnCours()) return true;
   for (const sec of document.querySelectorAll('#bilanView .sec[data-cle]')) {
     const ta = sec.querySelector('.secText');
     const ref = SEC_RENDERED[sec.dataset.cle];
@@ -2217,7 +2313,7 @@ function saisieEnCours() {
   return false;
 }
 window.addEventListener('beforeunload', e => {
-  if (saisieEnCours()) { e.preventDefault(); e.returnValue = ''; }
+  if (!QUITTER_SANS_GARDE && saisieEnCours()) { e.preventDefault(); e.returnValue = ''; }
 });
 
 marquerStatuts();

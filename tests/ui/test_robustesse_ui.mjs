@@ -57,6 +57,15 @@ let epreuvePosts = [], epreuveDeletes = [], bilanDeletes = 0;
 let epreuveResponder = () => ({});
 let statusResponder = () => ({ db_exists: true, unlocked: true, first_run: false, version: "1.8.0" });
 let installResponder = () => ({ ollama: true, pret: true, config_lisible: true, modeles: [] });
+let lockCalls = 0;
+// Abandon d'une requête via AbortController : le stub rejette comme fetch
+// (erreur nommée AbortError) dès que le signal est levé.
+const erreurAbandon = () => { const e = new Error("aborted"); e.name = "AbortError"; return e; };
+const abandon = (signal) => new Promise((_, rej) => {
+  if (!signal) return;
+  if (signal.aborted) rej(erreurAbandon());
+  signal.addEventListener("abort", () => rej(erreurAbandon()));
+});
 let restaurationCalls = [];
 let restaurationResponder = () => ({ ok: true, fichier: "f", filet: "g" });
 let editeurCalls = [];       // PUT/DELETE des routes /api/config/{trame,catalogues,prompts}
@@ -97,9 +106,10 @@ globalThis.fetch = async (p, o = {}) => {
     return rep({ prompt: 'CONSIGNE INTÉGRÉE {cles} — réponds {"updates":[]}' });
   if (url.includes("/structure")) {
     structureCalls.push(JSON.parse(o.body));
-    if (holdNext) await holdNext;
+    if (holdNext) await Promise.race([holdNext, abandon(o.signal)]);
     return rep(structureResponder());
   }
+  if (url.endsWith("/api/lock")) { lockCalls++; return rep({ ok: true }); }
   if (url.endsWith("/api/bilans") && o.method === "POST") {
     bilanCreates++;
     if (holdNext) await holdNext;
@@ -187,6 +197,7 @@ const body = scriptBody.replace(/gate\(\);\s*$/, "") + `
 ;globalThis.__t = {
   get QS() { return QS; }, set QS(v) { QS = v; },
   get CUR() { return CUR; }, set CUR(v) { CUR = v; },
+  get QUITTER_SANS_GARDE() { return QUITTER_SANS_GARDE; }, set QUITTER_SANS_GARDE(v) { QUITTER_SANS_GARDE = v; },
   renderQuestions, renderBilan, structure, saisieEnCours, loadRecents, loadRefs,
   loadBilan, sectionsNonEnregistrees, gate,
 };`;
@@ -274,6 +285,9 @@ check("réseau coupé : message « serveur injoignable » (pas de « Failed to f
   status().includes("injoignable") && !status().includes("Failed"));
 
 // === 5. Anti double-clic : 2 clics rapides → 1 seul bilan créé ===============
+// La dictée est vidée d'abord : changer de dossier avec une dictée en cours
+// demande désormais confirmation (cf. scénario 27).
+document.getElementById("dicteeText").value = "";
 bilanCreates = 0;
 holdNext = new Promise((r) => setTimeout(r, 60));
 document.getElementById("newBilan").click();
@@ -754,6 +768,69 @@ await settle();
 check("validation acceptée : rubrique enregistrée, puis statut « valide »",
   sectionPuts.length === 1 && statutPuts.length === 1 && statutPuts[0].statut === "valide");
 
+// === 28. Changer de dossier avec du travail en cours (audit 08-11, 2.1) ======
+// Une dictée transcrite ne dépend pas du bilan affiché : sans garde-fou, elle
+// survivait au changement de dossier et partait dans le suivant.
+__t.CUR = structuredClone(CUR0);
+__t.renderBilan();
+await settle();
+document.getElementById("dicteeText").value = "dictée du patient A";
+recentsResponder = () => [{ id: 55, statut: "brouillon", domaine_titres: "Générique" }];
+await __t.loadRecents();
+confirmCalls = []; confirmReponse = false;
+document.querySelector('#recents a[data-id="55"]').click();
+await settle();
+check("changement de dossier avec dictée non analysée : confirmation demandée",
+  confirmCalls.length === 1 && confirmCalls[0].includes("autre patient"));
+check("refus : on reste sur le dossier courant, la dictée est intacte",
+  __t.CUR.id === "b1" && document.getElementById("dicteeText").value === "dictée du patient A");
+confirmReponse = true;
+document.querySelector('#recents a[data-id="55"]').click();
+await settle();
+check("acceptation : dossier changé ET dictée effacée (jamais reportée ailleurs)",
+  String(__t.CUR.id) === "55" && document.getElementById("dicteeText").value === "");
+
+document.getElementById("dicteeText").value = "dictée résiduelle";
+confirmReponse = false; bilanCreates = 0;
+document.getElementById("newBilan").click();
+await settle();
+check("« + Nouveau bilan » avec dictée en cours : refus → aucun bilan créé",
+  bilanCreates === 0 && document.getElementById("dicteeText").value === "dictée résiduelle");
+document.getElementById("dicteeText").value = "";
+
+// Micro actif : refus net (la transcription arriverait dans le mauvais dossier).
+document.getElementById("recBtn").click();
+await settle();
+confirmCalls = []; bilanCreates = 0;
+document.getElementById("newBilan").click();
+await settle();
+check("enregistrement en cours : changement de dossier refusé sans confirmation",
+  bilanCreates === 0 && confirmCalls.length === 0
+  && document.getElementById("curBilan").textContent.includes("Arrêtez d'abord"));
+document.getElementById("recBtn").click();
+await settle();
+document.getElementById("dicteeText").value = "";
+
+// === 29. La dictée survit à une analyse partielle (audit 08-11, 2.2) =========
+__t.CUR = structuredClone(CUR0);
+__t.renderBilan();
+await settle();
+document.getElementById("dicteeText").value = "dictée à ranger";
+structureResponder = () => ({
+  bilan: structuredClone(CUR0), questions: [], updates_non_placees: ["rubrique_inconnue"],
+});
+document.getElementById("structBtn").click();
+await settle();
+check("passage non rangé : le statut invite à relancer l'analyse",
+  status().includes("relancez"));
+check("passage non rangé : la dictée est conservée (seule copie du texte)",
+  document.getElementById("dicteeText").value === "dictée à ranger");
+structureResponder = () => ({ bilan: structuredClone(CUR0), questions: [] });
+document.getElementById("structBtn").click();
+await settle();
+check("analyse complète : la dictée est effacée",
+  document.getElementById("dicteeText").value === "");
+
 // === 30. Épreuves : saisie bornée, alerte de plausibilité, retrait possible ==
 // (audit 08-11, 1.2 et 1.3 : une épreuve était indélébile, et une valeur
 // invraisemblable produisait un drapeau sans un mot.)
@@ -802,6 +879,20 @@ await settle();
 check("retrait confirmé : DELETE envoyé, l'épreuve disparaît de l'écran",
   epreuveDeletes.length === 1 && document.querySelector("[data-ep-del]") === null);
 
+// Une saisie d'épreuve en cours survit à un re-rendu (analyse qui se termine).
+document.getElementById("epTest").value = "EXALANG";
+document.getElementById("epScore").value = "17";
+__t.renderBilan();
+await settle();
+check("re-rendu : la ligne d'épreuve en cours de saisie est préservée",
+  document.getElementById("epTest").value === "EXALANG"
+  && document.getElementById("epScore").value === "17");
+check("saisieEnCours : une épreuve en cours de saisie compte",
+  __t.saisieEnCours() === true);
+["epTest", "epSub", "epScore", "epType", "epVal"].forEach((id) => {
+  document.getElementById(id).value = "";
+});
+
 // === 31. Supprimer un bilan entier (audit 08-11, 1.2) =======================
 confirmCalls = []; confirmReponse = false; bilanDeletes = 0;
 document.getElementById("delBilan").click();
@@ -814,6 +905,71 @@ await settle();
 check("suppression confirmée : DELETE envoyé, écran vidé",
   bilanDeletes === 1 && __t.CUR === null
   && document.getElementById("curBilan").textContent.includes("supprimé"));
+
+// === 2.4 (revue 2026-08-11) : une analyse en cours peut être annulée ========
+// Sans cela, la seule issue pendant les minutes d'attente était F5 — qui
+// perdait la dictée. L'annulation ferme la requête ; la dictée reste.
+__t.CUR = structuredClone(CUR0); __t.renderBilan();
+structureResponder = () => ({ bilan: structuredClone(CUR0), questions: [] });
+let libererAnalyse;
+holdNext = new Promise((r) => (libererAnalyse = r));
+document.getElementById("dicteeText").value = "dictée longue à analyser";
+document.getElementById("structBtn").click();
+await settle();
+const cancelBtn = document.getElementById("structCancel");
+check("analyse en cours : « Annuler l'analyse » visible et actif",
+  cancelBtn.hidden === false && cancelBtn.disabled === false
+  && document.getElementById("structBtn").disabled === true);
+cancelBtn.click();
+await settle();
+check("annulation : statut explicite, dictée conservée",
+  status().includes("annulée") && status().includes("conservée")
+  && document.getElementById("dicteeText").value === "dictée longue à analyser");
+check("annulation : « Structurer » réactivé, « Annuler » masqué",
+  document.getElementById("structBtn").disabled === false && cancelBtn.hidden === true);
+libererAnalyse(); holdNext = null;
+await settle();
+check("réponse tardive après annulation : l'écran n'est pas touché",
+  status().includes("annulée"));
+// Hors analyse, le bouton n'existe pas à l'écran.
+holdNext = null;
+document.getElementById("structBtn").click();
+await settle();
+check("analyse suivante menée à terme : « Annuler » disparaît", cancelBtn.hidden === true
+  && !status().includes("annulée"));
+
+// === 2.5 (revue 2026-08-11) : 🔒 Verrouiller ne laisse rien à l'écran =======
+// Le rechargement déclenchait le dialogue natif « quitter le site ? » ; en
+// l'annulant, la personne gardait patient, dictée et bilan affichés alors que
+// le coffre était verrouillé. La question est posée AVANT, le garde-fou
+// s'efface APRÈS.
+check("restauration réussie (scénario 20) : le rechargement ne sera pas bloqué par le garde-fou",
+  __t.QUITTER_SANS_GARDE === true);
+__t.QUITTER_SANS_GARDE = false; // état d'une page fraîchement chargée
+let reloads = 0;
+Object.defineProperty(window.location, "reload", { value: () => { reloads++; }, configurable: true });
+document.getElementById("dicteeText").value = "dictée jamais analysée";
+const evAvant = new Event("beforeunload", { cancelable: true });
+window.dispatchEvent(evAvant);
+check("saisie en cours : quitter la page demande confirmation (garde-fou actif)",
+  evAvant.defaultPrevented === true);
+confirmCalls = []; confirmReponse = false; lockCalls = 0;
+document.getElementById("lockBtn").click();
+await settle();
+check("verrouiller avec saisie en cours : confirmation demandée, perte annoncée",
+  confirmCalls.length === 1 && confirmCalls[0].includes("perdue"));
+check("refus : coffre NON verrouillé, page non rechargée, dictée intacte",
+  lockCalls === 0 && reloads === 0
+  && document.getElementById("dicteeText").value === "dictée jamais analysée");
+confirmReponse = true; confirmCalls = [];
+document.getElementById("lockBtn").click();
+await settle();
+check("acceptation : verrouillage demandé PUIS rechargement",
+  lockCalls === 1 && reloads === 1);
+const evApres = new Event("beforeunload", { cancelable: true });
+window.dispatchEvent(evApres);
+check("… sans dialogue natif : le garde-fou beforeunload s'est effacé",
+  evApres.defaultPrevented === false);
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

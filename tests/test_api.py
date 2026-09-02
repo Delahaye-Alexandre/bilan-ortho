@@ -1058,3 +1058,74 @@ def test_transcribe_echec_message_simple(client, monkeypatch):
 def test_stt_info(client):
     info = client.get("/api/stt/info").json()
     assert {"device", "compute_type", "model"} <= set(info)
+
+
+# --- Abandon d'une analyse par le navigateur (revue 2026-08-11, 2.4) --------
+
+def test_analyse_abandonnee_quand_le_navigateur_ferme_la_requete(monkeypatch):
+    """Le bouton « Annuler » ferme la requête : la tâche (donc l'appel au
+    modèle) est annulée et rien ne sera écrit en base."""
+    import asyncio
+
+    import pytest
+
+    from app import main as main_mod
+
+    monkeypatch.setattr(main_mod, "_PAS_SURVEILLANCE_S", 0.01)
+    etat = {"annulee": False, "sondages": 0}
+
+    async def analyse_longue():
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            etat["annulee"] = True
+            raise
+        return {"updates": []}
+
+    class NavigateurQuiPart:
+        async def is_disconnected(self):
+            etat["sondages"] += 1
+            return etat["sondages"] >= 2
+
+    async def scenario():
+        with pytest.raises(main_mod.AnalyseAbandonnee):
+            await main_mod._jusqu_au_depart_du_client(NavigateurQuiPart(), analyse_longue())
+
+    asyncio.run(scenario())
+    assert etat["annulee"] is True and etat["sondages"] == 2
+
+
+def test_analyse_terminee_rend_son_resultat(monkeypatch):
+    import asyncio
+
+    from app import main as main_mod
+
+    monkeypatch.setattr(main_mod, "_PAS_SURVEILLANCE_S", 0.01)
+
+    async def analyse_courte():
+        await asyncio.sleep(0.03)
+        return {"updates": [1]}
+
+    class NavigateurPresent:
+        async def is_disconnected(self):
+            return False
+
+    res = asyncio.run(main_mod._jusqu_au_depart_du_client(NavigateurPresent(), analyse_courte()))
+    assert res == {"updates": [1]}
+
+
+def test_structure_route_ne_sonde_pas_le_client_si_le_modele_repond(client, monkeypatch):
+    """Chemin nominal : le résultat du modèle est persisté comme avant."""
+    from app import llm
+
+    async def structure_immediate(*a, **k):
+        return {"updates": [{"section": "anamnese", "texte": "Plainte : lecture lente."}],
+                "questions": [], "updates_non_placees": []}
+
+    monkeypatch.setattr(llm, "structure", structure_immediate)
+    b = client.post("/api/bilans", json={"domaines": []}).json()
+    r = client.post(f"/api/bilans/{b['id']}/structure",
+                    json={"transcription": "lecture lente", "reponses": []})
+    assert r.status_code == 200
+    sections = {s["cle"]: s for s in r.json()["bilan"]["sections"]}
+    assert "lecture lente" in sections["anamnese"]["contenu"]
