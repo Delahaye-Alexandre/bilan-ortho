@@ -308,6 +308,131 @@ def test_parcours_bilan_complet(client):
     assert "ANAMNÈSE" in client.get(f"/api/bilans/{bid}/export?format=txt").text
 
 
+# --- audit 2026-08-11, lot 1 : rien de faux ni d'indélébile dans le document --
+
+def test_epreuve_sans_resultat_exploitable_refusee(client):
+    """Un corps sans résultat utile créait une épreuve coquille (200), soit une
+    ligne vide dans le tableau du compte-rendu."""
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    assert client.post(f"/api/bilans/{bid}/epreuves",
+                       json={"test_nom": "Alouette-R"}).status_code == 422
+    assert client.post(f"/api/bilans/{bid}/epreuves", json={
+        "test_nom": "Alouette-R", "resultats": [{"sous_epreuve": "lecture"}],
+    }).status_code == 422
+    # Un résultat purement qualitatif (interprétation seule) reste accepté.
+    r = client.post(f"/api/bilans/{bid}/epreuves", json={
+        "test_nom": "GRBAS", "resultats": [{"interpretation": "voix soufflée"}],
+    })
+    assert r.status_code == 200 and len(r.json()["epreuves"]) == 1
+
+
+def test_epreuve_supprimable(client):
+    """Une échelle mal choisie produit un drapeau faux : il doit pouvoir partir
+    autrement qu'en supprimant le patient entier."""
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    b = client.post(f"/api/bilans/{bid}/epreuves", json={
+        "test_nom": "Alouette-R",
+        "resultats": [{"score_brut": "112", "etalonnage_type": "percentile",
+                       "etalonnage_valeur": "5"}],
+    }).json()
+    eid = b["epreuves"][0]["id"]
+    autre = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    # Une épreuve ne se supprime que depuis le bilan qui la porte.
+    assert client.delete(f"/api/bilans/{autre}/epreuves/{eid}").status_code == 404
+    r = client.delete(f"/api/bilans/{bid}/epreuves/{eid}")
+    assert r.status_code == 200 and r.json()["epreuves"] == []
+    assert client.delete(f"/api/bilans/{bid}/epreuves/{eid}").status_code == 404
+    # Le résultat suit l'épreuve (cascade), le tableau d'export est vide.
+    assert "Résultats des épreuves" not in client.get(
+        f"/api/bilans/{bid}/export?format=md").text
+
+
+def test_bilan_supprimable_sans_toucher_au_patient(client):
+    p = client.post("/api/patients", json={"nom": "Durand"}).json()
+    bid = client.post("/api/bilans",
+                      json={"domaines": [], "patient_id": p["id"],
+                            "prescripteur": "Bernard"}).json()["id"]
+    assert client.delete(f"/api/bilans/{bid}").status_code == 200
+    assert client.get(f"/api/bilans/{bid}").status_code == 404
+    assert client.delete(f"/api/bilans/{bid}").status_code == 404
+    # Le patient reste : supprimer un bilan n'est pas un effacement RGPD.
+    assert any(x["id"] == p["id"] for x in client.get("/api/patients").json())
+
+
+def test_etalonnage_hors_bornes_signale_sans_bloquer(client):
+    """On signale, on ne corrige pas : le drapeau reste calculé, mais la saisie
+    invraisemblable est nommée (percentile -300, note 85 sur l'échelle moy. 10)."""
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    r = client.post(f"/api/bilans/{bid}/epreuves", json={
+        "test_nom": "Alouette-R",
+        "resultats": [{"score_brut": "12", "etalonnage_type": "percentile",
+                       "etalonnage_valeur": "-300"}],
+    })
+    assert r.status_code == 200
+    avert = r.json()["avertissements"]
+    assert len(avert) == 1 and "0 à 100" in avert[0]
+
+    r = client.post(f"/api/bilans/{bid}/epreuves", json={
+        "test_nom": "EXALANG", "resultats": [
+            {"sous_epreuve": "vocabulaire", "score_brut": "85",
+             "etalonnage_type": "note_standard", "etalonnage_valeur": "85"}],
+    })
+    assert "1 à 19" in r.json()["avertissements"][0]
+
+    # Saisie plausible : aucun bruit.
+    r = client.post(f"/api/bilans/{bid}/epreuves", json={
+        "test_nom": "Vineland", "resultats": [
+            {"etalonnage_type": "note_standard_100", "etalonnage_valeur": "85"}],
+    })
+    assert r.json()["avertissements"] == []
+
+
+def test_seuils_incoherents_refuses(client):
+    """Saisir 1.5 au lieu de -1.5 basculait tous les résultats normaux en
+    « zone de fragilité », sans un mot."""
+    seuils = {"fragilite_et": 1.5, "pathologique_et": -1.5, "severe_et": -2}
+    r = client.put("/api/config", json={"overrides": {"seuils": seuils}})
+    assert r.status_code == 422
+    # Ordre incohérent : sévère au-dessus de pathologique.
+    r = client.put("/api/config", json={"overrides": {"seuils": {
+        "fragilite_et": -1, "pathologique_et": -2, "severe_et": -1.5}}})
+    assert r.status_code == 422
+    # Percentiles : même contrôle, dans l'autre sens.
+    r = client.put("/api/config", json={"overrides": {"seuils": {
+        "fragilite_percentile": 16, "pathologique_percentile": 2,
+        "severe_percentile": 7}}})
+    assert r.status_code == 422
+    # Jeu cohérent : accepté.
+    r = client.put("/api/config", json={"overrides": {"seuils": {
+        "fragilite_et": -1, "pathologique_et": -1.5, "severe_et": -2}}})
+    assert r.status_code == 200
+
+
+def test_trame_cles_dupliquees_refusees(client):
+    """Deux rubriques de même clé : le document imprimait la rubrique deux fois
+    et le texte de l'IA n'atterrissait que dans l'une d'elles."""
+    r = client.put("/api/config/trame", json={"sections": [
+        {"cle": "anamnese", "titre": "Anamnèse"},
+        {"cle": "anamnese", "titre": "Anamnèse (suite)"},
+    ]})
+    assert r.status_code == 422
+
+
+def test_export_format_inconnu_refuse(client):
+    """« ?format=exe » renvoyait du Markdown en 200."""
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    assert client.get(f"/api/bilans/{bid}/export?format=exe").status_code == 422
+    assert client.get(f"/api/bilans/{bid}/export?format=pdf").status_code == 200
+
+
+def test_export_brouillon_porte_la_mention(client):
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    client.put(f"/api/bilans/{bid}/sections/anamnese", json={"contenu": "Texte."})
+    assert "BROUILLON" in client.get(f"/api/bilans/{bid}/export?format=md").text
+    client.put(f"/api/bilans/{bid}/statut", json={"statut": "valide"})
+    assert "BROUILLON" not in client.get(f"/api/bilans/{bid}/export?format=md").text
+
+
 def test_catalogue_par_domaine(client):
     cat = client.get("/api/catalogues/langage_ecrit").json()
     assert any(t["nom"] == "Alouette-R" for t in cat["tests"])

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 
+from . import cotation
 from .bilan import DRAPEAU_LIBELLE, etalonnage_texte
 from .patient import age_texte, date_fr
 
@@ -21,6 +22,14 @@ DISCLAIMER = (
     "Document généré comme aide à la rédaction, relu et validé par l'orthophoniste : "
     "la responsabilité du contenu lui revient entièrement. "
     "L'outil ne pose aucun diagnostic."
+)
+
+# Tant que le bilan n'est pas marqué validé, le document le dit lui-même : sans
+# cette mention, l'export d'un brouillon non relu était indiscernable du
+# compte-rendu définitif — exactement le geste qu'un outil médico-légal doit
+# rendre difficile.
+MENTION_BROUILLON = (
+    "BROUILLON — document de travail non validé, à ne pas transmettre en l'état."
 )
 
 _TYPE_LBL = {
@@ -156,10 +165,19 @@ def _table_epreuves(b: dict) -> list[list[str]] | None:
     return lignes or None
 
 
+def est_brouillon(b: dict) -> bool:
+    """Un bilan qui n'a pas été explicitement validé (ou envoyé) reste un
+    brouillon — y compris un bilan vide, qui s'exportait jusqu'ici avec
+    en-tête, date et bloc de signature."""
+    return (b.get("statut") or "brouillon") not in ("valide", "envoye")
+
+
 def _content(b: dict, cfg: dict | None = None) -> list[tuple[str, object]]:
     """Document sous forme de blocs (type, contenu), rendus par chaque format."""
     prat = ((cfg or {}).get("praticien")) or {}
     blocks: list[tuple[str, object]] = []
+    if est_brouillon(b):
+        blocks.append(("brouillon", MENTION_BROUILLON))
     entete = _entete_praticien(prat)
     if entete:
         blocks.append(("entete", entete))
@@ -184,11 +202,16 @@ def _content(b: dict, cfg: dict | None = None) -> list[tuple[str, object]]:
         blocks.append(("table", table))
     cot = b.get("cotation")
     if cot:
+        # Le code est reconstruit depuis le coefficient plutôt que repris tel
+        # quel : les cotations déjà enregistrées portent « AMO 24.0 ». C'est le
+        # seul chiffre du document que l'Assurance maladie peut recouper.
+        coeff = cotation.coeff_texte(cot["coefficient"])
         blocks.append(("h2", "Cotation (NGAP)"))
         blocks.append((
             "p",
-            f"{cot['code_amo']} — {cot['montant']} € "
-            f"(coefficient {cot['coefficient']}, valeur lettre-clé {cot['valeur_lettre_cle']} €)",
+            f"AMO {coeff} — {cotation.euros(cot['montant'])} "
+            f"(coefficient {coeff}, valeur lettre-clé "
+            f"{cotation.euros(cot['valeur_lettre_cle'])})",
         ))
     sign = _signature(b, prat)
     if sign:
@@ -198,10 +221,28 @@ def _content(b: dict, cfg: dict | None = None) -> list[tuple[str, object]]:
     return blocks
 
 
+def _cellule_md(v: str) -> str:
+    """Cellule de tableau Markdown : ni « | » ni retour à la ligne.
+
+    Une interprétation dictée en contenant cassait la table entière — et le
+    .md est le format par défaut de la route d'export."""
+    v = (v or "").replace("|", "\\|").replace("\r", " ").replace("\n", " ").strip()
+    return v or "—"
+
+
+def _cellule_txt(v: str) -> str:
+    """Cellule de tableau en texte brut : les colonnes sont alignées au
+    caractère, un retour à la ligne décalerait tout ce qui suit."""
+    v = (v or "").replace("\r", " ").replace("\n", " ").strip()
+    return v or "—"
+
+
 def to_markdown(b: dict, cfg: dict | None = None) -> str:
     out: list[str] = []
     for k, t in _content(b, cfg):
-        if k == "entete":
+        if k == "brouillon":
+            out.append(f"> **{t}**")
+        elif k == "entete":
             out.append("\n".join(f"**{ligne}**" if i == 0 else ligne
                                  for i, ligne in enumerate(t)))
             out.append("\n---")
@@ -217,7 +258,7 @@ def to_markdown(b: dict, cfg: dict | None = None) -> str:
             out.append("\n| " + " | ".join(_COLONNES) + " |")
             out.append("| " + " | ".join("---" for _ in _COLONNES) + " |")
             for ligne in t:
-                out.append("| " + " | ".join(c or "—" for c in ligne) + " |")
+                out.append("| " + " | ".join(_cellule_md(c) for c in ligne) + " |")
         elif k == "sign":
             out.append("\n" + "  \n".join(t))
         elif k == "hr":
@@ -230,7 +271,10 @@ def to_markdown(b: dict, cfg: dict | None = None) -> str:
 def to_txt(b: dict, cfg: dict | None = None) -> str:
     out: list[str] = []
     for k, t in _content(b, cfg):
-        if k == "entete":
+        if k == "brouillon":
+            out.append(t)
+            out.append("=" * 40)
+        elif k == "entete":
             out.extend(t)
             out.append("-" * 40)
         elif k == "dest":
@@ -240,14 +284,15 @@ def to_txt(b: dict, cfg: dict | None = None) -> str:
         elif k == "p":
             out.append(t)
         elif k == "table":
+            cellules = [[_cellule_txt(c) for c in ligne] for ligne in t]
             larg = [
-                max(len(_COLONNES[i]), *(len(ligne[i] or "") for ligne in t))
+                max(len(_COLONNES[i]), *(len(ligne[i]) for ligne in cellules))
                 for i in range(len(_COLONNES))
             ]
             out.append("  ".join(c.ljust(larg[i]) for i, c in enumerate(_COLONNES)))
             out.append("  ".join("-" * w for w in larg))
-            for ligne in t:
-                out.append("  ".join((c or "—").ljust(larg[i]) for i, c in enumerate(ligne)))
+            for ligne in cellules:
+                out.append("  ".join(c.ljust(larg[i]) for i, c in enumerate(ligne)))
         elif k == "sign":
             out.append("")
             out.extend(t)
@@ -264,7 +309,11 @@ def to_docx(b: dict, cfg: dict | None = None) -> bytes:
 
     doc = Document()
     for k, t in _content(b, cfg):
-        if k == "entete":
+        if k == "brouillon":
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.add_run(t).bold = True
+        elif k == "entete":
             for i, ligne in enumerate(t):
                 p = doc.add_paragraph()
                 run = p.add_run(ligne)
@@ -313,7 +362,7 @@ def to_pdf(b: dict, cfg: dict | None = None) -> bytes:
     c'est une bibliothèque Python pure, sans moteur de rendu HTML ni binaire
     système à embarquer."""
     from reportlab.lib import colors
-    from reportlab.lib.enums import TA_RIGHT
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
@@ -330,58 +379,102 @@ def to_pdf(b: dict, cfg: dict | None = None) -> bytes:
     corps = ParagraphStyle("corps", parent=ss["BodyText"], fontSize=10, leading=14)
     petit = ParagraphStyle("petit", parent=corps, fontSize=8.5, leading=11)
     droite = ParagraphStyle("droite", parent=corps, alignment=TA_RIGHT)
+    centre = ParagraphStyle("centre", parent=corps, alignment=TA_CENTER)
     titre1 = ParagraphStyle("t1", parent=ss["Heading1"], fontSize=15, spaceBefore=10)
     titre2 = ParagraphStyle("t2", parent=ss["Heading2"], fontSize=12, spaceBefore=10)
 
     def esc(txt: str) -> str:
         return (txt.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
-    flow: list = []
-    for k, t in _content(b, cfg):
-        if k == "entete":
-            for i, ligne in enumerate(t):
-                flow.append(Paragraph(
-                    f"<b>{esc(ligne)}</b>" if i == 0 else esc(ligne),
-                    corps if i == 0 else petit,
-                ))
-            flow.append(Spacer(1, 4))
-            flow.append(HRFlowable(width="100%", color=colors.grey))
-        elif k == "dest":
-            flow.append(Spacer(1, 8))
-            flow.append(Paragraph(esc(t), droite))
-        elif k == "h1":
-            flow.append(Paragraph(esc(t), titre1))
-        elif k == "h2":
-            flow.append(Paragraph(esc(t), titre2))
-        elif k == "p":
-            # Les rubriques dictées contiennent des sauts de ligne signifiants.
-            flow.append(Paragraph(esc(t).replace("\n", "<br/>"), corps))
-        elif k == "table":
-            data = [[Paragraph(f"<b>{esc(c)}</b>", petit) for c in _COLONNES]]
-            data += [[Paragraph(esc(c or "—"), petit) for c in ligne] for ligne in t]
-            table = Table(data, colWidths=[32 * mm, 38 * mm, 28 * mm, 28 * mm, 40 * mm])
-            table.setStyle(TableStyle([
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ]))
-            flow.append(table)
-        elif k == "sign":
-            flow.append(Spacer(1, 16))
-            for ligne in t:
-                flow.append(Paragraph(esc(ligne), droite))
-            flow.append(Spacer(1, 24))  # place pour la signature ou le cachet
-        elif k == "hr":
-            flow.append(Spacer(1, 8))
-            flow.append(HRFlowable(width="100%", color=colors.grey))
-        elif k == "i":
-            flow.append(Paragraph(f"<i>{esc(t)}</i>", petit))
+    def construire(tableau_en_lignes: bool) -> list:
+        """Blocs du document. `tableau_en_lignes` rend les résultats sous forme
+        de paragraphes plutôt que de tableau : c'est le repli quand une cellule
+        est plus haute qu'une page (reportlab ne sait pas la découper)."""
+        flow: list = []
+        for k, t in _content(b, cfg):
+            if k == "brouillon":
+                flow.append(Paragraph(f"<b>{esc(t)}</b>", centre))
+                flow.append(Spacer(1, 6))
+            elif k == "entete":
+                for i, ligne in enumerate(t):
+                    flow.append(Paragraph(
+                        f"<b>{esc(ligne)}</b>" if i == 0 else esc(ligne),
+                        corps if i == 0 else petit,
+                    ))
+                flow.append(Spacer(1, 4))
+                flow.append(HRFlowable(width="100%", color=colors.grey))
+            elif k == "dest":
+                flow.append(Spacer(1, 8))
+                flow.append(Paragraph(esc(t), droite))
+            elif k == "h1":
+                flow.append(Paragraph(esc(t), titre1))
+            elif k == "h2":
+                flow.append(Paragraph(esc(t), titre2))
+            elif k == "p":
+                # Les rubriques dictées contiennent des sauts de ligne signifiants.
+                flow.append(Paragraph(esc(t).replace("\n", "<br/>"), corps))
+            elif k == "table" and tableau_en_lignes:
+                for ligne in t:
+                    parts = [f"<b>{esc(ligne[0])}</b>"] + [
+                        f"{esc(_COLONNES[i])} : {esc(v)}"
+                        for i, v in enumerate(ligne) if i and v
+                    ]
+                    flow.append(Paragraph(" — ".join(parts), petit))
+            elif k == "table":
+                data = [[Paragraph(f"<b>{esc(c)}</b>", petit) for c in _COLONNES]]
+                data += [[Paragraph(esc(c or "—"), petit) for c in ligne] for ligne in t]
+                table = Table(
+                    data, colWidths=[32 * mm, 38 * mm, 28 * mm, 28 * mm, 40 * mm],
+                    repeatRows=1,
+                )
+                table.setStyle(TableStyle([
+                    ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]))
+                flow.append(table)
+            elif k == "sign":
+                flow.append(Spacer(1, 16))
+                for ligne in t:
+                    flow.append(Paragraph(esc(ligne), droite))
+                flow.append(Spacer(1, 24))  # place pour la signature ou le cachet
+            elif k == "hr":
+                flow.append(Spacer(1, 8))
+                flow.append(HRFlowable(width="100%", color=colors.grey))
+            elif k == "i":
+                flow.append(Paragraph(f"<i>{esc(t)}</i>", petit))
+        return flow
 
+    def filigrane(canvas, doc):
+        """« BROUILLON » en travers de chaque page tant que le bilan n'est pas
+        validé : la mention doit rester lisible même sur une page imprimée
+        isolément du reste du document."""
+        canvas.saveState()
+        canvas.setFont("Helvetica-Bold", 64)
+        canvas.setFillGray(0.85)
+        canvas.translate(A4[0] / 2, A4[1] / 2)
+        canvas.rotate(45)
+        canvas.drawCentredString(0, 0, "BROUILLON")
+        canvas.restoreState()
+
+    def document(buf):
+        return SimpleDocTemplate(
+            buf, pagesize=A4,
+            leftMargin=20 * mm, rightMargin=20 * mm,
+            topMargin=18 * mm, bottomMargin=18 * mm,
+            title="Compte-rendu de bilan orthophonique",
+        )
+
+    pages = {"onFirstPage": filigrane, "onLaterPages": filigrane} if est_brouillon(b) else {}
     buf = io.BytesIO()
-    SimpleDocTemplate(
-        buf, pagesize=A4,
-        leftMargin=20 * mm, rightMargin=20 * mm,
-        topMargin=18 * mm, bottomMargin=18 * mm,
-        title="Compte-rendu de bilan orthophonique",
-    ).build(flow)
+    try:
+        document(buf).build(construire(False), **pages)
+    except Exception:
+        # Une cellule plus haute qu'une page fait échouer toute la mise en page
+        # (LayoutError) : une interprétation clinique un peu longue suffisait à
+        # rendre le PDF impossible. Le document part quand même, résultats
+        # rendus en lignes — mieux vaut une mise en forme dégradée qu'un export
+        # refusé au moment de l'envoyer au prescripteur.
+        buf = io.BytesIO()
+        document(buf).build(construire(True), **pages)
     return buf.getvalue()

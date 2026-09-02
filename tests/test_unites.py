@@ -492,6 +492,64 @@ def test_export_markdown_et_txt():
     assert "ANAMNÈSE" in txt
 
 
+# --- audit 2026-08-11, lot 1 : le document ne doit pas partir faux -----------
+
+def test_cotation_ecrite_comme_sur_une_feuille_de_soins():
+    """« AMO 24.0 — 62.4 € » n'est ni une notation NGAP ni un montant en euros
+    français. C'est le seul chiffre du document que la CPAM peut recouper."""
+    assert cotation.coeff_texte(24.0) == "24"
+    assert cotation.coeff_texte(24) == "24"
+    assert cotation.coeff_texte(24.5) == "24,5"
+    assert cotation.euros(62.4) == "62,40 €"
+    # Une cotation déjà enregistrée « AMO 24.0 » ressort corrigée à l'export.
+    b = dict(BILAN, cotation=dict(BILAN["cotation"], code_amo="AMO 24.0"))
+    md = export.to_markdown(b)
+    assert "AMO 24 — 62,40 €" in md and "24.0" not in md
+
+
+def test_export_marque_le_brouillon_dans_les_quatre_formats():
+    """Un brouillon exporté était indiscernable du compte-rendu définitif."""
+    brouillon = dict(BILAN, statut="brouillon")
+    assert "BROUILLON" in export.to_markdown(brouillon)
+    assert "BROUILLON" in export.to_txt(brouillon)
+    with zipfile.ZipFile(BytesIO(export.to_docx(brouillon))) as z:
+        assert "BROUILLON" in z.read("word/document.xml").decode()
+    assert export.to_pdf(brouillon)  # filigrane : le PDF se génère toujours
+    # Un bilan validé (ou envoyé) ne porte plus la mention.
+    for statut in ("valide", "envoye"):
+        assert "BROUILLON" not in export.to_markdown(dict(BILAN, statut=statut))
+    # Statut absent = brouillon : un bilan jamais validé ne passe pas pour final.
+    assert "BROUILLON" in export.to_markdown(BILAN)
+
+
+def test_export_tableau_resiste_aux_pipes_et_retours_ligne():
+    """Un « | » ou un retour à la ligne dans une interprétation cassait la
+    table entière — et le .md est le format par défaut de la route."""
+    b = dict(BILAN, epreuves=[{"test_nom": "Alouette-R", "resultats": [{
+        "sous_epreuve": "lecture | vitesse", "score_brut": "112",
+        "interpretation": "Ligne 1\nLigne 2", "drapeau_seuil": "norme",
+    }]}])
+    lignes = [x for x in export.to_markdown(b).splitlines() if x.startswith("|")]
+    # En-tête, séparateur, une ligne de données : rien de plus.
+    assert len(lignes) == 3
+    assert all(x.count("|") - x.count("\\|") == 6 for x in lignes)
+    assert "Ligne 1 Ligne 2" in lignes[2]
+    txt = export.to_txt(b)
+    assert "Ligne 1 Ligne 2" in txt
+
+
+def test_export_pdf_survit_a_une_interpretation_tres_longue():
+    """reportlab ne sait pas découper une cellule plus haute qu'une page :
+    l'export échouait sur un commentaire clinique un peu long. Le document part
+    désormais avec les résultats en lignes plutôt que refusé."""
+    b = dict(BILAN, epreuves=[{"test_nom": "Alouette-R", "resultats": [{
+        "sous_epreuve": "lecture", "score_brut": "112",
+        "interpretation": "Commentaire clinique détaillé. " * 120,
+    }]}])
+    data = export.to_pdf(b)
+    assert data[:4] == b"%PDF" and len(data) > 1000
+
+
 def test_export_docx_est_un_zip_valide():
     data = export.to_docx(BILAN)
     with zipfile.ZipFile(BytesIO(data)) as z:

@@ -11,6 +11,7 @@ import logging
 import sqlite3
 import threading
 from pathlib import Path
+from typing import Literal
 
 import httpx
 import sqlcipher3
@@ -739,10 +740,42 @@ async def add_epreuve(bilan_id: int, req: EpreuveCreate) -> dict:
         if not bilan.get(con, bilan_id):
             raise HTTPException(404, "Bilan introuvable.")
         cfg = config.ConfigStore(con).effective()
-        resultats = [r.model_dump() for r in req.resultats]
+        # Les résultats vides sont écartés : un corps sans valeur exploitable
+        # créait une ligne fantôme dans le tableau du compte-rendu.
+        resultats = [r.model_dump() for r in req.resultats if r.exploitable()]
         bilan.add_epreuve(con, bilan_id, req.domaine, req.test_nom, req.version, resultats, cfg)
         security.audit("epreuve", "bilan", bilan_id, req.test_nom)
+        b = bilan.get(con, bilan_id)
+    # Contrôle de plausibilité de l'étalonnage saisi : on signale, on ne corrige
+    # pas (le percentile -300 ou la note 85 sur l'échelle moy. 10 passaient sans
+    # un mot, alors que le drapeau du compte-rendu en dépend).
+    b["avertissements"] = bilan.alertes_plausibilite(req.test_nom, resultats)
+    return b
+
+
+@app.delete(
+    "/api/bilans/{bilan_id}/epreuves/{epreuve_id}",
+    dependencies=[Depends(require_unlock)],
+)
+async def del_epreuve(bilan_id: int, epreuve_id: int) -> dict:
+    """Retire une épreuve mal saisie. Sans cette route, le seul recours était de
+    supprimer le patient entier (cascade RGPD)."""
+    with security.transaction() as con:
+        if not bilan.delete_epreuve(con, bilan_id, epreuve_id):
+            raise HTTPException(404, "Épreuve introuvable.")
+        security.audit("suppression", "epreuve", epreuve_id, f"bilan {bilan_id}")
         return bilan.get(con, bilan_id)
+
+
+@app.delete("/api/bilans/{bilan_id}", dependencies=[Depends(require_unlock)])
+async def del_bilan(bilan_id: int) -> OkResponse:
+    """Supprime un bilan et tout ce qui en dépend (rubriques, épreuves,
+    résultats, cotation, envois, prescription)."""
+    with security.transaction() as con:
+        if not bilan.delete(con, bilan_id):
+            raise HTTPException(404, "Bilan introuvable.")
+        security.audit("suppression", "bilan", bilan_id, "")
+    return OkResponse(ok=True)
 
 
 @app.post("/api/bilans/{bilan_id}/cotation", dependencies=[Depends(require_unlock)])
@@ -759,7 +792,11 @@ async def cote_bilan(bilan_id: int) -> dict:
 
 
 @app.get("/api/bilans/{bilan_id}/export", dependencies=[Depends(require_unlock)])
-async def export_bilan(bilan_id: int, format: str = "md"):
+async def export_bilan(
+    bilan_id: int, format: Literal["md", "txt", "docx", "pdf"] = "md",
+):
+    # `format` est contraint : « ?format=exe » renvoyait du Markdown en 200,
+    # donc un fichier au mauvais nom et au mauvais contenu.
     # La config porte l'identité du praticien : sans elle, l'export ressortirait
     # sans en-tête ni signature, donc non envoyable en l'état.
     with security.transaction() as con:
@@ -776,8 +813,20 @@ async def export_bilan(bilan_id: int, format: str = "md"):
             headers={"Content-Disposition": f'attachment; filename="{fname}.docx"'},
         )
     if format == "pdf":
+        # Seule mise en page qui puisse échouer sur le contenu lui-même : le
+        # praticien doit récupérer un message exploitable, pas un 500 opaque au
+        # moment d'envoyer le compte-rendu.
+        try:
+            contenu = export.to_pdf(b, cfg)
+        except Exception:
+            logger.exception("Échec de la mise en page PDF (bilan %s)", bilan_id)
+            raise HTTPException(
+                500,
+                "La mise en page PDF a échoué sur ce compte-rendu. "
+                "Exportez-le en Word (.docx) — le contenu y est identique.",
+            )
         return Response(
-            content=export.to_pdf(b, cfg),
+            content=contenu,
             media_type="application/pdf",
             headers={"Content-Disposition": f'attachment; filename="{fname}.pdf"'},
         )

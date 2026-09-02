@@ -186,6 +186,40 @@ def get(con, bilan_id: int) -> dict | None:
     return b
 
 
+def delete(con, bilan_id: int) -> bool:
+    """Supprime un bilan et tout ce qui en dépend.
+
+    Sections, épreuves, résultats, cotation, envois et dictées suivent par
+    cascade. La prescription, rattachée au patient et non au bilan, est
+    supprimée explicitement : sans cela, le nom du médecin survivrait au
+    document qu'il concernait. Jusqu'ici, effacer un bilan erroné imposait de
+    supprimer le patient entier."""
+    row = con.execute(
+        "SELECT prescription_id FROM bilan WHERE id=?", (bilan_id,)
+    ).fetchone()
+    if row is None:
+        return False
+    con.execute("DELETE FROM bilan WHERE id=?", (bilan_id,))
+    if row[0]:
+        con.execute("DELETE FROM prescription WHERE id=?", (row[0],))
+    return True
+
+
+def delete_epreuve(con, bilan_id: int, epreuve_id: int) -> bool:
+    """Retire une épreuve du bilan (ses résultats suivent par cascade).
+
+    Une échelle d'étalonnage mal choisie produit un drapeau faux, qui part dans
+    le tableau du compte-rendu : il faut pouvoir le retirer."""
+    cur = con.execute(
+        "DELETE FROM epreuve WHERE id=? AND bilan_id=?", (epreuve_id, bilan_id)
+    )
+    if cur.rowcount:
+        con.execute(
+            "UPDATE bilan SET updated_at=datetime('now') WHERE id=?", (bilan_id,)
+        )
+    return cur.rowcount > 0
+
+
 def liste(con, limit: int = 20, offset: int = 0) -> list[dict]:
     rows = _dicts(
         con.execute(
@@ -343,6 +377,48 @@ def interpret_drapeau(etalonnage_type: str | None, valeur, cfg: dict) -> str:
     if et <= s["fragilite_et"]:
         return "fragilite"
     return "norme"
+
+
+# Bornes de plausibilité par type d'étalonnage. Elles ne corrigent jamais rien :
+# une valeur hors bornes est signalée au praticien, qui seul peut trancher —
+# même doctrine que la vérification des chiffres de la dictée. Sans elles, un
+# percentile de -300 ressortait « déficit sévère » et une note de 85 saisie sur
+# la mauvaise échelle ressortait « dans la norme », sans un mot.
+BORNES_ETALONNAGE = {
+    "percentile": (0.0, 100.0, "un percentile va de 0 à 100"),
+    "ecart_type": (-6.0, 6.0, "un écart-type se situe entre -6 et +6"),
+    "note_standard": (1.0, 19.0, "une note standard moy. 10 / ET 3 va de 1 à 19"),
+    "note_standard_100": (40.0, 160.0,
+                          "une note standard moy. 100 / ET 15 va de 40 à 160"),
+}
+
+
+def alerte_etalonnage(etalonnage_type: str | None, valeur) -> str:
+    """Message d'alerte si la valeur sort des bornes de son échelle ('' sinon)."""
+    bornes = BORNES_ETALONNAGE.get(etalonnage_type or "")
+    if not bornes:
+        return ""
+    n = _parse_num(valeur)
+    if n is None:
+        return ""
+    bas, haut, rappel = bornes
+    if bas <= n <= haut:
+        return ""
+    return f"« {valeur} » sort des valeurs possibles ({rappel})"
+
+
+def alertes_plausibilite(test_nom: str, resultats: list[dict]) -> list[str]:
+    """Alertes de saisie pour une épreuve, prêtes à être affichées telles quelles."""
+    out = []
+    for r in resultats:
+        msg = alerte_etalonnage(r.get("etalonnage_type"), r.get("etalonnage_valeur"))
+        if msg:
+            tete = test_nom + (f" — {r['sous_epreuve']}" if r.get("sous_epreuve") else "")
+            out.append(
+                f"{tete} : {msg}. Vérifiez l'échelle choisie et la valeur saisie — "
+                "le drapeau en dépend."
+            )
+    return out
 
 
 def etalonnage_texte(r: dict) -> str:

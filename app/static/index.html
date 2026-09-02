@@ -215,6 +215,7 @@
       <span id="coteInfo" class="status"></span>
       <button id="valideBtn" class="ghost">✔ Marquer validé</button>
       <button id="envoyeBtn" class="ghost">📨 Marquer envoyé</button>
+      <button id="delBilan" class="ghost" title="Supprimer définitivement ce bilan">🗑 Supprimer</button>
       <span class="grow"></span>
       <button class="ghost" id="expPdf">⬇ PDF</button>
       <button class="ghost" id="expDocx">⬇ Word</button>
@@ -298,10 +299,11 @@
         <legend>Seuils d'interprétation</legend>
         <div class="muted">En écarts-types :</div>
         <div class="grid3">
-          <div><label for="cfgSeuilFrag">Fragilité ≤</label><input id="cfgSeuilFrag" type="number" step="0.1"></div>
-          <div><label for="cfgSeuilPatho">Pathologique ≤</label><input id="cfgSeuilPatho" type="number" step="0.1"></div>
-          <div><label for="cfgSeuilSev">Sévère ≤</label><input id="cfgSeuilSev" type="number" step="0.1"></div>
+          <div><label for="cfgSeuilFrag">Fragilité ≤</label><input id="cfgSeuilFrag" type="number" step="0.1" min="-6" max="0"></div>
+          <div><label for="cfgSeuilPatho">Pathologique ≤</label><input id="cfgSeuilPatho" type="number" step="0.1" min="-6" max="0"></div>
+          <div><label for="cfgSeuilSev">Sévère ≤</label><input id="cfgSeuilSev" type="number" step="0.1" min="-6" max="0"></div>
         </div>
+        <div class="muted" style="margin-top:6px">Ce sont des seuils <b>bas</b> : ils s'écrivent en négatif (−1, −1,5, −2) et vont du plus sévère au moins sévère. Saisir 1,5 au lieu de −1,5 ferait basculer tous les résultats normaux en « zone de fragilité ».</div>
         <div class="muted" style="margin-top:6px">En percentiles :</div>
         <div class="grid3">
           <div><label for="cfgSeuilFragP">Fragilité ≤ (percentile)</label><input id="cfgSeuilFragP" type="number" min="0" max="100"></div>
@@ -929,6 +931,12 @@ function curLabel() {
 }
 async function setStatut(statut) {
   if (!CUR) return;
+  const geste = statut === 'valide' ? 'la validation' : 'l\'envoi';
+  if (!await enregistrerAvant(geste)) {
+    document.getElementById('coteInfo').textContent =
+      'Interrompu — vos corrections ne sont pas enregistrées.';
+    return;
+  }
   const body = { statut };
   if (statut === 'envoye') {
     const d = prompt('Destinataire (médecin prescripteur) :', '');
@@ -942,6 +950,22 @@ async function setStatut(statut) {
 }
 document.getElementById('valideBtn').addEventListener('click', e => avecBouton(e.target, () => setStatut('valide')));
 document.getElementById('envoyeBtn').addEventListener('click', e => avecBouton(e.target, () => setStatut('envoye')));
+// Supprimer un bilan entier : jusqu'ici, un dossier créé par erreur (ou sur le
+// mauvais patient) ne pouvait partir qu'avec le patient lui-même.
+document.getElementById('delBilan').addEventListener('click', e => avecBouton(e.target, async () => {
+  if (!CUR) return;
+  const pat = CUR.patient ? patLabel(CUR.patient) : 'sans patient';
+  if (!confirm(`Supprimer définitivement le bilan #${CUR.id} (${pat}) ?\n\n`
+      + `Rubriques, épreuves, résultats et cotation sont effacés. Cette action est irréversible.`)) return;
+  const info = document.getElementById('coteInfo');
+  try {
+    await api(`/api/bilans/${CUR.id}`, { method: 'DELETE' });
+    CUR = null; QS = []; DISMISSED.clear(); ANSWERED.clear();
+    dicteeText.value = '';
+    renderBilan(); renderQuestions(); loadRecents(); loadPatients();
+    document.getElementById('curBilan').textContent = 'aucun (bilan supprimé)';
+  } catch (err) { info.textContent = 'Erreur : ' + err.message; }
+}));
 // Chiffres à vérifier, par clé de rubrique (réponse de /structure). L'app trace
 // chaque nombre proposé jusqu'à la dictée ; ceux qu'elle ne retrouve pas sont
 // pointés au praticien, qui seul peut trancher. Rattaché à un bilan précis :
@@ -1049,7 +1073,10 @@ function renderBilan() {
     sec.querySelector('.valider').addEventListener('click', e => avecBouton(e.target, () => saveSection(cle, ta.value, 'valide', sec)));
   });
   document.getElementById('epAdd').addEventListener('click', e => avecBouton(e.target, addEpreuve));
+  root.querySelectorAll('[data-ep-del]').forEach(b =>
+    b.addEventListener('click', () => supprimerEpreuve(b.dataset.epDel)));
   marquerStatuts(); // les statuts recréés (savest, epStatus) restent annoncés
+  activerBoutonsClavier(root); // les ✕ des épreuves répondent à Entrée/Espace
   loadTestList();
   const cot = CUR.cotation;
   document.getElementById('coteInfo').textContent = cot ? `${cot.code_amo} · ${cot.montant} €` : '';
@@ -1072,7 +1099,12 @@ function epreuvesCardHtml() {
       const unite = r.etalonnage_valeur ? (ETAL_LBL[r.etalonnage_type] || '') : '';
       return `${escapeHtml(r.sous_epreuve || '')} : ${escapeHtml(r.score_brut || '')} ${escapeHtml(r.etalonnage_valeur || '')}${escapeHtml(unite)}${drap}`;
     }).join(' · ');
-    return `<div class="muted" style="margin:2px 0"><b>${escapeHtml(e.test_nom)}</b> — ${rs}</div>`;
+    // Une épreuve mal saisie partait dans le tableau du compte-rendu sans
+    // aucun moyen de l'en retirer : le seul recours était de supprimer le
+    // patient entier.
+    return `<div class="muted" style="margin:2px 0"><b>${escapeHtml(e.test_nom)}</b> — ${rs}`
+      + `<span class="delep" data-ep-del="${e.id}" role="button" tabindex="0"`
+      + ` aria-label="Retirer l'épreuve ${escapeHtml(e.test_nom)}" style="float:right;cursor:pointer">✕</span></div>`;
   }).join('');
   return `
     <div class="sec">
@@ -1113,19 +1145,63 @@ async function loadTestList() {
   } catch {}
 }
 
+// Champs de saisie d'une épreuve : leur contenu doit survivre à un re-rendu
+// (une analyse qui se termine pendant la saisie régénère la carte entière).
+const EP_CHAMPS = ['epTest', 'epSub', 'epScore', 'epType', 'epVal'];
+function lireChampsEpreuve() {
+  const o = {};
+  EP_CHAMPS.forEach(id => { const el = document.getElementById(id); if (el) o[id] = el.value; });
+  return o;
+}
+function ecrireChampsEpreuve(o) {
+  EP_CHAMPS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && o[id] !== undefined) el.value = o[id];
+  });
+}
+function saisieEpreuveEnCours() {
+  return EP_CHAMPS.some(id => {
+    const el = document.getElementById(id);
+    return el && el.value.trim();
+  });
+}
 async function addEpreuve() {
   const test = document.getElementById('epTest').value.trim();
-  if (!test) return;
+  const st0 = document.getElementById('epStatus');
+  if (!test) { if (st0) st0.textContent = 'Indiquez au moins le nom du test.'; return; }
   const r = {
     sous_epreuve: document.getElementById('epSub').value.trim() || null,
     score_brut: document.getElementById('epScore').value.trim() || null,
     etalonnage_type: document.getElementById('epType').value || null,
     etalonnage_valeur: document.getElementById('epVal').value.trim() || null,
   };
+  if (!r.score_brut && !r.etalonnage_valeur) {
+    if (st0) st0.textContent = 'Indiquez au moins un score brut ou une valeur d\'étalonnage : '
+      + 'une épreuve sans résultat produirait une ligne vide dans le compte-rendu.';
+    return;
+  }
   const body = { test_nom: test, domaine: (CUR.domaines || [])[0] || '', resultats: [r] };
   try {
     const resp = await api(`/api/bilans/${CUR.id}/epreuves`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    CUR = await resp.json(); renderBilan();
+    const b = await resp.json();
+    const avert = b.avertissements || [];
+    CUR = b;
+    EP_CHAMPS.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    renderBilan();
+    // Le serveur borne la plausibilité de l'étalonnage (percentile 0-100,
+    // écart-type ±6, notes standard) : il signale, il ne corrige pas.
+    const st = document.getElementById('epStatus');
+    if (st) st.textContent = avert.length ? '⚠️ ' + avert.join(' ') : '✓ épreuve ajoutée';
+  } catch (e) { const st = document.getElementById('epStatus'); if (st) st.textContent = 'Erreur : ' + e.message; }
+}
+async function supprimerEpreuve(eid) {
+  const ep = (CUR.epreuves || []).find(e => String(e.id) === String(eid));
+  if (!confirm(`Retirer l'épreuve « ${ep ? ep.test_nom : ''} » et ses résultats du compte-rendu ?`)) return;
+  try {
+    const r = await api(`/api/bilans/${CUR.id}/epreuves/${eid}`, { method: 'DELETE' });
+    CUR = await r.json(); renderBilan();
+    const st = document.getElementById('epStatus');
+    if (st) st.textContent = '✓ épreuve retirée';
   } catch (e) { const st = document.getElementById('epStatus'); if (st) st.textContent = 'Erreur : ' + e.message; }
 }
 function badgeLabel(s) { return s === 'valide' ? 'validé' : s === 'propose_ia' ? 'à valider' : 'vide'; }
@@ -1146,10 +1222,50 @@ async function saveSection(cle, contenu, statut, sec) {
     st.textContent = '✓';
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }
+// ---------- « Ce qui est à l'écran est ce qui part » ----------
+// L'export et la copie lisent le contenu enregistré (serveur ou CUR), jamais
+// les zones de saisie : sans ce garde-fou, une correction clinique tapée mais
+// non enregistrée serait absente du document envoyé au prescripteur, sans un
+// mot. Même exigence pour « Marquer validé » : on ne valide pas une version
+// que l'on n'a pas sous les yeux.
+function sectionsNonEnregistrees() {
+  const out = [];
+  if (!CUR || SEC_BILAN !== CUR.id) return out;
+  document.querySelectorAll('#bilanView .sec[data-cle]').forEach(sec => {
+    const ta = sec.querySelector('.secText');
+    const ref = SEC_RENDERED[sec.dataset.cle];
+    if (ta && ref !== undefined && ta.value !== ref) out.push({ cle: sec.dataset.cle, sec, ta });
+  });
+  return out;
+}
+function titreSection(cle) {
+  const s = (CUR && CUR.sections || []).find(x => x.cle === cle);
+  return (s && s.titre) || cle;
+}
+// Renvoie true si le geste peut se poursuivre. En cas de corrections en cours,
+// propose de les enregistrer d'abord (jamais de les perdre, jamais de partir
+// sans elles) ; un enregistrement en échec bloque le geste.
+async function enregistrerAvant(geste) {
+  const brouillons = sectionsNonEnregistrees();
+  if (!brouillons.length) return true;
+  const titres = brouillons.map(b => titreSection(b.cle)).join(', ');
+  const ok = confirm(
+    `${brouillons.length} rubrique(s) modifiée(s) ne sont pas enregistrées : ${titres}.\n\n`
+    + `En l'état, ${geste} porterait la version précédente, sans vos corrections.\n\n`
+    + `OK : enregistrer ces rubriques, puis continuer.\n`
+    + `Annuler : revenir au compte-rendu.`);
+  if (!ok) return false;
+  for (const b of brouillons) await saveSection(b.cle, b.ta.value, null, b.sec);
+  return sectionsNonEnregistrees().length === 0;
+}
 let copyTimer = null;
 document.getElementById('copyBilan').addEventListener('click', async () => {
   if (!CUR) return;
   const st = document.getElementById('copyStatus');
+  if (!await enregistrerAvant('la copie')) {
+    st.textContent = 'Copie interrompue — vos corrections ne sont pas enregistrées.';
+    return;
+  }
   const txt = CUR.sections.filter(s => (s.contenu || '').trim())
     .map(s => s.titre.toUpperCase() + '\n\n' + s.contenu.trim()).join('\n\n');
   try {
@@ -1175,6 +1291,10 @@ document.getElementById('coteBtn').addEventListener('click', e => avecBouton(e.t
 async function telechargerExport(format) {
   if (!CUR) return;
   const st = document.getElementById('copyStatus');
+  if (!await enregistrerAvant('le document exporté')) {
+    st.textContent = 'Export interrompu — vos corrections ne sont pas enregistrées.';
+    return;
+  }
   try {
     const r = await api(`/api/bilans/${CUR.id}/export?format=${format}`);
     const blob = await r.blob();

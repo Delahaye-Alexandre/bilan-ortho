@@ -9,7 +9,7 @@ from datetime import date
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class BilanType(str, Enum):
@@ -137,12 +137,35 @@ class StylePatch(_SectionPatch):
 
 
 class SeuilsPatch(_SectionPatch):
-    fragilite_et: float | None = None
-    pathologique_et: float | None = None
-    severe_et: float | None = None
+    """Seuils de drapeaux. Les seuils en écart-type sont des seuils *bas* :
+    saisir 1.5 au lieu de -1.5 basculait tous les résultats normaux en « zone de
+    fragilité », sans un mot. D'où les bornes, et le contrôle d'ordre :
+    sévère ≤ pathologique ≤ fragilité (et l'inverse en percentile)."""
+
+    fragilite_et: float | None = Field(None, ge=-6, le=0)
+    pathologique_et: float | None = Field(None, ge=-6, le=0)
+    severe_et: float | None = Field(None, ge=-6, le=0)
     fragilite_percentile: float | None = Field(None, ge=0, le=100)
     pathologique_percentile: float | None = Field(None, ge=0, le=100)
     severe_percentile: float | None = Field(None, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _ordre_coherent(self):
+        # Contrôle deux à deux, sur les seuls champs fournis : les surcharges
+        # sont partielles (fusion profonde côté serveur).
+        paires = [
+            ("severe_et", "pathologique_et"), ("pathologique_et", "fragilite_et"),
+            ("severe_percentile", "pathologique_percentile"),
+            ("pathologique_percentile", "fragilite_percentile"),
+        ]
+        for bas, haut in paires:
+            a, b = getattr(self, bas), getattr(self, haut)
+            if a is not None and b is not None and a > b:
+                raise ValueError(
+                    f"seuils incohérents : {bas} ({a}) doit rester inférieur ou égal "
+                    f"à {haut} ({b}) — sinon les drapeaux ne veulent plus rien dire"
+                )
+        return self
 
 
 class CotationPatch(_SectionPatch):
@@ -237,6 +260,21 @@ class TrameRemplacement(BaseModel):
     revenir à la trame réglementaire, utiliser DELETE."""
 
     sections: list[TrameSectionStricte] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _cles_uniques(self):
+        """Deux rubriques de même clé : le compte-rendu imprimait la rubrique
+        deux fois, et le texte de l'IA n'atterrissait que dans l'une d'elles."""
+        vues = set()
+        for s in self.sections:
+            cle = s.cle.strip().lower()
+            if cle in vues:
+                raise ValueError(
+                    f"clé de rubrique en double : « {s.cle} » — chaque rubrique "
+                    "doit porter une clé distincte"
+                )
+            vues.add(cle)
+        return self
 
 
 class TestCatalogue(BaseModel):
@@ -369,11 +407,30 @@ class ResultatIn(BaseModel):
     interpretation: str | None = None
     drapeau_seuil: str | None = None     # laissé vide -> déduit des seuils
 
+    def exploitable(self) -> bool:
+        """Vrai si le résultat porte quelque chose de restituable.
+
+        Un corps sans résultat utile créait une épreuve coquille : une ligne
+        vide dans le tableau du compte-rendu, qu'aucune route ne permettait de
+        retirer."""
+        champs = ("score_brut", "etalonnage_valeur", "interpretation",
+                  "percentile", "note_standard", "age_dev")
+        return any((getattr(self, c) or "").strip() for c in champs)
+
 
 class EpreuveCreate(BaseModel):
     test_nom: str
     domaine: str = ""
     version: str = ""
     resultats: list[ResultatIn] = []
+
+    @model_validator(mode="after")
+    def _au_moins_un_resultat(self):
+        if not any(r.exploitable() for r in self.resultats):
+            raise ValueError(
+                "une épreuve doit porter au moins un résultat exploitable "
+                "(score brut, valeur d'étalonnage ou interprétation)"
+            )
+        return self
 
 

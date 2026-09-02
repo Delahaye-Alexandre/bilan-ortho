@@ -51,6 +51,12 @@ let sauvegardeCalls = 0;
 let recentsRequests = [];
 let recentsResponder = () => [{ id: 7, statut: "brouillon", domaine_titres: "Générique" }];
 let exportResponder = null;
+let exportCalls = 0;
+let statutPuts = [];
+let epreuvePosts = [], epreuveDeletes = [], bilanDeletes = 0;
+let epreuveResponder = () => ({});
+let statusResponder = () => ({ db_exists: true, unlocked: true, first_run: false, version: "1.8.0" });
+let installResponder = () => ({ ollama: true, pret: true, config_lisible: true, modeles: [] });
 let restaurationCalls = [];
 let restaurationResponder = () => ({ ok: true, fichier: "f", filet: "g" });
 let editeurCalls = [];       // PUT/DELETE des routes /api/config/{trame,catalogues,prompts}
@@ -64,7 +70,7 @@ const SAUVEGARDES = {
 
 const rep = (r) => r && r.__status
   ? { ok: false, status: r.__status, statusText: "ERR", json: async () => ({ detail: r.detail }) }
-  : { ok: true, status: 200, json: async () => r };
+  : { ok: true, status: 200, json: async () => r, blob: async () => new Blob(["x"]) };
 
 // Config effective complète (pour fillSettings) et surcharges partielles
 // (pour l'éditeur Avancé — il ne doit afficher QUE les surcharges).
@@ -99,7 +105,12 @@ globalThis.fetch = async (p, o = {}) => {
     if (holdNext) await holdNext;
     return rep(bilanCreator());
   }
-  if (url.includes("/export")) return rep(exportResponder ? exportResponder() : {});
+  if (url.includes("/statut")) {
+    const b = JSON.parse(o.body);
+    statutPuts.push(b);
+    return rep({ ...structuredClone(CUR0), statut: b.statut });
+  }
+  if (url.includes("/export")) { exportCalls++; return rep(exportResponder ? exportResponder() : {}); }
   if (url.includes("/api/bilans?")) {
     const q = Object.fromEntries(url.split("?")[1].split("&").map((kv) => kv.split("=")));
     recentsRequests.push({ limit: +q.limit, offset: +q.offset });
@@ -137,6 +148,19 @@ globalThis.fetch = async (p, o = {}) => {
     }
     return rep(refsList.map((r) => ({ ...r })));
   }
+  if (url.includes("/api/transcribe")) return rep({ text: "texte transcrit" });
+  if (url.includes("/api/status")) return rep(statusResponder());
+  if (url.includes("/api/installation")) return rep(installResponder());
+  if (url.includes("/epreuves")) {
+    if (o.method === "DELETE") { epreuveDeletes.push(url); return rep(epreuveResponder(true)); }
+    epreuvePosts.push(JSON.parse(o.body));
+    return rep(epreuveResponder(false));
+  }
+  const mBil = url.match(/\/api\/bilans\/([\w-]+)$/);
+  if (mBil && o.method === "DELETE") { bilanDeletes++; return rep({ ok: true }); }
+  if (mBil && (!o.method || o.method === "GET")) {
+    const b = structuredClone(CUR0); b.id = mBil[1]; return rep(b);
+  }
   if (url.includes("/api/domaines"))
     return rep([{ cle: "langage_oral", titre: "Langage oral" }, { cle: "voix", titre: "Voix" }]);
   if (url.includes("/api/catalogues/"))
@@ -164,6 +188,7 @@ const body = scriptBody.replace(/gate\(\);\s*$/, "") + `
   get QS() { return QS; }, set QS(v) { QS = v; },
   get CUR() { return CUR; }, set CUR(v) { CUR = v; },
   renderQuestions, renderBilan, structure, saisieEnCours, loadRecents, loadRefs,
+  loadBilan, sectionsNonEnregistrees, gate,
 };`;
 new Function(body)();
 
@@ -366,7 +391,10 @@ try {
 } catch {
   navigator.clipboard = { writeText: async (t) => { copie = t; } };
 }
-__t.CUR = structuredClone(CUR0);
+// id distinct : le brouillon laissé par le scénario 8 ne doit pas être repris
+// (il déclencherait à juste titre la demande d'enregistrement du scénario 27).
+const bcopie = structuredClone(CUR0); bcopie.id = "bcopie";
+__t.CUR = bcopie;
 __t.renderBilan();
 document.getElementById("copyBilan").click();
 await settle();
@@ -673,6 +701,119 @@ await settle();
 check("pack : erreur réseau → message français dans le statut, pas de crash",
   refStatus().startsWith("Erreur"));
 reseauCoupe = false;
+
+// === 27. Corrections en cours : rien ne part sans elles (audit 08-11, 1.1) ===
+// Export, copie et validation lisaient le contenu enregistré, jamais les zones
+// de saisie : une correction tapée mais non enregistrée partait à la trappe.
+globalThis.URL.createObjectURL = () => "blob:test";
+globalThis.URL.revokeObjectURL = () => {};
+__t.CUR = structuredClone(CUR0);
+__t.renderBilan();
+await settle();
+secTa("anamnese").value = "Texte initial. CORRECTION CLINIQUE";
+check("détection : la rubrique modifiée est repérée comme non enregistrée",
+  __t.sectionsNonEnregistrees().length === 1);
+confirmCalls = []; confirmReponse = false;
+exportCalls = 0; sectionPuts = []; sectionResponder = () => ({});
+document.getElementById("expMd").click();
+await settle();
+check("export avec correction en cours : confirmation demandée, rubrique nommée",
+  confirmCalls.length === 1 && confirmCalls[0].includes("Anamnèse"));
+check("export refusé : aucun export, aucun enregistrement",
+  exportCalls === 0 && sectionPuts.length === 0);
+check("export refusé : message explicite",
+  document.getElementById("copyStatus").textContent.includes("interrompu"));
+
+confirmReponse = true; confirmCalls = [];
+document.getElementById("expMd").click();
+await settle();
+check("export accepté : la correction est enregistrée puis exportée",
+  sectionPuts.length === 1
+  && sectionPuts[0].body.contenu.includes("CORRECTION CLINIQUE")
+  && exportCalls === 1);
+
+Object.defineProperty(navigator, "clipboard", {
+  value: { writeText: async (t) => { copie = t; } }, configurable: true,
+});
+secTa("anamnese").value = "Texte initial. AUTRE CORRECTION";
+sectionPuts = []; copie = null;
+document.getElementById("copyBilan").click();
+await settle();
+check("copie : la correction est enregistrée et présente dans le presse-papiers",
+  sectionPuts.length === 1 && copie !== null && copie.includes("AUTRE CORRECTION"));
+
+secTa("diagnostic").value = "Diagnostic corrigé à la main";
+confirmReponse = false; statutPuts = []; sectionPuts = [];
+document.getElementById("valideBtn").click();
+await settle();
+check("validation refusée : le bilan n'est pas marqué validé",
+  statutPuts.length === 0 && sectionPuts.length === 0);
+confirmReponse = true;
+document.getElementById("valideBtn").click();
+await settle();
+check("validation acceptée : rubrique enregistrée, puis statut « valide »",
+  sectionPuts.length === 1 && statutPuts.length === 1 && statutPuts[0].statut === "valide");
+
+// === 30. Épreuves : saisie bornée, alerte de plausibilité, retrait possible ==
+// (audit 08-11, 1.2 et 1.3 : une épreuve était indélébile, et une valeur
+// invraisemblable produisait un drapeau sans un mot.)
+const epStatus = () => document.getElementById("epStatus").textContent;
+const bep = structuredClone(CUR0); bep.id = "bep"; bep.epreuves = [];
+__t.CUR = bep;
+__t.renderBilan();
+await settle();
+document.getElementById("epTest").value = "Alouette-R";
+epreuvePosts = [];
+document.getElementById("epAdd").click();
+await settle();
+check("épreuve sans score ni étalonnage : refusée avant l'appel serveur",
+  epreuvePosts.length === 0 && epStatus().includes("score brut"));
+
+const bepPlein = structuredClone(bep);
+bepPlein.epreuves = [{ id: 9, test_nom: "Alouette-R", resultats: [
+  { sous_epreuve: "", score_brut: "12", etalonnage_type: "percentile",
+    etalonnage_valeur: "-300", drapeau_seuil: "severe" }] }];
+epreuveResponder = (suppression) => suppression
+  ? { ...structuredClone(bep), epreuves: [] }
+  : { ...structuredClone(bepPlein),
+      avertissements: ["Alouette-R : « -300 » sort des valeurs possibles "
+                       + "(un percentile va de 0 à 100)."] };
+document.getElementById("epScore").value = "12";
+document.getElementById("epType").value = "percentile";
+document.getElementById("epVal").value = "-300";
+document.getElementById("epAdd").click();
+await settle();
+check("épreuve ajoutée : l'avertissement de plausibilité est affiché",
+  epStatus().includes("sort des valeurs possibles"));
+check("épreuve ajoutée : les champs de saisie sont vidés",
+  document.getElementById("epTest").value === ""
+  && document.getElementById("epVal").value === "");
+check("épreuve ajoutée : elle apparaît avec son ✕ de retrait",
+  document.querySelector("[data-ep-del]") !== null);
+
+confirmCalls = []; confirmReponse = false; epreuveDeletes = [];
+document.querySelector("[data-ep-del]").click();
+await settle();
+check("retrait refusé : aucune suppression",
+  confirmCalls.length === 1 && epreuveDeletes.length === 0);
+confirmReponse = true;
+document.querySelector("[data-ep-del]").click();
+await settle();
+check("retrait confirmé : DELETE envoyé, l'épreuve disparaît de l'écran",
+  epreuveDeletes.length === 1 && document.querySelector("[data-ep-del]") === null);
+
+// === 31. Supprimer un bilan entier (audit 08-11, 1.2) =======================
+confirmCalls = []; confirmReponse = false; bilanDeletes = 0;
+document.getElementById("delBilan").click();
+await settle();
+check("suppression du bilan refusée : aucun appel",
+  confirmCalls.length === 1 && bilanDeletes === 0);
+confirmReponse = true;
+document.getElementById("delBilan").click();
+await settle();
+check("suppression confirmée : DELETE envoyé, écran vidé",
+  bilanDeletes === 1 && __t.CUR === null
+  && document.getElementById("curBilan").textContent.includes("supprimé"));
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);
