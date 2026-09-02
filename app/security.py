@@ -19,7 +19,7 @@ from . import config, db
 
 logger = logging.getLogger(__name__)
 _lock = threading.RLock()
-_state: dict = {"con": None, "last_activity": 0.0}
+_state: dict = {"con": None, "last_activity": 0.0, "minuteur": None}
 
 
 class CoffreVerrouille(RuntimeError):
@@ -98,11 +98,13 @@ def unlock(passphrase: str, purge: bool = True) -> bool:
         # Hors du bloc protégé, et volontairement : une sauvegarde qui échoue
         # ne doit pas refermer un coffre correctement ouvert.
         _sauvegarde_auto(con)
+        _armer_minuteur()
         return True
 
 
 def lock() -> None:
     with _lock:
+        _desarmer_minuteur()
         if _state["con"] is not None:
             try:
                 audit("lock", "app", None, "")
@@ -257,6 +259,44 @@ def touch() -> None:
 def seconds_idle() -> float:
     with _lock:
         return time.monotonic() - _state["last_activity"]
+
+
+# --- Verrouillage automatique actif ------------------------------------------
+# `enforce_inactivity()` n'était appelé que par les routes protégées : sans
+# requête, un coffre « verrouillé après 15 min » restait ouvert en mémoire
+# indéfiniment — portable volé en veille, la clé toujours vivante dans le
+# processus (revue du 2026-08-11, 5.3). Un minuteur démon vérifie donc
+# l'inactivité à intervalle régulier, indépendamment de toute requête.
+_MINUTEUR_INTERVALLE_S = 30.0
+
+
+def _armer_minuteur() -> None:
+    """Programme la prochaine vérification d'inactivité (appelé sous ``_lock``)."""
+    _desarmer_minuteur()
+    t = threading.Timer(_MINUTEUR_INTERVALLE_S, _tic_minuteur)
+    t.daemon = True  # ne retient jamais l'arrêt du processus
+    _state["minuteur"] = t
+    t.start()
+
+
+def _desarmer_minuteur() -> None:
+    t = _state.get("minuteur")
+    if t is not None:
+        t.cancel()
+        _state["minuteur"] = None
+
+
+def _tic_minuteur() -> None:
+    with _lock:
+        if _state["con"] is None:
+            return
+        try:
+            verrouille = enforce_inactivity()
+        except Exception:
+            logger.exception("Vérification d'inactivité impossible")
+            verrouille = False
+        if not verrouille and _state["con"] is not None:
+            _armer_minuteur()
 
 
 def enforce_inactivity() -> bool:

@@ -24,6 +24,28 @@ class SupportIntrouvable(RuntimeError):
     débranchée, disque réseau non monté). Mappée en 400 par le serveur."""
 
 
+# Racines sous lesquelles le système monte les supports amovibles. Un dossier
+# de sauvegarde placé là doit se trouver sous un point de montage EFFECTIF :
+# clé débranchée, « /mnt/usb » reste un répertoire vide sur le disque interne,
+# et ``mkdir(parents=True)`` y fabriquait des copies « hors machine » qui n'en
+# sont jamais sorties — puis devenaient invisibles dès la clé rebranchée
+# (revue du 2026-08-11, 5.4).
+_RACINES_SUPPORTS = ("/mnt", "/media", "/run/media", "/Volumes")
+
+
+def _support_absent(p: Path) -> bool:
+    """Vrai si ``p`` est sous une racine de supports amovibles sans qu'aucun de
+    ses ancêtres n'y soit un point de montage réel."""
+    p = p.absolute()
+    for racine in _RACINES_SUPPORTS:
+        r = Path(racine)
+        if p != r and r not in p.parents:
+            continue
+        sous_racine = [a for a in (p, *p.parents) if a != r and r in a.parents]
+        return not any(a.exists() and os.path.ismount(a) for a in sous_racine)
+    return False
+
+
 def dossier(cfg: dict) -> Path:
     """Dossier de sauvegarde (créé au besoin). Vide = <données>/sauvegardes.
 
@@ -39,7 +61,7 @@ def dossier(cfg: dict) -> Path:
         config.restreindre_acces(p, 0o700)
         return p
     p = Path(d).expanduser()
-    if not p.exists() and not p.parent.exists():
+    if (not p.exists() and not p.parent.exists()) or _support_absent(p):
         raise SupportIntrouvable(
             f"Le dossier de sauvegarde « {p} » est inaccessible : son support "
             "n'est pas monté. La clé USB ou le disque externe est-il branché ? "

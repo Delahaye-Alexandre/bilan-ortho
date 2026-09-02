@@ -286,3 +286,44 @@ def test_restauration_sidecars_residuels_purges(data_dir, monkeypatch):
     # rejouer et la lecture échouerait.
     with security.transaction() as con:
         assert con.execute("SELECT count(*) FROM sqlite_master").fetchone()[0] > 0
+
+
+# --- Verrouillage automatique ACTIF (revue 2026-08-11, 5.3) -----------------
+
+def test_verrouillage_inactivite_sans_aucune_requete(data_dir, monkeypatch):
+    """Sans requête, `enforce_inactivity()` n'était jamais appelé : un coffre
+    « verrouillé après 15 min » restait ouvert indéfiniment (portable en
+    veille). Le minuteur serveur doit verrouiller tout seul."""
+    import time
+
+    from app import security
+
+    monkeypatch.setattr(security, "_MINUTEUR_INTERVALLE_S", 0.05)
+    assert security.unlock(PASSPHRASE)
+    assert security._state["minuteur"] is not None
+    # Dernière activité simulée il y a un jour (délai par défaut : 15 min).
+    with security._lock:
+        security._state["last_activity"] = time.monotonic() - 86400
+    limite = time.monotonic() + 3
+    while security.is_unlocked() and time.monotonic() < limite:
+        time.sleep(0.02)
+    assert not security.is_unlocked()
+    assert security._state["minuteur"] is None
+
+
+def test_verrouillage_manuel_desarme_le_minuteur(data_dir, monkeypatch):
+    import time
+
+    from app import security
+
+    monkeypatch.setattr(security, "_MINUTEUR_INTERVALLE_S", 0.05)
+    assert security.unlock(PASSPHRASE)
+    security.lock()
+    assert security._state["minuteur"] is None
+    time.sleep(0.15)  # aucun tic tardif ne doit rouvrir quoi que ce soit ni planter
+    assert not security.is_unlocked()
+    # Un coffre actif (activité récente) n'est pas verrouillé par le minuteur.
+    assert security.unlock(PASSPHRASE)
+    time.sleep(0.15)
+    assert security.is_unlocked()
+    security.lock()

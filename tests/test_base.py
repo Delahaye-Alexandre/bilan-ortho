@@ -453,3 +453,32 @@ def test_update_section_rafraichit_updated_at_du_bilan(con):
     assert bilan.update_section(con, bid, "anamnese", "Texte relu.")
     maj = con.execute("SELECT updated_at FROM bilan WHERE id=?", (bid,)).fetchone()[0]
     assert maj != "2000-01-01 00:00:00"
+
+
+def test_sauvegarde_refusee_sur_support_debranche(tmp_path, monkeypatch):
+    """Revue 2026-08-11, 5.4 : « /mnt/usb » reste un répertoire vide quand la
+    clé est débranchée — le dossier de sauvegarde était alors créé sur le
+    disque interne, et l'app annonçait des copies hors machine qui n'en sont
+    jamais sorties."""
+    import os
+    from pathlib import Path
+
+    racine = tmp_path / "mnt"
+    (racine / "usb").mkdir(parents=True)
+    monkeypatch.setattr(sauvegarde, "_RACINES_SUPPORTS", (str(racine),))
+    cible = racine / "usb" / "bilan-ortho"
+    cfg = {"sauvegarde": {"dossier": str(cible)}}
+    with pytest.raises(sauvegarde.SupportIntrouvable):
+        sauvegarde.dossier(cfg)
+    assert not cible.exists()
+    # Le dossier configuré est le point de montage lui-même, débranché : idem.
+    with pytest.raises(sauvegarde.SupportIntrouvable):
+        sauvegarde.dossier({"sauvegarde": {"dossier": str(racine / "usb")}})
+    # Support monté : accepté, et le sous-dossier est créé.
+    monkeypatch.setattr(os.path, "ismount", lambda p: Path(p) == racine / "usb")
+    assert sauvegarde.dossier(cfg) == cible and cible.is_dir()
+    # Hors des racines de supports amovibles, rien ne change : un dossier dont
+    # le parent existe est créé comme avant.
+    (tmp_path / "disque").mkdir()
+    ailleurs = tmp_path / "disque" / "sauvegardes"
+    assert sauvegarde.dossier({"sauvegarde": {"dossier": str(ailleurs)}}) == ailleurs
