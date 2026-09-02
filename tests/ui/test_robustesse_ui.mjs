@@ -906,6 +906,46 @@ check("suppression confirmée : DELETE envoyé, écran vidé",
   bilanDeletes === 1 && __t.CUR === null
   && document.getElementById("curBilan").textContent.includes("supprimé"));
 
+// === 32. Ollama absent sur un coffre déjà créé (audit 08-11, 6.1) ===========
+// L'écran d'installation enfermait dehors une personne qui voulait seulement
+// rouvrir ou exporter un bilan, avec pour seule instruction de réinstaller 1 Go.
+statusResponder = () => ({ db_exists: true, unlocked: true, first_run: false, version: "1.8.0" });
+installResponder = () => ({ ollama: false, pret: false, config_lisible: false,
+                            modeles: [], proposition: { modele: "qwen3.5:4b", raison: "" } });
+await __t.gate();
+await settle();
+check("coffre existant + Ollama absent : l'installation ne bloque pas l'écran",
+  document.getElementById("installOverlay").hidden === true);
+check("… un bandeau nomme ce qui reste possible (consultation, export)",
+  document.getElementById("iaBanner").hidden === false
+  && document.getElementById("iaBannerTexte").textContent.includes("export"));
+check("… et le geste qui répare, pas une réinstallation",
+  document.getElementById("iaBannerTexte").textContent.includes("Lancez Ollama"));
+
+// Coffre verrouillé : le serveur lit les défauts, pas la config du praticien —
+// aucun « modèle manquant » ne doit être affirmé.
+document.getElementById("iaBanner").hidden = true;
+statusResponder = () => ({ db_exists: true, unlocked: false, first_run: false, version: "1.8.0" });
+installResponder = () => ({ ollama: true, pret: false, config_lisible: false,
+                            modeles: ["qwen3.5:4b"], embeddings_present: false,
+                            embeddings_configure: "nomic-embed-text",
+                            proposition: { modele: "qwen3.5:9b", raison: "" } });
+await __t.gate();
+await settle();
+check("coffre verrouillé : aucun modèle manquant n'est affirmé (config illisible)",
+  document.getElementById("iaBanner").hidden === true);
+overlay().hidden = true;
+
+// Premier lancement (aucun coffre) : l'écran guidé reste bloquant, à raison.
+statusResponder = () => ({ db_exists: false, unlocked: false, first_run: true, version: "1.8.0" });
+installResponder = () => ({ ollama: false, pret: false, config_lisible: false,
+                            modeles: [], proposition: { modele: "qwen3.5:4b", raison: "" } });
+await __t.gate();
+await settle();
+check("premier lancement : l'écran d'installation reste bloquant",
+  document.getElementById("installOverlay").hidden === false);
+document.getElementById("installOverlay").hidden = true;
+
 // === 2.4 (revue 2026-08-11) : une analyse en cours peut être annulée ========
 // Sans cela, la seule issue pendant les minutes d'attente était F5 — qui
 // perdait la dictée. L'annulation ferme la requête ; la dictée reste.

@@ -137,6 +137,11 @@
   ⚠️ Aide à la rédaction. L'IA <b>propose</b> ; vous <b>relisez, corrigez et validez</b> chaque rubrique.
   L'outil ne pose aucun diagnostic : vous restez responsable du contenu.
 </div>
+<div class="banner" id="iaBanner" hidden>
+  <span id="iaBannerTexte"></span>
+  <button class="ghost" id="iaBannerRevoir" style="margin-left:8px">Revérifier</button>
+  <button class="close" data-close="iaBanner" aria-label="Masquer cet avertissement" style="float:right">✕</button>
+</div>
 <div class="banner" id="majBanner" hidden>
   ⬆️ Nouvelle version disponible : <b>v<span id="majVersion"></span></b>
   (installée : v<span id="majActuelle"></span>).
@@ -583,7 +588,14 @@ async function gate() {
   if (s.version) document.getElementById('appVersion').textContent = 'v' + s.version;
   try {
     const inst = await (await api('/api/installation')).json();
-    if (!inst.pret) { showInstall(inst); return; }
+    // L'écran d'installation ne bloque qu'avant la création du coffre. Passé ce
+    // point, une personne qui veut simplement rouvrir ou exporter un bilan ne
+    // doit jamais être enfermée dehors parce qu'Ollama n'est pas (encore)
+    // remonté après un redémarrage : consultation et export n'en dépendent pas.
+    if (!inst.pret) {
+      if (!s.db_exists) { showInstall(inst); return; }
+      bandeauIA(inst);
+    }
   } catch {}
   if (s.unlocked) { startApp(); return; }
   overlay.hidden = false;
@@ -595,6 +607,37 @@ async function gate() {
 }
 
 // ---------- Première installation (Ollama + modèles) ----------
+// Bandeau non bloquant, sur un coffre déjà créé : on nomme ce qui ne marche
+// pas ET ce qui marche encore, avec le geste qui répare (« lancez Ollama »,
+// jamais « réinstallez »).
+function bandeauIA(inst) {
+  const b = document.getElementById('iaBanner');
+  const t = document.getElementById('iaBannerTexte');
+  if (!inst.ollama) {
+    t.textContent = '⚠️ Le moteur d\'IA local (Ollama) ne répond pas : la dictée et '
+      + 'l\'analyse sont indisponibles. La consultation, la modification et l\'export '
+      + 'de vos bilans fonctionnent normalement. Lancez Ollama, puis « Revérifier ».';
+  } else if (inst.config_lisible) {
+    const manquants = modelesManquants(inst);
+    if (!manquants.length) return;
+    t.textContent = `⚠️ Modèle(s) non installé(s) : ${manquants.join(', ')}. `
+      + 'L\'analyse restera indisponible tant qu\'ils ne sont pas téléchargés '
+      + '(⚙️ Paramètres → Assistant IA).';
+  } else {
+    // Coffre verrouillé : le serveur ne peut pas lire quel modèle est
+    // configuré. Ne rien affirmer plutôt que d'annoncer un faux manquant.
+    return;
+  }
+  b.hidden = false;
+}
+document.getElementById('iaBannerRevoir').addEventListener('click', async e => avecBouton(e.target, async () => {
+  try {
+    const inst = await (await api('/api/installation')).json();
+    document.getElementById('iaBanner').hidden = true;
+    if (!inst.pret) bandeauIA(inst);
+    initDictee(); loadLLM();
+  } catch {}
+}));
 let INST = null;
 function showInstall(inst) {
   INST = inst;

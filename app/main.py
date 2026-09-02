@@ -182,7 +182,13 @@ def _cfg_courante() -> dict:
 
 @app.get("/api/installation")
 async def etat_installation() -> dict:
-    return await run_in_threadpool(systeme.etat_installation, _cfg_courante())
+    etat = await run_in_threadpool(systeme.etat_installation, _cfg_courante())
+    # Coffre verrouillé : la config lue est celle des *défauts*, pas celle du
+    # praticien — le modèle « manquant » annoncé serait alors faux (et redemandé
+    # à chaque lancement). L'interface a besoin de le savoir pour ne rien
+    # affirmer qu'elle ne puisse vérifier.
+    etat["config_lisible"] = security.is_unlocked()
+    return etat
 
 
 @app.post("/api/installation/pull")
