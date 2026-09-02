@@ -124,13 +124,27 @@ def test_config_host_local_accepte(client):
     assert r.status_code == 200
 
 
-def test_hote_est_local():
+def test_hote_est_local(monkeypatch):
+    """La résolution DNS est simulée : la suite doit rester déterministe et
+    strictement hors ligne (un vrai `getaddrinfo` passait hors ligne par
+    accident, en échouant — revue 2026-08-11, 9.3)."""
+    table = {"mon-poste": ["127.0.0.1"], "ambigu": ["127.0.0.1", "192.0.2.10"]}
+
+    def faux_getaddrinfo(hote, *args, **kwargs):
+        if hote not in table:
+            raise config.socket.gaierror(-2, f"{hote} : nom inconnu (simulé)")
+        return [(None, None, None, None, (ip, 0)) for ip in table[hote]]
+
+    monkeypatch.setattr(config.socket, "getaddrinfo", faux_getaddrinfo)
     assert config.hote_est_local("")
     assert config.hote_est_local("http://127.0.0.1:11434")
     assert config.hote_est_local("http://localhost:11434")
     assert config.hote_est_local("http://[::1]:11434")
+    assert config.hote_est_local("http://mon-poste:11434")
     assert not config.hote_est_local("http://192.0.2.10")
     assert not config.hote_est_local("http://exfiltration.example")
+    # Un nom qui résout à la fois en local et ailleurs n'est pas local.
+    assert not config.hote_est_local("http://ambigu:11434")
 
 
 # --- Passphrase ---------------------------------------------------------------

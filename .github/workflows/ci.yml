@@ -162,6 +162,32 @@ jobs:
               throw "La dictée a échoué dans le binaire gelé (HTTP $code)."
             }
             Write-Host "Dictée OK : $(Get-Content $env:TEMP\transcribe.json)"
+            # Le binaire n'était sondé que sur l'API : si app/static sortait du
+            # spec PyInstaller, la CI restait verte et l'app livrée affichait une
+            # page blanche. Même angle mort pour l'export PDF (reportlab et ses
+            # polices .afm) et pour le pack d'exemples (importer.PACK_DIR en mode
+            # gelé) — revue 2026-08-11, 9.2.
+            $page = Invoke-WebRequest -Uri "http://127.0.0.1:8000/" -UseBasicParsing -TimeoutSec 10
+            if ($page.StatusCode -ne 200 -or $page.Content -notmatch "Bilan Ortho") {
+              throw "La page d'accueil du binaire gelé est vide ou absente."
+            }
+            $b = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/bilans" `
+              -ContentType "application/json" -Body '{"domaines":[]}'
+            $pdf = Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/bilans/$($b.id)/export?format=pdf" `
+              -UseBasicParsing -TimeoutSec 60
+            if ($pdf.StatusCode -ne 200 -or "$($pdf.Headers['Content-Type'])" -notmatch "pdf" -or $pdf.RawContentLength -lt 500) {
+              throw "L'export PDF a échoué dans le binaire gelé (HTTP $($pdf.StatusCode), $($pdf.RawContentLength) octets)."
+            }
+            Write-Host "Page et export PDF OK ($($pdf.RawContentLength) octets)"
+            # Sans Ollama, le pack répond 503 « embeddings indisponibles » : c'est
+            # la preuve que ses fichiers ont été trouvés. 500 = pack absent du build.
+            $codePack = & curl.exe -s -o "$env:TEMP\pack.json" -w "%{http_code}" `
+              -X POST http://127.0.0.1:8000/api/references/pack
+            if ($codePack -ne "503") {
+              Get-Content "$env:TEMP\pack.json" -ErrorAction SilentlyContinue
+              throw "Le pack d'exemples n'est pas résolu dans le binaire gelé (HTTP $codePack, attendu 503 sans Ollama)."
+            }
+            Write-Host "Pack d'exemples présent dans le binaire (503 attendu sans Ollama)"
           } finally {
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
           }

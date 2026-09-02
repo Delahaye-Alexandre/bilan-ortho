@@ -94,12 +94,6 @@ def hote_est_local(url: str) -> bool:
     )
 
 
-def audio_dir() -> Path:
-    d = data_dir() / "audio"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
 # --- Domaines d'intervention orthophonique (entité pivot) -------------------
 # Le domaine conditionne trame, tests, cotation et vocabulaire. Les trames et
 # catalogues de tests détaillés arrivent en Phase 3 (données dans data/).
