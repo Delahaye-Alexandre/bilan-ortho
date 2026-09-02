@@ -50,7 +50,7 @@ propriété de la licence.
 Bilan Ortho est une aide à la rédaction, pas un dispositif de diagnostic, et
 ses limites sont écrites noir sur blanc : une notice médico-légale publique
 accompagne le logiciel (`docs/notice-medico-legale.md`), chaque version est
-décrite dans un journal des modifications public, les modèles d'IA utilisés
+décrite dans un journal des modifications public (`CHANGELOG.md`), les modèles d'IA utilisés
 sont identifiés et à poids ouverts (open-weight), et le rythme de maintenance
 du projet est annoncé tel qu'il est, sans être surjoué.
 

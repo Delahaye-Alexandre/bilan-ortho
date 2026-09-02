@@ -209,6 +209,7 @@ bilan-ortho/
 ├── packaging/          # spec PyInstaller + installeur Inno Setup (Windows)
 ├── tests/              # pytest (hors ligne) + tests UI happy-dom (bun) dans ui/
 ├── lanceur.py          # point d'entrée natif (PyInstaller) : port, fenêtre, journal
+├── CHANGELOG.md        # journal des modifications, version par version
 ├── requirements.txt    # dépendances (souples) — versions figées : requirements-lock.txt
 └── run.sh
 ```
