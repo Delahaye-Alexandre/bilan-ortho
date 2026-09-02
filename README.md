@@ -35,7 +35,9 @@ ci-dessous.
 - **Patients** : fiche minimale (nom, prénom, date de naissance, sexe, notes),
   bilans rattachés, **âge calculé automatiquement** (transmis à l'IA pour les
   étalonnages — jamais l'identité) et porté sur les exports ; suppression d'un
-  patient = **effacement RGPD** complet (bilans en cascade).
+  patient = **effacement RGPD** : bilans, épreuves, prescriptions et extraits
+  de style rattachés. Les sauvegardes déjà écrites gardent le dossier jusqu'à
+  leur rotation, et l'app le dit au moment de supprimer.
 - **Dictée vocale locale** (faster-whisper, auto-adaptée à votre matériel) :
   l'audio est transcrit en local puis immédiatement supprimé.
 - **Structuration IA** (Ollama, local) : la dictée est répartie dans les
@@ -44,7 +46,8 @@ ci-dessous.
   test sans résultat…).
 - **Épreuves & scores** : catalogues de tests par domaine (11 domaines),
   interprétation automatique des étalonnages (écart-type, percentile, note
-  standard) selon **vos seuils**, phrases-types ajoutées au bilan.
+  standard) selon **vos seuils**, tableau des résultats dans le document
+  exporté.
 - **Votre style** : importez vos propres bilans (PDF natif, PDF scanné via OCR,
   texte) ; ils sont indexés localement (embeddings + sqlite-vec dans la base
   chiffrée) et réinjectés comme exemples de style à la rédaction. Des amorces
@@ -57,10 +60,12 @@ ci-dessous.
   ⚙️ Paramètres, et chaque export porte votre en-tête, la date du bilan, le
   médecin destinataire, un tableau des résultats d'épreuves et votre bloc de
   signature. Rien n'est inventé : sans identité renseignée, aucun en-tête.
-- **Aucun chiffre inventé, vérifié et non promis** : chaque nombre proposé par
-  l'IA est retracé jusqu'à votre dictée. Ceux qui ne s'y retrouvent pas — et
-  les percentiles impossibles — sont signalés rubrique par rubrique, à vous de
-  trancher. L'app ne corrige jamais un chiffre d'elle-même.
+- **Rien d'inventé sans que vous le sachiez** : chaque nombre et chaque nom de
+  test proposés par l'IA sont recherchés dans votre dictée. Ceux qui ne s'y
+  trouvent pas, les percentiles impossibles et les rubriques qui ne doivent
+  presque rien à ce que vous avez dit sont signalés rubrique par rubrique, et
+  ces signalements restent attachés au bilan tant que vous n'avez pas relu la
+  rubrique. L'app ne corrige jamais un chiffre d'elle-même : à vous de trancher.
 - **Tout est configurable** depuis l'écran ⚙️ Paramètres : modèles (LLM,
   dictée, embeddings), style (détail, vouvoiement, nb d'exemples), seuils,
   cotation, RGPD (verrouillage, durée de conservation — l'audio de dictée est,
@@ -73,7 +78,7 @@ ci-dessous.
 > Avec l'installeur Windows ci-dessus, tout ceci est automatique : passez
 > cette section, votre guide est [docs/guide-test.md](docs/guide-test.md).
 
-- Python 3.12+, [Ollama](https://ollama.com) lancé (`ollama serve`)
+- Python 3.11+, [Ollama](https://ollama.com) lancé (`ollama serve`)
 - Modèles Ollama :
   ```bash
   ollama pull qwen2.5:7b-instruct-q4_K_M   # LLM (défaut de la config, ~4 Go)
@@ -184,7 +189,7 @@ bilan-ortho/
 │   ├── main.py         # API FastAPI (bind localhost, TrustedHost)
 │   ├── security.py     # coffre, verrouillage, audit, purge RGPD
 │   ├── db.py           # schéma SQLCipher + sqlite-vec + migrations
-│   ├── config.py       # défauts + surcharges praticien (en base)
+│   ├── config.py       # défauts + surcharges de l'orthophoniste (en base)
 │   ├── models.py       # modèles Pydantic (validation des échanges)
 │   ├── systeme.py      # état machine (RAM, Ollama, modèles) — 1er lancement guidé
 │   ├── stt.py          # dictée locale (faster-whisper, auto-adaptative)
@@ -195,7 +200,7 @@ bilan-ortho/
 │   ├── sauvegarde.py   # copies chiffrées du coffre (VACUUM INTO, rotation)
 │   ├── catalogues.py   # tests étalonnés par domaine
 │   ├── cotation.py     # NGAP paramétrable
-│   ├── rag.py          # embeddings + recherche « style du praticien »
+│   ├── rag.py          # embeddings + recherche « votre style »
 │   ├── importer.py     # import PDF/OCR/.docx/texte → découpage → indexation
 │   ├── export.py       # PDF / Word / Markdown / texte (en-tête, tableau, signature)
 │   └── static/         # interface web (vanilla, servie par FastAPI)

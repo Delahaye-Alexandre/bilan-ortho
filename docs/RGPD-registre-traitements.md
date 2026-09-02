@@ -1,9 +1,15 @@
 # Registre des traitements — gabarit (RGPD art. 30)
 
-> À compléter et conserver par le praticien (responsable de traitement).
-> Ce gabarit ne vaut pas conseil juridique : faites-le valider par un DPO /
-> juriste santé avant tout usage sur de vrais patients, en particulier pour la
-> politique de consentement à l'enregistrement vocal.
+> À compléter et conserver par l'orthophoniste (responsable de traitement).
+> Ce gabarit ne vaut pas conseil juridique. Repère utile : un cabinet libéral
+> individuel n'a en principe **ni DPO obligatoire** (le traitement des données
+> de patients par un professionnel de santé exerçant seul n'est pas un
+> traitement « à grande échelle » — considérant 91 du RGPD) **ni AIPD
+> systématique** (liste CNIL des traitements dispensés, délibération
+> n° 2019-118). Faire relire par un DPO ou un juriste reste un conseil,
+> notamment pour l'information sur l'enregistrement vocal — pas une condition
+> d'usage. À vérifier pour votre situation (exercice en société, plusieurs
+> professionnels, autres traitements).
 
 ## 1. Responsable de traitement
 - Nom / cabinet : ……
@@ -16,7 +22,7 @@
 - **Catégories de personnes** : patients (et représentants légaux).
 - **Catégories de données** : identité, données de santé (bilan, tests,
   observations), éventuel **enregistrement vocal** (transcrit puis supprimé).
-- **Destinataires** : le praticien ; le médecin prescripteur (compte-rendu) ;
+- **Destinataires** : l'orthophoniste ; le médecin prescripteur (compte-rendu) ;
   le cas échéant, avec accord, école / MDPH.
 - **Sous-traitants** : **aucun** (traitement 100 % local, pas d'hébergeur tiers).
 - **Transferts hors UE** : **aucun**.
@@ -24,8 +30,14 @@
 ## 3. Durée de conservation
 - Bilans / dossiers de soins : selon les durées applicables aux dossiers de
   soins (à préciser). Paramétrable dans l'app (`rgpd.conservation_jours`).
-- **Audio brut** : supprimé après validation du texte (minimisation) —
-  `rgpd.audio_purge_apres_validation`.
+- **Audio brut** : supprimé dès la fin de la transcription, sans option ni
+  réglage (`app/stt.py::transcribe`). Le fichier transite par le répertoire
+  temporaire du système : un arrêt brutal en pleine transcription peut y
+  laisser un enregistrement — d'où l'intérêt d'un disque chiffré (§ 4).
+- **Sauvegardes chiffrées du coffre** : un dossier supprimé y subsiste jusqu'à
+  la rotation des copies (`sauvegarde.retention`, 10 par défaut). Effacement
+  différé admis pour les jeux de sauvegarde, à condition de le mentionner ici —
+  l'app le rappelle au moment de la suppression.
 
 ## 4. Mesures de sécurité (mises en œuvre par l'app)
 - **Chiffrement au repos** : base SQLCipher (AES-256), déverrouillage par
@@ -38,9 +50,11 @@
   mise à jour (`app/maj.py`) — un GET vers l'API GitHub Releases, déclenché
   manuellement ou via une option opt-in (désactivée par défaut), sans aucune
   donnée personnelle transmise.
-- À la charge du praticien : chiffrement du disque (LUKS/BitLocker), sauvegardes
+- À la charge de l'orthophoniste : chiffrement du disque (LUKS/BitLocker), sauvegardes
   chiffrées conservées hors du cabinet, antivirus/pare-feu à jour.
 
 ## 5. Droits des personnes
 Information des patients ; accès, rectification, effacement (fonctions d'export
-et de suppression prévues dans l'app).
+et de suppression prévues dans l'app). La suppression d'un patient emporte ses
+bilans, épreuves, prescriptions, dictées et les extraits de style qui lui sont
+rattachés (`app/patient.py::delete`).

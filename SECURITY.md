@@ -4,11 +4,11 @@
 
 ## Versions supportées
 
-Seule la **dernière release** publiée est supportée (actuellement **v1.5.0**). Les versions antérieures ne reçoivent pas de correctifs : mettez à jour vers la dernière release avant de signaler un problème.
+Seule la **dernière release** publiée est supportée (actuellement **v1.8.0**). Les versions antérieures ne reçoivent pas de correctifs : mettez à jour vers la dernière release avant de signaler un problème.
 
 | Version | Supportée |
 |---|---|
-| Dernière release (v1.5.0) | Oui |
+| Dernière release (v1.8.0) | Oui |
 | Versions antérieures | Non |
 
 ## Signaler une vulnérabilité
@@ -37,7 +37,7 @@ En trois points :
 
 - Les versions sont figées dans `requirements-lock.txt`, utilisé par la CI et le build (surveillé par Dependabot).
 - La **CI s'exécute sur chaque pull request** (lint, tests Python multi-versions et multi-OS, tests UI).
-- **Dependabot sera activé à la publication du dépôt** pour surveiller les dépendances.
+- **Dependabot est activé** (`.github/dependabot.yml`) : ses pull requests de mise à jour passent par la même CI.
 
 ## Remerciements
 

@@ -29,10 +29,10 @@ ruff check .
 
 ## Architecture
 
-Monolithe local-first : un serveur FastAPI (`app/main.py`, ~34 routes) sert un frontend single-page **sans framework ni build** (`app/static/index.html`, JS vanilla). Bind exclusif sur 127.0.0.1 ; aucune donnée ne quitte la machine — c'est l'argument central du produit, pas une préférence technique.
+Monolithe local-first : un serveur FastAPI (`app/main.py`, ~48 routes) sert un frontend single-page **sans framework ni build** (`app/static/index.html`, JS vanilla). Bind exclusif sur 127.0.0.1 ; aucune donnée ne quitte la machine — c'est l'argument central du produit, pas une préférence technique.
 
 - **Coffre chiffré** : toutes les données patient/bilan vivent dans une base SQLCipher (AES-256) **hors du dépôt** (`~/.local/share/bilan-ortho` ou `BILAN_ORTHO_DATA_DIR`). `security.py` est le portier : l'app est verrouillée tant que la passphrase n'est pas fournie, et les fonctions métier prennent une connexion chiffrée `con` en paramètre plutôt que d'ouvrir la leur.
-- **Chaîne IA 100 % locale** : `stt.py` (faster-whisper, l'audio est supprimé après transcription) → `prompts.py`/`llm.py` (Ollama) structure la dictée dans la trame réglementaire (arrêté du 25/07/2023) → `rag.py` réinjecte le style du praticien (embeddings + sqlite-vec, stockés dans la même base chiffrée) → `bilan.py` persiste → `export.py` (docx/md/txt).
+- **Chaîne IA 100 % locale** : `stt.py` (faster-whisper, l'audio est supprimé après transcription) → `prompts.py`/`llm.py` (Ollama) structure la dictée dans la trame réglementaire (arrêté du 25/07/2023) → `rag.py` réinjecte le style de l'orthophoniste (embeddings + sqlite-vec, stockés dans la même base chiffrée) → `bilan.py` persiste → `export.py` (pdf/docx/md/txt).
 - **Tout est config, rien en dur** : cotation NGAP (`cotation.py`), catalogues de tests (`catalogues.py`), trame des bilans et prompts sont éditables depuis l'écran Paramètres. Avant de coder une valeur clinique ou tarifaire, chercher où elle vit dans la config (`config.py`, deux niveaux : défauts + surcharge utilisateur).
 - **Points d'entrée** : `run.sh` (dev), `lanceur.py` (exe Windows PyInstaller, single-instance), `scripts/start-serveur.sh` (démarrage silencieux idempotent), `packaging/windows/build.sh`.
 

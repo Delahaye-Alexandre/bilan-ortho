@@ -11,7 +11,7 @@ Trois volets de recherche pour concevoir l'app pro d'aide à la rédaction de bi
 **Conséquence design "base de bilans de référence" :**
 - Socle sûr = **structure réglementaire officielle** (Légifrance, FNO, Collège Français d'Orthophonie, HAS) — réutilisable.
 - **+ Exemples rédigés que l'on écrit soi-même** (données fictives).
-- **+ Les propres bilans du praticien** (ses données, importés localement) → c'est là qu'est la vraie valeur du style.
+- **+ Les propres bilans de l'orthophoniste** (ses données, importés localement) → c'est là qu'est la vraie valeur du style.
 - **À NE PAS redistribuer :** trames d'auteurs (Orthonie, myCR, Scribd, myodefi, HappyNeuron…) — téléchargeables ≠ libres de droits.
 
 **Sources structure/cadre (réutilisables comme référence) :**
@@ -41,7 +41,7 @@ Trois volets de recherche pour concevoir l'app pro d'aide à la rédaction de bi
 
 ## VOLET 2 — Structure clinique réglementaire + tests
 
-**Cadre (juillet 2026, post-avenant 21 en vigueur depuis 23/02/2026) :** bilan = acte réservé sur prescription médicale → CRBO obligatoire → diagnostic orthophonique posé **en autonomie par le praticien** → CR adressé au médecin prescripteur (quelles que soient les conclusions) + DMP.
+**Cadre (juillet 2026, post-avenant 21 en vigueur depuis 23/02/2026) :** bilan = acte réservé sur prescription médicale → CRBO obligatoire → diagnostic orthophonique posé **en autonomie par l'orthophoniste** → CR adressé au médecin prescripteur (quelles que soient les conclusions) + DMP.
 
 **11 domaines (entité pivot du schéma) :** langage oral · langage écrit · parole/articulation/phonologie · cognition mathématique · communication & handicap/TSA · voix · déglutition/OMF · neuro acquise (aphasie/dysarthrie/neurodégénératif) · surdité · bégaiement/fluence · oralité alimentaire nourrisson. Le domaine conditionne tests, cotation, vocabulaire diagnostique, rubriques.
 
@@ -64,9 +64,9 @@ Trois volets de recherche pour concevoir l'app pro d'aide à la rédaction de bi
 - Nuance psychométrique à afficher : plusieurs batteries (ELO, N-EEL, EXALANG, L2MA-2) ne remplissent pas tous les critères psychométriques → contextualiser (date d'étalonnage, marge d'erreur).
 
 **Contraintes produit critiques (déontologie) :**
-- L'outil ne pose **JAMAIS** un diagnostic seul ni comme définitif → l'IA **propose**, le praticien **valide et signe**. Garde-fou UX explicite.
+- L'outil ne pose **JAMAIS** un diagnostic seul ni comme définitif → l'IA **propose**, l'orthophoniste **valide et signe**. Garde-fou UX explicite.
 - Exiger/enregistrer prescription (prescripteur + date + libellé). Cas dérogatoire : intervention sans prescription (établissements santé mentale, médico-social).
-- Secret professionnel (L4344-2 CSP) ; responsabilité pleine du praticien (L4341-9).
+- Secret professionnel (L4344-2 CSP) ; responsabilité pleine de l'orthophoniste (L4341-9).
 
 ---
 
@@ -87,10 +87,10 @@ Trois volets de recherche pour concevoir l'app pro d'aide à la rédaction de bi
 - Sécurité CNIL : chiffrement disque + sauvegardes, contrôle d'accès (mdp, verrouillage inactivité), journalisation, sauvegardes hors site.
 - Chiffrement base : **SQLCipher via `sqlcipher3-binary`** (PAS `pysqlcipher3` non maintenu) + LUKS/BitLocker disque.
 
-**RAG "apprendre du style du praticien" :**
+**RAG "apprendre du style de l'orthophoniste" :**
 - Embeddings : **`bge-m3` via Ollama** (`ollama pull bge-m3`, meilleure qualité FR + 1 seul runtime) ; alt : multilingual-e5-large.
 - Base vectorielle : **`sqlite-vec`** (mono-fichier, dans la même base SQLite chiffrée, + FTS5 pour hybride, mode WAL). Alt : LanceDB si gros volume.
 - OCR bilans scannés FR : **OCRmyPDF + Tesseract `fra`** par défaut → PaddleOCR pour scans dégradés.
-- Few-shot style transfer : découper les bilans par section + métadonnées (section, domaine) → au moment de rédiger, récupérer top-k (3-5) extraits du **même praticien**, même section, domaine proche, longueur comparable → injecter comme exemples dans le prompt Ollama. Pas de fine-tuning.
+- Few-shot style transfer : découper les bilans par section + métadonnées (section, domaine) → au moment de rédiger, récupérer top-k (3-5) extraits de la **même personne**, même section, domaine proche, longueur comparable → injecter comme exemples dans le prompt Ollama. Pas de fine-tuning.
 
 **Stack finale :** FastAPI (existant) + Ollama (LLM, déjà là) + faster-whisper (STT) + bge-m3 (embeddings) + sqlite-vec (dans base SQLCipher) + OCRmyPDF/Tesseract (OCR).
