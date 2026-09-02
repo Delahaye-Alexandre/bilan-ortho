@@ -45,6 +45,50 @@ def test_purge_conservation(data_dir):
         assert "purge_conservation" in actions
 
 
+def test_purge_conservation_emporte_identite_et_prescription(data_dir):
+    """Audit 2026-08-11 (3.3) : la purge détruisait le soin et gardait
+    l'identité — prescription et patient sont rattachés au patient, pas au
+    bilan. Un patient récent sans bilan, lui, doit rester."""
+    assert security.unlock(PASSPHRASE)
+    with security.transaction() as con:
+        pid = patient.create(con, "Durand", "Léa")
+        bid = bilan.create(con, [], "initial_simple", patient_id=pid,
+                           prescripteur="Bernard")
+        con.execute("UPDATE bilan SET updated_at = datetime('now','-40 days') WHERE id=?", (bid,))
+        con.execute("UPDATE patient SET created_at = datetime('now','-40 days') WHERE id=?", (pid,))
+        # Dossier ouvert hier, pas encore documenté : ne doit pas être emporté.
+        pid_neuf = patient.create(con, "Nouveau", "Cas")
+        config.ConfigStore(con).set_overrides({"rgpd": {"conservation_jours": 30}})
+    security.lock()
+    assert security.unlock(PASSPHRASE)
+    with security.transaction() as con:
+        assert bilan.get(con, bid) is None
+        assert patient.get(con, pid) is None
+        assert patient.get(con, pid_neuf) is not None
+        assert con.execute("SELECT count(*) FROM prescription").fetchone()[0] == 0
+
+
+def test_effacement_patient_emporte_ses_extraits_de_style(data_dir, mock_embed):
+    """Audit 2026-08-11 (3.2) : le texte intégral du bilan restait indexé après
+    un effacement RGPD — puis réinjectable dans le prompt d'un autre dossier."""
+    assert security.unlock(PASSPHRASE)
+    with security.transaction() as con:
+        pid = patient.create(con, "Durand", "Léa")
+        rag.add_reference(con, None, "import", "", "anamnese", "Anamnèse",
+                          "Texte du bilan de Léa.", fake_vec("x"), patient_id=pid)
+        rag.add_reference(con, None, "import", "", "anamnese", "Autre",
+                          "Bilan d'un patient externe.", fake_vec("y"))
+        assert rag.compter_par_patient(con, pid) == 1
+        assert patient.liste(con)[0]["nb_references"] == 1
+        assert patient.delete(con, pid)
+        restants = rag.liste(con)
+        assert len(restants) == 1 and restants[0]["titre"] == "Autre"
+        # L'index vectoriel suit : une table virtuelle n'a pas de cascade.
+        assert con.execute(
+            "SELECT count(*) FROM reference_embedding"
+        ).fetchone()[0] == 1
+
+
 def test_migration_v1_vers_v2_ajoute_le_rattachement(data_dir):
     """Un coffre créé avant le rattachement patient doit s'ouvrir et se migrer
     sans perte, dans une seule transaction."""

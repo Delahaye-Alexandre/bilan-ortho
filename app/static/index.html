@@ -174,7 +174,11 @@
 
     <label for="refFile">Mes bilans de référence</label>
     <div class="muted">Importez vos propres bilans : l'IA s'inspire de votre style (100 % local). Pour démarrer sans rien sous la main, chargez les bilans d'exemple (fictifs).</div>
+    <div class="muted" style="margin-top:6px">⚠️ Ces extraits seront relus par l'IA pendant la rédaction des bilans <b>d'autres patients</b>. L'app en retire automatiquement noms, dates, adresses et identifiants — une détection automatique n'est jamais complète : n'importez que des documents dont cet usage vous convient.</div>
     <input type="file" id="refFile" accept=".pdf,.docx,.odt,.txt,.md" style="margin-top:6px" />
+    <label for="refPatient" style="margin-top:6px">Patient d'origine (facultatif)</label>
+    <select id="refPatient"><option value="">Non précisé / patient externe</option></select>
+    <div class="muted">Le préciser permet d'effacer aussi ces extraits le jour où ce patient demande la suppression de ses données.</div>
     <div class="row" style="margin-top:6px"><button id="refImport" class="ghost" style="width:100%">Importer</button></div>
     <div class="row" style="margin-top:6px"><button id="refPack" class="ghost" style="width:100%">Charger les bilans d'exemple</button></div>
     <div id="refStatus" class="status"></div>
@@ -764,6 +768,15 @@ async function loadPatients() {
     sel.innerHTML = '<option value="">— sans patient —</option>' +
       PATIENTS.map(p => `<option value="${p.id}">${escapeHtml(patLabel(p))}</option>`).join('');
     if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+    // Même liste pour rattacher un bilan de référence à son patient d'origine
+    // (c'est ce lien qui permet de l'effacer avec le dossier, cf. RGPD).
+    const ref = document.getElementById('refPatient');
+    if (ref) {
+      const curRef = ref.value;
+      ref.innerHTML = '<option value="">Non précisé / patient externe</option>' +
+        PATIENTS.map(p => `<option value="${p.id}">${escapeHtml(patLabel(p))}</option>`).join('');
+      if ([...ref.options].some(o => o.value === curRef)) ref.value = curRef;
+    }
     renderPatList();
   } catch {}
 }
@@ -778,7 +791,18 @@ function renderPatList() {
   el.querySelectorAll('.delpat').forEach(x => x.addEventListener('click', async e => {
     e.preventDefault(); e.stopPropagation();
     const p = PATIENTS.find(q => q.id === +x.dataset.id);
-    if (!confirm(`Supprimer ${patLabel(p)} et TOUS ses bilans (${p.nb_bilans}) ?\nAction définitive (effacement RGPD).`)) return;
+    // Ce que l'effacement emporte, et ce qu'il n'emporte pas : la promesse
+    // « effacement complet » doit être exacte au moment où on la tient.
+    const refs = p.nb_references
+      ? `\n• ${p.nb_references} extrait(s) de style importé(s) et rattaché(s) à ce patient`
+      : '';
+    if (!confirm(
+      `Supprimer ${patLabel(p)} et TOUS ses bilans (${p.nb_bilans}) ?\n\n`
+      + `Sont effacés définitivement :\n`
+      + `• le dossier et ses ${p.nb_bilans} bilan(s), rubriques, épreuves et résultats\n`
+      + `• les prescriptions, envois et dictées associés${refs}\n\n`
+      + `Ne sont PAS effacés : vos sauvegardes déjà écrites, qui contiennent encore `
+      + `ce dossier jusqu'à leur rotation (⚙️ Paramètres → Sauvegarde).`)) return;
     try { await api('/api/patients/' + x.dataset.id, { method: 'DELETE' }); }
     catch (err) { $('patStatus').textContent = 'Erreur : ' + err.message; return; }
     if (CUR && CUR.patient_id === p.id) { CUR = null; renderBilan(); }
@@ -856,9 +880,18 @@ document.getElementById('refImport').addEventListener('click', e => avecBouton(e
   if (!f) { st.textContent = 'Choisissez un fichier.'; return; }
   st.textContent = 'Import & indexation locale…';
   const fd = new FormData(); fd.append('file', f); fd.append('domaine', document.getElementById('domaine').value || '');
+  const pid = document.getElementById('refPatient').value;
+  if (pid) fd.append('patient_id', pid);
   try {
     const r = await api('/api/references', { method: 'POST', body: fd });
-    const s = await r.json(); st.textContent = `✓ ${s.n} extrait(s) indexé(s)`;
+    const s = await r.json();
+    // Dire ce qui a été fait du document : ce qui a été caviardé, et le bloc
+    // d'identité écarté. Le praticien doit pouvoir vérifier, pas croire.
+    const details = [];
+    if (s.elements_caviardes) details.push(`${s.elements_caviardes} élément(s) identifiant(s) masqué(s)`);
+    if (s.extraits_ecartes) details.push(`${s.extraits_ecartes} bloc(s) d'en-tête écarté(s)`);
+    st.textContent = `✓ ${s.n} extrait(s) indexé(s)`
+      + (details.length ? ' — ' + details.join(', ') : '');
     document.getElementById('refFile').value = ''; loadRefs();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }));

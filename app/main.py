@@ -30,6 +30,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import (
     __version__,
+    anonymisation,
     bilan,
     catalogues,
     config,
@@ -761,9 +762,12 @@ async def put_statut(bilan_id: int, req: StatutPut) -> dict:
     with security.transaction() as con:
         if not bilan.set_statut(con, bilan_id, req.statut.value, req.destinataire):
             raise HTTPException(404, "Bilan introuvable.")
+        # Le nom du destinataire n'est pas journalisé : il reste dans la table
+        # `envoi`, qui suit le bilan à la suppression — contrairement à
+        # `audit_log`, qu'aucun effacement ne nettoie.
         security.audit(
             "statut", "bilan", bilan_id,
-            req.statut.value + (f" → {req.destinataire}" if req.destinataire else ""),
+            req.statut.value + (" → destinataire enregistré" if req.destinataire else ""),
         )
         return bilan.get(con, bilan_id)
 
@@ -887,9 +891,18 @@ async def export_bilan(
 
 # --- Base de bilans de référence (mémoire / style du praticien) -------------
 
+def _type_fichier(nom: str | None) -> str:
+    """Extension seule : le journal d'audit trace l'acte, jamais l'identité.
+
+    « bilan-DUPONT-Jean-2024.pdf » inscrivait le nom du patient dans
+    `audit_log`, table qu'aucune suppression ne nettoie."""
+    suffixe = Path(nom or "").suffix.lower()
+    return f"fichier {suffixe}" if suffixe else "fichier sans extension"
+
 @app.post("/api/references", dependencies=[Depends(require_unlock)])
 async def import_reference(
-    file: UploadFile = File(...), domaine: str = Form("")
+    file: UploadFile = File(...), domaine: str = Form(""),
+    patient_id: int | None = Form(None),
 ) -> dict:
     data = await file.read()
     if not data:
@@ -902,24 +915,56 @@ async def import_reference(
         chunks = await run_in_threadpool(importer.decouper, data, file.filename or "")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    # 1 bis. Le bloc qui précède le premier en-tête d'un vrai compte-rendu est
+    # son bloc d'identité (nom, naissance, adresse, prescripteur) — et il est
+    # exempté du filtre de rubrique à la sélection, donc réinjectable dans
+    # n'importe quel dossier. Le pack fictif l'écarte déjà : les imports du
+    # praticien le doivent d'autant plus. Un document non sectionné (extrait
+    # « global » unique) est conservé, sans quoi l'import ne donnerait rien.
+    utiles = [c for c in chunks if c[0] != "global"] or chunks
+    ecartes = len(chunks) - len(utiles)
+    # 1 ter. Pseudonymisation : ces extraits sont destinés à être relus par le
+    # modèle pendant la rédaction du bilan d'un AUTRE patient.
+    caviardes = 0
+    nettoyes = []
+    # Les noms sont relevés sur le document ENTIER, en-tête compris : c'est lui
+    # qui apprend que le prénom cité vingt lignes plus bas est celui du patient.
+    noms = anonymisation.noms_du_document("\n".join(c[2] for c in chunks))
+    for cle, titre, contenu in utiles:
+        texte, n = anonymisation.caviarder(contenu, noms)
+        caviardes += n
+        nettoyes.append((cle, titre, texte))
     # 2. Embeddings (réseau) hors verrou : la dictée et le keepalive
     #    continuent de répondre pendant l'indexation.
     try:
-        embs = [await rag.embed(contenu, cfg) for _, _, contenu in chunks]
+        embs = [await rag.embed(contenu, cfg) for _, _, contenu in nettoyes]
     except rag.EmbeddingUnavailable as exc:
         raise HTTPException(503, str(exc))
     # 3. Insertion rapide sous verrou.
     with security.transaction() as con:
-        for (cle, titre, contenu), emb in zip(chunks, embs):
-            rag.add_reference(con, None, "import", domaine, cle, titre, contenu, emb)
+        if patient_id and not patient.get(con, patient_id):
+            raise HTTPException(404, "Patient introuvable.")
+        for (cle, titre, contenu), emb in zip(nettoyes, embs):
+            rag.add_reference(
+                con, None, "import", domaine, cle, titre, contenu, emb,
+                patient_id=patient_id,
+            )
+        # Le nom du fichier est écarté du journal : « bilan-DUPONT-Jean.pdf »
+        # inscrivait l'identité du patient dans une table qu'aucune suppression
+        # ne nettoie.
         security.audit(
             "import_reference", "reference", None,
-            f"{len(chunks)} extraits · {file.filename}",
+            f"{len(nettoyes)} extraits · {_type_fichier(file.filename)} · "
+            f"{len(data) // 1024} Ko",
         )
     return {
-        "n": len(chunks),
-        "sections": [c[0] for c in chunks],
+        "n": len(nettoyes),
+        "sections": [c[0] for c in nettoyes],
         "filename": file.filename or "",
+        # Rendus à l'interface pour que le praticien sache ce qui a été fait de
+        # son document, plutôt que de l'apprendre dans la documentation.
+        "extraits_ecartes": ecartes,
+        "elements_caviardes": caviardes,
     }
 
 

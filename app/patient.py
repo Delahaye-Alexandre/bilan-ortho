@@ -73,9 +73,15 @@ def get(con, patient_id: int) -> dict | None:
 
 
 def liste(con) -> list[dict]:
-    """Patients + nombre de bilans rattachés (tri alphabétique)."""
+    """Patients + nombre de bilans et d'extraits de style rattachés.
+
+    Le décompte des extraits sert à annoncer exactement ce qu'un effacement
+    RGPD va emporter, avant de le déclencher."""
     return _dicts(con.execute(
-        "SELECT p.*, (SELECT count(*) FROM bilan b WHERE b.patient_id = p.id) AS nb_bilans "
+        "SELECT p.*, "
+        "(SELECT count(*) FROM bilan b WHERE b.patient_id = p.id) AS nb_bilans, "
+        "(SELECT count(*) FROM bilan_reference r WHERE r.patient_id = p.id) "
+        "AS nb_references "
         "FROM patient p ORDER BY p.nom COLLATE NOCASE, p.prenom COLLATE NOCASE"
     ))
 
@@ -95,6 +101,15 @@ def update(
 def delete(con, patient_id: int) -> bool:
     """Effacement RGPD : le patient ET tous ses bilans (cascade : sections,
     épreuves, résultats, dictées, cotations, envois, prescriptions,
-    consentements suivent via les clés étrangères)."""
+    consentements suivent via les clés étrangères).
+
+    Les extraits de style rattachés à ce patient partent aussi : la cascade ne
+    suffirait pas, car leur index vectoriel est une table virtuelle sans
+    contrainte de clé étrangère. Sans cela, l'app répondait « effacé » et le
+    texte intégral du bilan restait indexé — puis réinjectable dans le prompt
+    d'un autre dossier."""
+    from . import rag
+
+    rag.delete_par_patient(con, patient_id)
     cur = con.execute("DELETE FROM patient WHERE id=?", (patient_id,))
     return cur.rowcount > 0

@@ -68,15 +68,19 @@ def _ensure_table(con, dim: int) -> None:
 
 def add_reference(
     con, praticien_id, source: str, domaine: str, section_cle: str,
-    titre: str, texte: str, emb: list[float],
+    titre: str, texte: str, emb: list[float], patient_id: int | None = None,
 ) -> int:
     """Insère une référence + son vecteur. ``emb`` est calculé au préalable
-    (via :func:`embed`), hors transaction : ici, uniquement de la base."""
+    (via :func:`embed`), hors transaction : ici, uniquement de la base.
+
+    ``patient_id`` rattache l'extrait au dossier dont il provient, quand le
+    praticien l'indique : c'est ce qui permet à un effacement RGPD d'emporter
+    aussi le texte indexé."""
     _ensure_table(con, len(emb))
     rid = con.execute(
-        "INSERT INTO bilan_reference(praticien_id, source, domaine, section_cle, titre, texte) "
-        "VALUES(?,?,?,?,?,?)",
-        (praticien_id, source, domaine, section_cle, titre, texte),
+        "INSERT INTO bilan_reference(praticien_id, patient_id, source, domaine, "
+        "section_cle, titre, texte) VALUES(?,?,?,?,?,?,?)",
+        (praticien_id, patient_id, source, domaine, section_cle, titre, texte),
     ).lastrowid
     con.execute(
         "INSERT INTO reference_embedding(rowid, embedding) VALUES(?,?)",
@@ -137,9 +141,36 @@ def a_des_references(con) -> bool:
 
 def liste(con) -> list[dict]:
     return _dicts(con.execute(
-        "SELECT id, source, domaine, section_cle, titre, length(texte) AS taille, created_at "
+        "SELECT id, source, domaine, section_cle, titre, patient_id, "
+        "length(texte) AS taille, created_at "
         "FROM bilan_reference ORDER BY id DESC"
     ))
+
+
+def compter_par_patient(con, patient_id: int) -> int:
+    """Extraits de style rattachés à ce patient (pour l'annoncer avant un
+    effacement RGPD : le praticien perd aussi ces exemples de rédaction)."""
+    return con.execute(
+        "SELECT count(*) FROM bilan_reference WHERE patient_id=?", (patient_id,)
+    ).fetchone()[0]
+
+
+def delete_par_patient(con, patient_id: int) -> int:
+    """Supprime les extraits de style d'un patient effacé (RGPD).
+
+    La cascade de la clé étrangère suffirait pour `bilan_reference`, mais pas
+    pour l'index vectoriel `reference_embedding`, qui est une table virtuelle
+    sans contrainte : sans ce nettoyage, les vecteurs survivaient au texte."""
+    ids = [r[0] for r in con.execute(
+        "SELECT id FROM bilan_reference WHERE patient_id=?", (patient_id,)
+    ).fetchall()]
+    if not ids:
+        return 0
+    ph = ",".join("?" * len(ids))
+    con.execute(f"DELETE FROM bilan_reference WHERE id IN ({ph})", ids)
+    if _table_exists(con):
+        con.execute(f"DELETE FROM reference_embedding WHERE rowid IN ({ph})", ids)
+    return len(ids)
 
 
 def delete(con, ref_id: int) -> None:

@@ -526,6 +526,55 @@ def test_export_docx_reimportable(client, mock_embed):
     assert r.status_code == 200 and r.json()["n"] >= 1
 
 
+def test_import_reference_pseudonymise_et_ecarte_l_entete(client, mock_embed):
+    """Audit 2026-08-11 (3.1) : ces extraits sont relus par le modèle pendant
+    la rédaction du bilan d'un AUTRE patient. Le bloc d'identité en tête de
+    document (extrait « global », exempté du filtre de rubrique) ne doit pas y
+    entrer, et ce qui reste est caviardé."""
+    doc = (
+        "COMPTE RENDU\n"
+        "Patient : DURAND Léa, née le 12/03/2018\n"
+        "Adresse : 12 rue des Lilas, 44000 Nantes\n"
+        "Adressé par le Dr Bernard\n\n"
+        "Anamnèse\n"
+        "Léa est en CE1. Sa mère rapporte des difficultés depuis la GS.\n\n"
+        "Projet thérapeutique\n"
+        "Deux séances hebdomadaires."
+    )
+    r = client.post("/api/references",
+                    files={"file": ("bilan.txt", doc.encode(), "text/plain")})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["extraits_ecartes"] == 1 and "global" not in j["sections"]
+    assert j["elements_caviardes"] >= 1
+    textes = " ".join(x["titre"] + x["section_cle"] for x in client.get("/api/references").json())
+    assert "DURAND" not in textes
+    # Le journal d'audit ne porte pas le nom du fichier (il n'est nettoyé par
+    # aucune suppression).
+    with security.transaction() as con:
+        details = " ".join(
+            r[0] or "" for r in con.execute(
+                "SELECT details FROM audit_log WHERE action='import_reference'")
+        )
+    assert "bilan.txt" not in details and ".txt" in details
+
+
+def test_import_reference_rattache_a_un_patient(client, mock_embed):
+    p = client.post("/api/patients", json={"nom": "Durand"}).json()
+    r = client.post("/api/references",
+                    files={"file": ("ref.txt", b"Anamnese\nUn texte de style.", "text/plain")},
+                    data={"patient_id": str(p["id"])})
+    assert r.status_code == 200 and r.json()["n"] >= 1
+    assert client.get("/api/patients").json()[0]["nb_references"] >= 1
+    # Effacement RGPD : les extraits rattachés partent avec le dossier.
+    assert client.delete(f"/api/patients/{p['id']}").status_code == 200
+    assert client.get("/api/references").json() == []
+    # Patient inexistant : refus explicite plutôt qu'un rattachement fantôme.
+    assert client.post("/api/references",
+                       files={"file": ("ref.txt", b"Texte.", "text/plain")},
+                       data={"patient_id": "999"}).status_code == 404
+
+
 def test_import_binaire_rejete(client, mock_embed):
     # extension inconnue -> refus explicite
     r = client.post("/api/references",

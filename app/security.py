@@ -309,18 +309,50 @@ def bilans_a_purger(con) -> list[int]:
 def _purge_conservation(con) -> None:
     """Purge RGPD : supprime les bilans inactifs depuis plus de
     ``rgpd.conservation_jours`` jours (0 = conservation illimitée). Les
-    rubriques, épreuves, résultats et dictées suivent par cascade."""
+    rubriques, épreuves, résultats et dictées suivent par cascade.
+
+    Prescriptions et identités suivent explicitement : elles sont rattachées au
+    *patient*, pas au bilan, si bien que la purge détruisait le soin et gardait
+    l'identité — l'inverse exact de l'effet recherché. Un patient n'est
+    supprimé que s'il ne lui reste plus aucun bilan et qu'il a lui-même dépassé
+    le délai de conservation (sans quoi un dossier ouvert la veille, pas encore
+    documenté, partirait avec la purge)."""
     ids = bilans_a_purger(con)
     if not ids:
         return
     jours = int(config.ConfigStore(con).effective()["rgpd"]["conservation_jours"])
     trous = ",".join("?" * len(ids))  # identifiants entiers, jamais interpolés
+    # Les prescriptions sont relevées avant, supprimées après : tant que le
+    # bilan existe, il les référence (clé étrangère sans cascade).
+    prescriptions = [
+        r[0] for r in con.execute(
+            f"SELECT prescription_id FROM bilan WHERE id IN ({trous}) "
+            f"AND prescription_id IS NOT NULL",
+            ids,
+        )
+    ]
     con.execute(f"DELETE FROM bilan WHERE id IN ({trous})", ids)
+    if prescriptions:
+        ph = ",".join("?" * len(prescriptions))
+        con.execute(f"DELETE FROM prescription WHERE id IN ({ph})", prescriptions)
+    orphelins = [
+        r[0] for r in con.execute(
+            "SELECT p.id FROM patient p "
+            "LEFT JOIN bilan b ON b.patient_id = p.id "
+            "WHERE b.id IS NULL AND p.created_at < datetime('now', ?)",
+            (f"-{jours} days",),
+        )
+    ]
+    for pid in orphelins:
+        from . import patient as _patient
+
+        _patient.delete(con, pid)
     # Journaliser les identifiants, pas un décompte : la suppression définitive
     # de pièces du dossier de soins doit laisser une trace de CE QUI est parti.
     audit(
         "purge_conservation", "bilan", None,
-        f"{len(ids)} bilan(s) > {jours} j — n° " + ", ".join(str(i) for i in ids),
+        f"{len(ids)} bilan(s) > {jours} j — n° " + ", ".join(str(i) for i in ids)
+        + (f" ; {len(orphelins)} patient(s) sans bilan restant" if orphelins else ""),
     )
 
 

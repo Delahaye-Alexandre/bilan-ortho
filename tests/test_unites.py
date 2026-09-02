@@ -7,7 +7,16 @@ from io import BytesIO
 
 import pytest
 
-from app import config, cotation, export, importer, llm, prompts, verif_chiffres
+from app import (
+    anonymisation,
+    config,
+    cotation,
+    export,
+    importer,
+    llm,
+    prompts,
+    verif_chiffres,
+)
 from app import db as _db
 from app.bilan import (
     interpret_drapeau,
@@ -709,6 +718,49 @@ def test_chiffre_deja_present_dans_la_rubrique_reste_acceptable():
     assert verif_chiffres.chiffres_non_sources(
         "Rappelons l'âge de lecture de 7 ans.", ["âge de lecture : 7 ans"]
     ) == []
+
+
+# --- audit 2026-08-11, lot 3 : pseudonymisation des bilans importés ----------
+
+CR_REEL = """COMPTE RENDU DE BILAN ORTHOPHONIQUE
+
+Patient : DURAND Léa, née le 12/03/2018
+Adresse : 12 rue des Lilas, 44000 Nantes
+Téléphone : 02 40 12 34 56 — courriel : parents.durand@example.com
+N° sécurité sociale : 2 18 03 44 109 123 45
+Adressé par le Dr Bernard
+
+ANAMNÈSE
+Léa est en CE1. Mme Durand rapporte des difficultés depuis la GS.
+L'Alouette-R situe la lecture au 5e percentile (-2,1 ET).
+"""
+
+
+def test_caviardage_retire_l_identite_et_les_coordonnees():
+    """Ces extraits sont relus par le modèle pendant la rédaction du bilan d'un
+    AUTRE patient : le bloc d'identité ne doit pas pouvoir y revenir."""
+    out, n = anonymisation.caviarder(CR_REEL)
+    for fuite in ("DURAND", "Léa", "Durand", "Bernard", "12/03/2018", "Lilas",
+                  "02 40 12 34 56", "parents.durand@example.com"):
+        assert fuite not in out, fuite
+    assert n >= 8
+
+
+def test_caviardage_conserve_le_style_et_les_scores():
+    """Ce que l'extrait doit transmettre — tournures, structure, façon de
+    restituer un résultat — survit intact."""
+    out, _ = anonymisation.caviarder(CR_REEL)
+    assert "Alouette-R" in out and "5e percentile" in out and "-2,1 ET" in out
+    assert "ANAMNÈSE" in out and "rapporte des difficultés" in out
+
+
+def test_caviardage_suit_le_prenom_au_fil_du_texte():
+    """Le prénom cité dans le corps est reconnu grâce à l'en-tête, même quand
+    les deux sont traités séparément (l'en-tête étant écarté à l'import)."""
+    noms = anonymisation.noms_du_document(CR_REEL)
+    corps = "Léa se décourage vite ; Mme Durand s'inquiète."
+    out, _ = anonymisation.caviarder(corps, noms)
+    assert "Léa" not in out and "Durand" not in out
 
 
 # --- nettoyage du « Titre : » en tête de rubrique --------------------------------
