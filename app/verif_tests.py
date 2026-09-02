@@ -51,6 +51,26 @@ def variantes(nom: str) -> list[str]:
     return out
 
 
+_MOT_DU_NOM = re.compile(r"[^\W_]+")
+
+
+def nom_surveillable(nom: str) -> bool:
+    """Le libellé du catalogue a-t-il l'aspect d'un nom de test ?
+
+    Certaines entrées sont autant des tournures de compte-rendu que des noms
+    d'épreuves (« Fluences verbales », « Analyse acoustique ») : les surveiller
+    signalait une rédaction fidèle, et c'est le faux positif qui fait ignorer un
+    garde-fou. Critère volontairement large — chiffre, trait d'union, sigle, ou
+    mot unique — pour ne laisser sortir de la surveillance que les libellés
+    entièrement composés de mots courants."""
+    if any(c.isdigit() for c in nom) or "-" in nom:
+        return True
+    mots = _MOT_DU_NOM.findall(nom)
+    if len(mots) <= 1:
+        return True
+    return any(len(m) >= 2 and m.isupper() for m in mots)
+
+
 def _contient(texte_normalise: str, forme: str) -> bool:
     """Recherche bornée aux mots : « ELO » ne doit pas matcher « melon »."""
     return re.search(
@@ -87,15 +107,25 @@ def tests_non_sources(
     et cette reconnaissance-là est exactement ce que l'outil doit permettre."""
     p = normaliser(propose)
     src = normaliser(" ".join(s or "" for s in sources))
-    manquants: list[str] = []
+    # Indexé par la forme effectivement lue dans le texte proposé : deux entrées
+    # du catalogue peuvent recouvrir une seule citation (« EXALANG 3-6 » et
+    # « EXALANG 3-6 (phono) »), et deux alertes pour le même mot rendent le
+    # signalement illisible.
+    manquants: dict[str, str] = {}
     for nom in noms_connus:
-        if not any(_contient(p, f) for f in variantes(nom)):
+        if not nom_surveillable(nom):
+            continue
+        cite = next((f for f in variantes(nom) if _contient(p, f)), None)
+        if cite is None:
             continue
         if any(_contient(src, f) for f in formes_source(nom)):
             continue
-        if nom not in manquants:
-            manquants.append(nom)
-    return manquants
+        # À citation égale, on nomme le test sous son libellé le plus court :
+        # c'est celui que le praticien a sous les yeux dans le compte-rendu.
+        retenu = manquants.get(cite)
+        if retenu is None or len(normaliser(nom)) < len(normaliser(retenu)):
+            manquants[cite] = nom
+    return list(dict.fromkeys(manquants.values()))
 
 
 def signalements(

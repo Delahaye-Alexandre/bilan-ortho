@@ -130,10 +130,18 @@ def _parse_structure(raw: str) -> dict:
 def _liste_objets(brut, cle_valeur: str) -> list[dict]:
     """Normalise ce que le modèle a rendu en liste de dictionnaires.
 
-    Un modèle local rend parfois ``{"updates": {"anamnese": "texte"}}`` au lieu
-    d'une liste : l'ancien code levait alors une ``AttributeError`` non
-    rattrapée, donc un 500 opaque au praticien."""
+    Deux écarts fréquents chez un modèle local. La liste rendue comme un
+    mapping ``{"updates": {"anamnese": "texte"}}`` : l'ancien code levait alors
+    une ``AttributeError`` non rattrapée, donc un 500 opaque au praticien.
+    L'objet unique rendu sans sa liste ``{"section": "epreuves", "texte": "…"}``
+    : traité comme un mapping, il était éclaté clé par clé et rangeait le texte
+    clinique sous une rubrique « texte » qui n'existe dans aucune trame — la
+    rubrique réellement visée, elle, était perdue."""
     if isinstance(brut, dict):
+        # La présence de la clé de valeur signe l'objet unique : un mapping de
+        # rubriques a pour clés des noms de rubriques, jamais « texte ».
+        if isinstance(brut.get(cle_valeur), str):
+            return [brut]
         return [{"section": k, cle_valeur: v} for k, v in brut.items()]
     if not isinstance(brut, list):
         return []

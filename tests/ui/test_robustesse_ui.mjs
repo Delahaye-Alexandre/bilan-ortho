@@ -806,7 +806,12 @@ document.getElementById("newBilan").click();
 await settle();
 check("enregistrement en cours : changement de dossier refusé sans confirmation",
   bilanCreates === 0 && confirmCalls.length === 0
-  && document.getElementById("curBilan").textContent.includes("Arrêtez d'abord"));
+  && status().includes("Arrêtez d'abord"));
+// `#curBilan` porte l'identité du dossier ouvert : un message d'erreur ne doit
+// jamais la remplacer (on ne doit pas perdre de vue dans quel dossier on écrit).
+check("… et le dossier ouvert reste identifié dans l'en-tête",
+  /^#\S+/.test(document.getElementById("curBilan").textContent)
+  && !document.getElementById("curBilan").textContent.includes("Arrêtez"));
 document.getElementById("recBtn").click();
 await settle();
 document.getElementById("dicteeText").value = "";
@@ -977,6 +982,32 @@ document.getElementById("structBtn").click();
 await settle();
 check("analyse suivante menée à terme : « Annuler » disparaît", cancelBtn.hidden === true
   && !status().includes("annulée"));
+
+// Relance juste après « Annuler » : le serveur met quelques secondes à
+// constater la fermeture de la requête et à libérer la place (409 « déjà en
+// cours » entre-temps, vu en conditions réelles avec Chromium + Ollama). La
+// relance doit patienter et réessayer, pas afficher une erreur.
+document.getElementById("dicteeText").value = "dictée à relancer";
+holdNext = new Promise((r) => (libererAnalyse = r));
+document.getElementById("structBtn").click();
+await settle();
+cancelBtn.click();
+await settle();
+libererAnalyse(); holdNext = null;
+let refus = 2;
+const appelsAvant = structureCalls.length;
+structureResponder = () => refus-- > 0
+  ? { __status: 409, detail: "Une analyse est déjà en cours pour ce bilan." }
+  : { bilan: structuredClone(CUR0), questions: [] };
+document.getElementById("structBtn").click();
+await settle();
+check("relance après annulation : le 409 n'est pas montré comme une erreur",
+  !status().includes("Erreur") && status().includes("précédente"));
+await new Promise((r) => setTimeout(r, 2300));
+await settle();
+check("relance après annulation : réessayée jusqu'au succès",
+  structureCalls.length === appelsAvant + 3 && !status().includes("Erreur")
+  && !status().includes("précédente") && document.getElementById("structBtn").disabled === false);
 
 // === 2.5 (revue 2026-08-11) : 🔒 Verrouiller ne laisse rien à l'écran =======
 // Le rechargement déclenchait le dialogue natif « quitter le site ? » ; en

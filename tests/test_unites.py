@@ -996,3 +996,138 @@ def test_modeles_ollama_cloud_exclus():
     assert not systeme.nom_modele_cloud("qwen3.5:4b")
     assert not systeme.nom_modele_cloud("cloudy:7b")   # « cloud » n'est pas un suffixe
     assert not systeme.nom_modele_cloud("")
+
+
+# --- revue de code : correctifs des garde-fous et du caviardage ---------------
+#
+# Chaque test ci-dessous verrouille un défaut mesuré sur des entrées réelles :
+# les garde-fous et la pseudonymisation sont les deux endroits où une erreur
+# silencieuse part chez le prescripteur ou dans le corpus de style.
+
+def test_negation_courante_nest_pas_prise_pour_une_naissance():
+    """« ne le » n'est pas « né le » : la règle réécrivait toute négation en
+    date fictive et supprimait le mot suivant — dans un texte destiné à être
+    relu par le modèle comme exemple du style du praticien."""
+    for phrase in (
+        "Il ne le fait pas spontanément.",
+        "Elle ne le compense pas à l'écrit.",
+        "On ne en parle plus.",
+    ):
+        assert anonymisation.caviarder(phrase)[0] == phrase, phrase
+
+
+def test_date_de_naissance_part_toujours():
+    """Le correctif de la négation ne doit pas relâcher la règle utile."""
+    for phrase, reste in (
+        ("Née le 12/03/2018, elle est en CE1.", "Née le"),
+        ("Enfant né en 2015.", "né en"),
+    ):
+        out, _ = anonymisation.caviarder(phrase)
+        assert anonymisation.MARQUEUR_DATE in out, phrase
+        assert reste in out, phrase       # le participe reste tel qu'écrit
+        assert "2018" not in out and "2015" not in out
+
+
+def test_etiquette_ne_transforme_pas_un_mot_clinique_en_nom():
+    """« Enfant : scolarisée en CE2 » : le mot qui suit l'étiquette n'est un nom
+    que s'il porte une majuscule. Sans cela « scolarisée » était caviardé, puis
+    pourchassé comme patronyme dans tout le document."""
+    doc = "Enfant : scolarisée en CE2\n\nANAMNÈSE\nLéa est scolarisée en CE2."
+    noms = anonymisation.noms_du_document(doc)
+    assert "scolarisée" not in noms and "arrivée" not in noms
+    assert anonymisation.caviarder(doc, noms)[0].count("scolarisée") == 2
+
+
+def test_etiquette_suivie_d_un_vrai_nom_reste_caviardee():
+    """Le correctif ne doit pas ouvrir de fuite sur la forme utile."""
+    out, _ = anonymisation.caviarder("Patient : Léa Durand\nPrénom : Léa")
+    assert "Léa" not in out and "Durand" not in out
+
+
+def test_caviardage_conserve_titres_composes_et_noms_de_tests():
+    """Les suites de capitales emportaient « COMPTE-RENDU » (mot composé, testé
+    d'un seul bloc) et les noms de tests du catalogue — c'est-à-dire ce que
+    l'extrait a précisément vocation à transmettre."""
+    doc = ("COMPTE-RENDU DE BILAN ORTHOPHONIQUE\n"
+           "L'ALOUETTE-R et l'EXALANG 8-11 ont été proposés.")
+    out, _ = anonymisation.caviarder(doc)
+    assert "COMPTE-RENDU" in out
+    assert "ALOUETTE-R" in out and "EXALANG" in out
+
+
+def test_patronyme_en_capitales_part_toujours():
+    """L'exemption des titres et des tests ne doit rien relâcher sur les noms."""
+    assert "DURAND" not in anonymisation.caviarder("DURAND MARTIN")[0]
+
+
+@pytest.mark.parametrize(
+    "mots, attendu",
+    [
+        ("un virgule quinze", "1.15"),
+        ("douze virgule cinquante", "12.5"),
+        ("zéro virgule douze", "0.12"),
+        ("trois virgule quatorze", "3.14"),
+        ("zéro virgule zéro cinq", "0.05"),
+        ("deux virgule vingt-cinq", "2.25"),
+        ("moins deux virgule cinq", "-2.5"),
+    ],
+)
+def test_decimales_dictees_en_mots(mots, attendu):
+    """Un mot vaut son propre nombre de rangs (« quinze » → 15 → deux rangs) et
+    « zéro » en décale un de plus. Compter un rang par mot faisait ressortir
+    « un virgule quinze » à 2,5 : le score réellement dicté était alors signalé
+    comme absent de la dictée."""
+    assert attendu in verif_chiffres.valeurs_numeriques(mots)
+
+
+def test_score_decimal_dicte_en_un_seul_mot_nest_pas_signale():
+    assert verif_chiffres.chiffres_non_sources(
+        "Score de 1,15 ET, note de 12,50.",
+        ["le score est de un virgule quinze écart-type, note douze virgule cinquante"],
+    ) == []
+
+
+def test_locution_pour_cent_ninjecte_pas_de_valeur():
+    """« quatre-vingts pour cent » ne contient pas la valeur 100 : l'y lire
+    blanchissait un « 100 % » inventé par le modèle."""
+    assert verif_chiffres.valeurs_numeriques(
+        "il réussit à quatre-vingts pour cent des items") == {"80"}
+    assert "100" in verif_chiffres.valeurs_numeriques("cent pour cent des items")
+
+
+def test_update_rendue_comme_objet_unique_est_conservee():
+    """Certains modèles locaux rendent l'objet seul au lieu de la liste : il
+    était éclaté clé par clé, et le texte clinique atterrissait sous une
+    rubrique « texte » qui n'existe pas."""
+    r = llm._parse_structure(
+        '{"updates":{"section":"epreuves","texte":"Alouette-R : 5e percentile."},'
+        '"questions":{"section":"anamnese","question":"Quel âge ?",'
+        '"pourquoi":"situer"}}'
+    )
+    assert r["updates"] == [
+        {"section": "epreuves", "texte": "Alouette-R : 5e percentile."}
+    ]
+    assert r["questions"] == [
+        {"section": "anamnese", "question": "Quel âge ?", "pourquoi": "situer"}
+    ]
+
+
+def test_libelle_clinique_generique_nest_pas_surveille_comme_un_test():
+    """« Fluences verbales » est une tournure de compte-rendu autant qu'une
+    entrée de catalogue : la surveiller signalait une rédaction fidèle."""
+    assert verif_tests.tests_non_sources(
+        "Les fluences verbales sont déficitaires.",
+        ["les fluences en P et en animaux sont chutées"], NOMS_TESTS,
+    ) == []
+    assert not verif_tests.nom_surveillable("Analyse acoustique")
+    assert verif_tests.nom_surveillable("EVALEO 6-15")
+    assert verif_tests.nom_surveillable("Vineland")
+
+
+def test_une_seule_alerte_par_test_cite():
+    """« EXALANG 3-6 » et « EXALANG 3-6 (phono) » sont deux entrées de catalogue
+    pour une seule citation : deux alertes pour le même mot rendent le
+    signalement illisible."""
+    assert verif_tests.tests_non_sources(
+        "L'EXALANG 3-6 a été proposé.", ["rien de tel"], NOMS_TESTS,
+    ) == ["EXALANG 3-6"]

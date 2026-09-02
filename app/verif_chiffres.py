@@ -65,6 +65,10 @@ def _sans_dates(texte: str) -> str:
 
 # Mots qui *modifient* le nombre suivant sans en faire partie.
 _NEGATIFS = {"moins", "-"}
+# « pour cent » (et « pour mille ») est une locution, pas une valeur : lire
+# 100 dans « quatre-vingts pour cent » ajoutait aux sources un nombre jamais
+# dicté, qui blanchissait ensuite un « 100 % » inventé par le modèle.
+_AVANT_LOCUTION = {"pour"}
 
 
 def _sans_accents(s: str) -> str:
@@ -132,6 +136,11 @@ def _nombres_en_mots(texte: str) -> set[str]:
         if jetons[i] not in _MOTS_NOMBRE:
             i += 1
             continue
+        # « … pour cent » : le multiplicateur ouvre une locution, pas un
+        # nombre. « cent pour cent » garde bien son premier « cent ».
+        if jetons[i] in _MULTIPLICATEURS and i > 0 and jetons[i - 1] in _AVANT_LOCUTION:
+            i += 1
+            continue
         # Groupe de mots-nombres, en sautant les liants « et » / « - ».
         groupe: list[str] = []
         j = i
@@ -153,10 +162,18 @@ def _nombres_en_mots(texte: str) -> set[str]:
                 k += 1
             if decimales:
                 frac = _valeur_mots(decimales)
-                # Un mot = un chiffre après la virgule : « zéro cinq » → 0,05,
-                # « vingt-cinq » → 0,25. Compter les décimales sur la *valeur*
-                # (comme avant) rendait « zéro virgule zéro cinq » = 0,5.
-                entier += frac / (10 ** len(decimales))
+                # Chaque mot pèse son propre nombre de rangs — « quinze » en
+                # vaut deux, « cinq » un seul — et un « zéro » de tête en
+                # décale un de plus. Compter un rang par mot faisait ressortir
+                # « un virgule quinze » à 2,5 ; les compter sur la seule valeur
+                # faisait de « zéro virgule zéro cinq » un 0,5.
+                zeros = 0
+                for mot in decimales:
+                    if mot != "zero":
+                        break
+                    zeros += 1
+                rangs = zeros + len(str(int(abs(frac))))
+                entier += frac / (10 ** rangs)
                 j = k
         negatif = i > 0 and jetons[i - 1] in _NEGATIFS
         valeurs.add(_canonique(-entier if negatif else entier))

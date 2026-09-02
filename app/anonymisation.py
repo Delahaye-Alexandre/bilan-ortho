@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import re
 
+from .verif_chiffres import _sans_accents
+
 MARQUEUR_NOM = "[NOM]"
 MARQUEUR_DATE = "[DATE]"
 
@@ -35,6 +37,15 @@ _ETIQUETTES = (
     r"adressé par|adresse par|nom de naissance)"
 )
 _MOT_PROPRE = r"[A-ZÀ-Ý][\w'’\-]+"
+# Ce qui peut légitimement suivre « né le » / « née en » : un marqueur déjà
+# posé par les règles précédentes, ou une date encore en clair. Volontairement
+# borné — c'est en avalant n'importe quel mot suivant (`\S+`) que la règle
+# détruisait les phrases.
+_APRES_NAISSANCE = (
+    rf"(?:{re.escape(MARQUEUR_DATE)}"
+    rf"|\d[\w/-]*(?:[ \t]+(?:{_MOIS}))?(?:[ \t]+\d{{2,4}})?"
+    rf"|(?:{_MOIS})[ \t]+\d{{2,4}})"
+)
 
 # (motif, remplacement) — l'ordre compte : les identifiants d'abord, les noms
 # ensuite (une civilité peut précéder une adresse).
@@ -58,10 +69,20 @@ _REGLES: list[tuple[re.Pattern[str], str]] = [
     # « Mme Durand », « Dr Bernard-Martin ».
     (re.compile(rf"\b{_CIVILITES}[ \t]+{_MOT_PROPRE}(?:[ \t]+{_MOT_PROPRE})?"), MARQUEUR_NOM),
     # « Nom : DURAND », « Patient : Léa Durand », « adressé par Dr … ».
-    (re.compile(rf"\b({_ETIQUETTES})[ \t]*:[ \t]*{_MOT_PROPRE}(?:[ \t-]{_MOT_PROPRE})?", re.I),
+    # `re.I` ne porte que sur l'étiquette : appliqué à tout le motif, il rendait
+    # `_MOT_PROPRE` insensible à la casse, si bien que « Enfant : scolarisée en
+    # CE2 » caviardait « scolarisée » — puis la pourchassait comme patronyme
+    # dans tout le document (cf. `noms_du_document`).
+    (re.compile(rf"\b((?i:{_ETIQUETTES}))[ \t]*:[ \t]*{_MOT_PROPRE}"
+                rf"(?:[ \t-]{_MOT_PROPRE})?"),
      r"\1 : " + MARQUEUR_NOM),
-    # « né le … », « née à … » : le participe reste, l'information part.
-    (re.compile(r"\bn[ée]e?\s+(?:le|en)\s+\S+", re.I), "né(e) le " + MARQUEUR_DATE),
+    # « né le … », « née en … » : le participe reste tel qu'il est écrit,
+    # l'information part. Le « e » accentué (ou doublé) est exigé : avec
+    # `n[ée]e?` et `re.I`, « ne le » — « il ne le fait pas » — était réécrit en
+    # date de naissance et le mot suivant supprimé, dans un texte destiné à
+    # être relu par le modèle comme exemple du style du praticien.
+    (re.compile(rf"\b(n(?:ée?|ee)[ \t]+(?:le|en)[ \t]+){_APRES_NAISSANCE}", re.I),
+     r"\1" + MARQUEUR_DATE),
 ]
 
 # Suites de capitales : un nom de famille s'écrit souvent « DURAND » dans un
@@ -81,10 +102,43 @@ _CAPITALES_ATTENDUES = {
 }
 
 
+# Une suite de capitales se découpe sur les espaces ET les traits d'union :
+# testé d'un seul bloc, « COMPTE-RENDU » n'était reconnu ni comme « COMPTE »
+# ni comme « RENDU », et le titre du document partait en [NOM].
+_SEPARATEUR_MOTS = re.compile(r"[^A-Z0-9]+")
+
+
+def _mots_attendus() -> set[str]:
+    """Mots qu'une suite de capitales peut légitimement contenir.
+
+    Aux libellés de rubriques s'ajoutent les noms de tests du catalogue : un
+    compte-rendu écrit « L'ALOUETTE-R » ou « EXALANG », et c'est justement ce
+    que l'extrait a vocation à transmettre — les caviarder revenait à retirer
+    du corpus de style ce qui en fait la valeur clinique.
+
+    Import tardif : `catalogues` remonte à `config`, que ce module n'a aucune
+    raison de charger au moment de son propre import."""
+    from . import catalogues
+
+    attendus = {_sans_accents(m).upper() for m in _CAPITALES_ATTENDUES}
+    for nom in catalogues.tous_les_noms():
+        attendus.update(
+            m for m in _SEPARATEUR_MOTS.split(_sans_accents(nom).upper()) if m
+        )
+    return attendus
+
+
 def _caviarder_capitales(texte: str) -> str:
+    attendus = _mots_attendus()
+
     def remplacer(m: re.Match[str]) -> str:
-        mots = m.group(0).split()
-        if all(mot.strip("-'’") in _CAPITALES_ATTENDUES for mot in mots):
+        # Comparaison sans accents : selon la source, le document écrit
+        # « ÉPREUVES » ou « EPREUVES » pour la même rubrique.
+        mots = [x for x in _SEPARATEUR_MOTS.split(_sans_accents(m.group(0)).upper()) if x]
+        # Une lettre isolée n'identifie personne : c'est l'article élidé happé
+        # par l'apostrophe (« L'ALOUETTE-R ») ou l'indice de version d'un test.
+        porteurs = [mot for mot in mots if len(mot) > 1]
+        if porteurs and all(mot in attendus for mot in porteurs):
             return m.group(0)
         # Un sigle isolé de 3-4 lettres est plus souvent clinique que nominatif.
         if len(mots) == 1 and len(mots[0]) <= 4:
@@ -99,7 +153,8 @@ def _caviarder_capitales(texte: str) -> str:
 # citée dix lignes plus bas au fil du texte, est elle aussi un prénom.
 _SOURCES_DE_NOMS = [
     re.compile(rf"\b{_CIVILITES}[ \t]+({_MOT_PROPRE}(?:[ \t]+{_MOT_PROPRE})?)"),
-    re.compile(rf"\b{_ETIQUETTES}[ \t]*:[ \t]*({_MOT_PROPRE}(?:[ \t-]{_MOT_PROPRE})?)", re.I),
+    re.compile(rf"\b(?i:{_ETIQUETTES})[ \t]*:[ \t]*"
+               rf"({_MOT_PROPRE}(?:[ \t-]{_MOT_PROPRE})?)"),
 ]
 # Mots qui suivent parfois une civilité ou une étiquette sans être des noms.
 _PAS_DES_NOMS = {
@@ -115,6 +170,11 @@ def noms_du_document(texte: str) -> set[str]:
         for m in motif.finditer(texte):
             for mot in re.split(r"[\s-]+", m.group(1)):
                 mot = mot.strip("'’-")
+                # Ceinture et bretelles : un mot qui ne commence pas par une
+                # majuscule n'est pas un nom, et le prendre pour tel le fait
+                # remplacer partout ailleurs dans le document.
+                if not mot[:1].isupper():
+                    continue
                 if len(mot) >= 3 and mot not in _PAS_DES_NOMS:
                     noms.add(mot)
     return noms
