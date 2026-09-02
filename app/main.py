@@ -357,6 +357,36 @@ async def prompt_structure_defaut() -> dict:
     return {"prompt": prompts.STRUCTURE_SYSTEM.replace("{{", "{").replace("}}", "}")}
 
 
+# --- Bornes des corps envoyés ------------------------------------------------
+# Les deux routes d'envoi de fichier lisaient tout le corps en mémoire sans
+# plafond (revue 2026-08-11, 5.5). Un enregistrement WAV 16 kHz mono pèse
+# ~2 Mo/min : 30 minutes de dictée (défaut de `rgpd.dictee_max_minutes`)
+# tiennent largement sous 100 Mo. Un compte-rendu scanné en PDF dépasse
+# rarement quelques dizaines de Mo.
+TAILLE_MAX_AUDIO = 100 * 1024 * 1024
+TAILLE_MAX_DOCUMENT = 50 * 1024 * 1024
+_BLOC_LECTURE = 1024 * 1024
+
+
+async def _lire_borne(upload: UploadFile, max_octets: int, quoi: str) -> bytes:
+    """Lit un fichier envoyé par blocs et refuse (413) au-delà de `max_octets`,
+    sans jamais garder en mémoire plus que le plafond."""
+    morceaux: list[bytes] = []
+    total = 0
+    while True:
+        bloc = await upload.read(_BLOC_LECTURE)
+        if not bloc:
+            break
+        total += len(bloc)
+        if total > max_octets:
+            raise HTTPException(
+                413,
+                f"{quoi} trop volumineux (plus de {max_octets // (1024 * 1024)} Mo).",
+            )
+        morceaux.append(bloc)
+    return b"".join(morceaux)
+
+
 # --- Abandon d'une analyse par le navigateur ---------------------------------
 # Fréquence à laquelle on regarde si le navigateur a fermé la requête pendant
 # que le modèle travaille.
@@ -403,7 +433,7 @@ async def stt_info() -> dict:
 
 @app.post("/api/transcribe", dependencies=[Depends(require_unlock)])
 async def transcribe(audio: UploadFile = File(...)) -> dict:
-    data = await audio.read()
+    data = await _lire_borne(audio, TAILLE_MAX_AUDIO, "Enregistrement audio")
     if not data:
         raise HTTPException(400, "Audio vide.")
     with security.transaction() as con:
@@ -947,7 +977,7 @@ async def import_reference(
     file: UploadFile = File(...), domaine: str = Form(""),
     patient_id: int | None = Form(None),
 ) -> dict:
-    data = await file.read()
+    data = await _lire_borne(file, TAILLE_MAX_DOCUMENT, "Document")
     if not data:
         raise HTTPException(400, "Fichier vide.")
     with security.transaction() as con:

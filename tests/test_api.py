@@ -1143,6 +1143,42 @@ def test_stt_info(client):
     assert {"device", "compute_type", "model"} <= set(info)
 
 
+# --- Bornes des corps envoyés (revue 2026-08-11, 5.5) -----------------------
+
+def test_transcribe_audio_trop_volumineux_refuse(client, monkeypatch):
+    """Le corps est lu par blocs et refusé (413) dès que le plafond est
+    dépassé : rien n'est transmis au moteur de dictée."""
+    from app import main as main_mod
+    from app import stt
+
+    monkeypatch.setattr(main_mod, "TAILLE_MAX_AUDIO", 2048)
+    monkeypatch.setattr(main_mod, "_BLOC_LECTURE", 512)
+    appels = []
+    monkeypatch.setattr(stt, "transcribe", lambda *a: appels.append(a) or {"text": ""})
+    gros = b"\0" * 4096
+    r = client.post("/api/transcribe", files={"audio": ("d.webm", gros, "audio/webm")})
+    assert r.status_code == 413
+    assert "trop volumineux" in r.json()["detail"]
+    assert appels == []
+    # sous le plafond : accepté normalement
+    r = client.post("/api/transcribe", files={"audio": ("d.webm", b"\0" * 1000, "audio/webm")})
+    assert r.status_code == 200 and len(appels) == 1
+
+
+def test_import_reference_trop_volumineux_refuse(client, monkeypatch, mock_embed):
+    from app import importer
+    from app import main as main_mod
+
+    monkeypatch.setattr(main_mod, "TAILLE_MAX_DOCUMENT", 1024)
+    appels = []
+    monkeypatch.setattr(importer, "decouper", lambda *a: appels.append(a) or [])
+    r = client.post(
+        "/api/references",
+        files={"file": ("bilan.txt", b"x" * 4096, "text/plain")},
+        data={"domaine": ""},
+    )
+    assert r.status_code == 413
+    assert appels == []
 # --- Abandon d'une analyse par le navigateur (revue 2026-08-11, 2.4) --------
 
 def test_analyse_abandonnee_quand_le_navigateur_ferme_la_requete(monkeypatch):
