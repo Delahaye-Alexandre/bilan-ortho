@@ -357,6 +357,14 @@ def migrate(con) -> None:
             f"Schéma de coffre version {v} inattendu (application : {SCHEMA_VERSION}). "
             "Ce coffre a été créé par une version plus récente de l'application."
         )
+    # Les tables absentes sont créées AVANT les étapes (CREATE TABLE IF NOT
+    # EXISTS : sans effet sur un coffre complet). Le déverrouillage d'un coffre
+    # existant ne rejoue jamais init_schema : une table apparue après la
+    # création du coffre n'existait donc jamais, et une étape qui la modifie
+    # (`ALTER TABLE bilan_reference`) rendait le coffre inouvrable — avec, en
+    # prime, le message « espace disque insuffisant » du gestionnaire global.
+    # Hors transaction : executescript commet ce qui est en attente.
+    con.executescript(_SCHEMA)
     a_jour = (
         "patient_id" in _colonnes(con, "bilan_reference")
         and "signalements" in _colonnes(con, "section")

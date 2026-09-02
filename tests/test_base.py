@@ -455,6 +455,26 @@ def test_update_section_rafraichit_updated_at_du_bilan(con):
     assert maj != "2000-01-01 00:00:00"
 
 
+def test_migration_cree_les_tables_absentes_du_coffre(data_dir):
+    """Un coffre v1 auquel il manque une table entière (ancienne installation,
+    base reconstruite) doit s'ouvrir : la migration crée les tables manquantes
+    avant ses étapes, au lieu d'échouer sur `ALTER TABLE` d'une table absente
+    et de laisser le coffre définitivement inouvrable."""
+    chemin = config.db_path()
+    con = db.connect(chemin, PASSPHRASE)
+    db.init_schema(con)
+    con.execute("DROP TABLE bilan_reference")
+    con.execute("PRAGMA user_version = 1")
+    con.commit()
+    con.close()
+
+    assert security.unlock(PASSPHRASE)
+    with security.transaction() as con2:
+        assert con2.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
+        cols = {r[1] for r in con2.execute("PRAGMA table_info(bilan_reference)")}
+        assert "patient_id" in cols
+
+
 def test_sauvegarde_refusee_sur_support_debranche(tmp_path, monkeypatch):
     """Revue 2026-08-11, 5.4 : « /mnt/usb » reste un répertoire vide quand la
     clé est débranchée — le dossier de sauvegarde était alors créé sur le

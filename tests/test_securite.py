@@ -26,6 +26,52 @@ def test_host_local_accepte(client):
     assert client.get("/api/status", headers={"Host": "127.0.0.1:8000"}).status_code == 200
 
 
+# --- CSRF : requêtes modifiantes émises depuis une page tierce ----------------
+
+def test_csrf_origine_externe_refusee(client):
+    """Le scénario de l'audit 2026-08-11 : un onglet piégé boucle sur
+    /api/sauvegarde et remplace tout l'historique par des copies de l'instant.
+    L'en-tête Origin est le seul élément que la page tierce ne peut pas mentir."""
+    r = client.post("/api/sauvegarde", headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
+    assert "externe" in r.json()["detail"]
+
+
+def test_csrf_toutes_les_routes_modifiantes(client):
+    """Le contrôle ne dépend d'aucune liste de routes : il porte sur la méthode."""
+    externe = {"Origin": "https://evil.example"}
+    assert client.post("/api/bilans", json={}, headers=externe).status_code == 403
+    assert client.put("/api/config", json={"overrides": {}}, headers=externe).status_code == 403
+    assert client.delete("/api/config", headers=externe).status_code == 403
+    assert client.post("/api/lock", headers=externe).status_code == 403
+
+
+def test_csrf_referer_externe_refuse(client):
+    """Repli sur Referer quand Origin manque (navigateurs anciens)."""
+    r = client.post("/api/sauvegarde", headers={"Referer": "https://evil.example/piege.html"})
+    assert r.status_code == 403
+
+
+def test_csrf_origine_locale_acceptee(client):
+    """L'application, servie depuis 127.0.0.1, n'est jamais gênée."""
+    for origine in ("http://127.0.0.1:8000", "http://localhost:8000", "http://[::1]:8000"):
+        r = client.put("/api/config", json={"overrides": {}}, headers={"Origin": origine})
+        assert r.status_code == 200, origine
+
+
+def test_csrf_lecture_non_bloquee(client):
+    """Les requêtes de lecture ne sont pas concernées : la réponse reste
+    illisible pour une page tierce (aucun en-tête CORS n'est émis)."""
+    r = client.get("/api/status", headers={"Origin": "https://evil.example"})
+    assert r.status_code == 200
+
+
+def test_csrf_sans_en_tete_accepte(client):
+    """Un client hors navigateur (script local, test) n'envoie pas d'Origin."""
+    assert client.get("/api/status").status_code == 200
+    assert client.put("/api/config", json={"overrides": {}}).status_code == 200
+
+
 # --- C5 : validation des surcharges ------------------------------------------
 
 def test_config_chaine_numerique_coercee(client):

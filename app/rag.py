@@ -10,6 +10,7 @@ import httpx
 import sqlite_vec
 
 from .db import dicts as _dicts
+from .systeme import nom_modele_cloud
 
 
 class EmbeddingUnavailable(RuntimeError):
@@ -23,6 +24,12 @@ async def embed(text: str, cfg: dict) -> list[float]:
     l'event loop — il doit être fait HORS de ``security.transaction()``
     pour ne jamais geler le serveur sous le verrou global (audit C3)."""
     e = cfg["embeddings"]
+    if nom_modele_cloud(e["model"]):
+        raise EmbeddingUnavailable(
+            f"Modèle d'embeddings « {e['model']} » hébergé sur Internet : refusé, "
+            "les données patient ne quittent pas la machine. Choisissez un modèle "
+            "local (⚙️ Paramètres)."
+        )
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             r = await client.post(

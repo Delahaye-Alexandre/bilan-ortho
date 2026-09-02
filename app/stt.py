@@ -18,8 +18,15 @@ import subprocess
 import tempfile
 import threading
 
+import av
+
 _lock = threading.Lock()
 _cache: dict = {"model": None, "spec": None}
+
+
+class AudioIllisible(ValueError):
+    """L'enregistrement reçu n'est pas décodable (fichier tronqué, format
+    inattendu) : c'est un problème du fichier envoyé, pas du modèle."""
 
 
 class STTUnavailable(RuntimeError):
@@ -107,13 +114,18 @@ def transcribe(audio_bytes: bytes, filename: str, cfg: dict) -> dict:
         tmp.write(audio_bytes)
         tmp.flush()
         tmp.close()
-        segments, info = model.transcribe(
-            tmp.name,
-            language=stt.get("language", "fr"),
-            vad_filter=stt.get("vad", True),
-            beam_size=int(stt.get("beam_size", 5)),
-            hotwords=hotwords,
-        )
+        try:
+            segments, info = model.transcribe(
+                tmp.name,
+                language=stt.get("language", "fr"),
+                vad_filter=stt.get("vad", True),
+                beam_size=int(stt.get("beam_size", 5)),
+                hotwords=hotwords,
+            )
+        except av.error.InvalidDataError as exc:
+            # Le décodage (PyAV/ffmpeg) refuse le fichier lui-même : rien à
+            # voir avec l'installation du modèle, le message doit le dire.
+            raise AudioIllisible(str(exc)) from exc
         text = "".join(seg.text for seg in segments).strip()
         text = _apply_corrections(text, stt.get("corrections", {}))
         return {

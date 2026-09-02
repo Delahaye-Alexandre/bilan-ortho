@@ -13,6 +13,7 @@ import sqlite3
 import threading
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 import httpx
 import sqlcipher3
@@ -26,6 +27,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import (
@@ -114,6 +116,60 @@ app.add_middleware(
     TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"]
 )
 
+# Anti-CSRF. Une page tierce ouverte dans un autre onglet peut émettre vers
+# 127.0.0.1 des requêtes dites « simples » (POST en text/plain ou multipart) :
+# elles ne déclenchent pas de contrôle préalable du navigateur, et la session
+# étant ici un état du serveur — pas un cookie — elles arrivent authentifiées.
+# La réponse reste illisible pour la page tierce (aucun en-tête CORS émis) :
+# le risque n'est pas l'exfiltration mais la destruction (une boucle sur
+# POST /api/sauvegarde remplaçait tout l'historique par dix copies de l'état
+# courant). On refuse donc toute requête modifiante dont l'origine déclarée
+# n'est pas la machine locale. Les clients hors navigateur (tests, scripts)
+# n'envoient ni Origin ni Referer : ils restent acceptés.
+METHODES_MODIFIANTES = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+HOTES_LOCAUX = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def origine_locale(valeur: str) -> bool:
+    """Vrai si l'URL déclarée par le navigateur désigne bien cette machine."""
+    try:
+        u = urlparse(valeur)
+    except ValueError:  # en-tête malformé
+        return False
+    return u.scheme in ("http", "https") and (u.hostname or "") in HOTES_LOCAUX
+
+
+class AntiCSRF:
+    """Middleware ASGI « pur », volontairement pas un `@app.middleware("http")`
+    (BaseHTTPMiddleware) : celui-ci s'interpose sur le canal de réception et
+    masque la fermeture de la requête par le navigateur à
+    `request.is_disconnected()`. L'abandon d'analyse (bouton « Annuler »,
+    `_jusqu_au_depart_du_client`) ne voyait alors jamais le départ du
+    navigateur : l'analyse « annulée » continuait jusqu'au bout, gardait sa
+    place (409 « déjà en cours » à la relance) et persistait son résultat."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["method"] in METHODES_MODIFIANTES:
+            en_tetes = Headers(scope=scope)
+            declaree = en_tetes.get("origin") or en_tetes.get("referer")
+            if declaree and not origine_locale(declaree):
+                logger.warning("Requête modifiante refusée (origine %s)", declaree)
+                refus = JSONResponse(
+                    status_code=403,
+                    content={"detail": "Requête refusée : elle provient d'une page "
+                                       "externe. Utilisez l'application depuis sa "
+                                       "propre fenêtre."},
+                )
+                await refus(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(AntiCSRF)
+
 # La passphrase est l'unique rempart du chiffrement du coffre : longueur
 # minimale exigée à la création (les coffres existants restent ouvrables).
 PASSPHRASE_MIN = 12
@@ -197,6 +253,12 @@ async def pull_modele(req: dict) -> StreamingResponse:
     nom = (req or {}).get("modele", "")
     if not systeme.nom_modele_valide(nom):
         raise HTTPException(400, "Nom de modèle invalide.")
+    if systeme.nom_modele_cloud(nom):
+        raise HTTPException(
+            400,
+            f"« {nom} » est un modèle hébergé par Ollama sur Internet : il est "
+            "refusé, les données patient ne quittent pas la machine.",
+        )
     host = _cfg_courante()["llm"].get("host") or "http://localhost:11434"
 
     async def relais():
@@ -442,6 +504,13 @@ async def transcribe(audio: UploadFile = File(...)) -> dict:
         result = await run_in_threadpool(stt.transcribe, data, audio.filename or "", cfg)
     except stt.STTUnavailable as exc:
         raise HTTPException(503, str(exc))
+    except stt.AudioIllisible as exc:
+        logger.warning("Audio de dictée illisible : %s", exc)
+        raise HTTPException(
+            400,
+            "Enregistrement audio illisible (fichier tronqué ou format non "
+            "reconnu). Réenregistrez votre dictée.",
+        )
     except Exception as exc:
         # Jamais la trace technique (HuggingFace, ffmpeg…) dans l'interface :
         # elle part dans le journal, l'UI reçoit un message simple.
@@ -645,15 +714,25 @@ async def structure_bilan(bilan_id: int, req: StructureRequest, request: Request
             raise HTTPException(409, "Une analyse est déjà en cours pour ce bilan.")
         _analyses_en_cours.add(bilan_id)
     try:
-        return await _structurer(bilan_id, req, b, cfg, request)
+        # Toute l'analyse est surveillée, pas seulement l'appel au modèle : le
+        # calcul d'embedding qui le précède peut durer plusieurs secondes (carte
+        # graphique partagée entre deux modèles), et un « Annuler » pendant ce
+        # temps n'était vu qu'après — la place restait prise et la relance
+        # recevait 409.
+        return await _jusqu_au_depart_du_client(
+            request, _structurer(bilan_id, req, b, cfg)
+        )
+    except AnalyseAbandonnee:
+        # Personne n'écoute plus la réponse : on journalise l'abandon et on
+        # sort sans rien écrire. 499 = « client closed request ».
+        logger.info("Analyse du bilan %s abandonnée par le navigateur", bilan_id)
+        raise HTTPException(499, "Analyse annulée.")
     finally:
         with _analyses_lock:
             _analyses_en_cours.discard(bilan_id)
 
 
-async def _structurer(
-    bilan_id: int, req: StructureRequest, b: dict, cfg: dict, request: Request,
-) -> dict:
+async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) -> dict:
     # Texte de ce tour (dictée + réponses) : sert à retrouver des extraits proches.
     texte_tour = " ".join(
         [req.transcription.strip()]
@@ -701,24 +780,26 @@ async def _structurer(
     if p.get("sexe"):
         patient_desc += (", " if patient_desc else "") + f"sexe : {p['sexe']}"
     try:
-        result = await _jusqu_au_depart_du_client(request, llm.structure(
+        result = await llm.structure(
             req.transcription, b["sections"], b["domaines"], cfg,
             style_examples=style, patient_desc=patient_desc,
             reponses=[r.model_dump() for r in req.reponses],
             questions_en_attente=req.questions_en_attente,
             questions_ecartees=req.questions_ecartees,
             questions_repondues=req.questions_repondues,
-        ))
-    except AnalyseAbandonnee:
-        # Personne n'écoute plus la réponse : on journalise l'abandon et on
-        # sort sans rien écrire. 499 = « client closed request ».
-        logger.info("Analyse du bilan %s abandonnée par le navigateur", bilan_id)
-        raise HTTPException(499, "Analyse annulée.")
+        )
     except llm.ModeleIntrouvable as exc:
         raise HTTPException(
             503,
             f"Le modèle « {exc} » n'est pas téléchargé. Ouvrez ⚙️ Paramètres → "
             "Modèles pour le télécharger.",
+        )
+    except llm.ModeleCloud as exc:
+        raise HTTPException(
+            400,
+            f"Le modèle « {exc} » est hébergé par Ollama sur Internet : il est "
+            "refusé, les données patient ne quittent pas la machine. Choisissez "
+            "un modèle local (⚙️ Paramètres).",
         )
     except httpx.TimeoutException:
         raise HTTPException(
@@ -783,10 +864,10 @@ async def _structurer(
         # Les avertissements suivent le texte qu'ils concernent, dans le coffre :
         # ils doivent survivre à un F5, à un verrouillage d'inactivité et à un
         # changement de dossier — c'est là qu'on revient relire « à valider ».
-        par_section = {c["section"]: c["signalements"] for c in rubriques_a_verifier}
-        for u in result["updates"]:
-            bilan.set_signalements(con, bilan_id, u["section"],
-                                   par_section.get(u["section"], []))
+        # Complétés, jamais remplacés : le texte signalé au tour précédent est
+        # toujours dans la rubrique (apply_updates concatène).
+        for c in rubriques_a_verifier:
+            bilan.ajouter_signalements(con, bilan_id, c["section"], c["signalements"])
         security.audit(
             "structure", "bilan", bilan_id,
             f"{len(result['updates'])} maj, {len(result['questions'])} questions"

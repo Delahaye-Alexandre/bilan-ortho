@@ -16,6 +16,7 @@ from app import (
     importer,
     llm,
     prompts,
+    systeme,
     verif_chiffres,
     verif_tests,
     verif_texte,
@@ -971,3 +972,27 @@ def test_dictee_courte_ne_declenche_pas_de_faux_signal():
 def test_couverture_somme_toutes_les_rubriques():
     updates = [{"texte": "x" * 400}, {"texte": "y" * 400}, {"texte": "z" * 400}]
     assert llm.couverture_suspecte(DICTEE_LONGUE, updates) is False
+
+
+# --- modèles Ollama hébergés (« cloud ») --------------------------------------
+
+def test_modeles_ollama_cloud_exclus():
+    """Les modèles hébergés par Ollama sur Internet (« :cloud », « -cloud »,
+    ou remote_host dans /api/tags) ne sont jamais proposés : la dictée
+    patient partirait chez ollama.com."""
+    tags = {"models": [
+        {"name": "qwen3.5:4b"},
+        {"name": "glm-5.2:cloud", "remote_host": "https://ollama.com:443",
+         "remote_model": "glm-5.2"},
+        {"name": "gpt-oss:120b-cloud"},
+        {"name": "ancien:cloud"},              # vieil Ollama, sans remote_host
+        {"name": "nomic-embed-text:latest"},
+    ]}
+    assert systeme.modeles_locaux(tags) == ["qwen3.5:4b", "nomic-embed-text:latest"]
+    assert systeme.modeles_locaux({}) == []
+    assert systeme.nom_modele_cloud("glm-5.2:cloud")
+    assert systeme.nom_modele_cloud("gpt-oss:120b-cloud")
+    assert systeme.nom_modele_cloud(" GLM-5.2:CLOUD ")
+    assert not systeme.nom_modele_cloud("qwen3.5:4b")
+    assert not systeme.nom_modele_cloud("cloudy:7b")   # « cloud » n'est pas un suffixe
+    assert not systeme.nom_modele_cloud("")

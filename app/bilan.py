@@ -182,6 +182,27 @@ def set_signalements(con, bilan_id: int, cle: str, messages: list[str]) -> None:
     )
 
 
+def ajouter_signalements(con, bilan_id: int, cle: str, messages: list[str]) -> None:
+    """Ajoute des avertissements à ceux déjà portés par la rubrique.
+
+    `apply_updates` concatène le texte proposé au texte existant : un chiffre
+    inventé au tour N reste dans la rubrique au tour N+1. Remplacer la liste
+    (au lieu de la compléter) effaçait l'avertissement dès que le fragment
+    suivant était propre — et la rubrique redevenait alors une « source »
+    légitime pour les tours d'après. Les avertissements ne disparaissent qu'à
+    l'enregistrement par l'orthophoniste (`update_section`)."""
+    if not messages:
+        return
+    row = con.execute(
+        "SELECT signalements FROM section WHERE bilan_id=? AND cle=?", (bilan_id, cle),
+    ).fetchone()
+    if not row:
+        return
+    anciens = json.loads(row[0]) if row[0] else []
+    fusion = anciens + [m for m in messages if m not in anciens]
+    set_signalements(con, bilan_id, cle, fusion)
+
+
 def get(con, bilan_id: int) -> dict | None:
     rows = _dicts(con.execute("SELECT * FROM bilan WHERE id=?", (bilan_id,)))
     if not rows:

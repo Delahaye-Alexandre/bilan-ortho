@@ -19,9 +19,35 @@ RAM_MINIMALE_GIO = 7.0          # en dessous : app déconseillée
 
 _NOM_MODELE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,80}$")
 
+# Ollama sait aussi « installer » des modèles hébergés chez ollama.com
+# (suffixe « :cloud » ou « -cloud » ; champs remote_host / remote_model dans
+# /api/tags) : le prompt — donc la dictée patient — partirait sur Internet.
+# Ils sont exclus partout : liste proposée, configuration, téléchargement,
+# appel.
+_SUFFIXE_CLOUD_RE = re.compile(r"[:-]cloud$", re.IGNORECASE)
+
 
 def nom_modele_valide(nom: str) -> bool:
     return bool(_NOM_MODELE_RE.match(nom or ""))
+
+
+def nom_modele_cloud(nom: str) -> bool:
+    """Vrai si le nom désigne un modèle hébergé par Ollama sur Internet."""
+    return bool(_SUFFIXE_CLOUD_RE.search((nom or "").strip()))
+
+
+def modeles_locaux(tags: dict) -> list[str]:
+    """Noms des modèles d'une réponse /api/tags qui s'exécutent sur cette
+    machine ; les entrées hébergées sont écartées."""
+    noms = []
+    for m in tags.get("models") or []:
+        nom = m.get("name") or m.get("model") or ""
+        if not nom or m.get("remote_host") or m.get("remote_model"):
+            continue
+        if nom_modele_cloud(nom):
+            continue
+        noms.append(nom)
+    return noms
 
 
 def ram_totale_gio() -> float:
@@ -86,8 +112,7 @@ def ollama_etat(cfg: dict) -> dict:
     try:
         r = httpx.get(f"{host}/api/tags", timeout=2)
         r.raise_for_status()
-        modeles = [m["name"] for m in r.json().get("models", [])]
-        return {"ok": True, "modeles": modeles}
+        return {"ok": True, "modeles": modeles_locaux(r.json())}
     except Exception:
         return {"ok": False, "modeles": []}
 

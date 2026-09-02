@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .systeme import nom_modele_cloud
+
 
 class BilanType(str, Enum):
     initial_simple = "initial_simple"
@@ -87,6 +89,17 @@ class _SectionPatch(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+def _exiger_modele_local(v: str | None) -> str | None:
+    """Un modèle Ollama « cloud » (glm-5.2:cloud, gpt-oss:120b-cloud…) est
+    exécuté chez ollama.com : la dictée patient partirait sur Internet."""
+    if v is not None and nom_modele_cloud(v):
+        raise ValueError(
+            "modèle hébergé par Ollama sur Internet (« cloud ») : refusé, les "
+            "données patient ne quittent pas la machine"
+        )
+    return v
+
+
 class LlmPatch(_SectionPatch):
     model: str | None = None
     temperature: float | None = Field(None, ge=0, le=2)
@@ -96,6 +109,7 @@ class LlmPatch(_SectionPatch):
     max_car_section: int | None = Field(None, ge=100)
 
     _host_local = field_validator("host")(_exiger_hote_local)
+    _modele_local = field_validator("model")(_exiger_modele_local)
 
 
 class EmbeddingsPatch(_SectionPatch):
@@ -103,6 +117,7 @@ class EmbeddingsPatch(_SectionPatch):
     host: str | None = None
 
     _host_local = field_validator("host")(_exiger_hote_local)
+    _modele_local = field_validator("model")(_exiger_modele_local)
 
 
 class SttPatch(_SectionPatch):

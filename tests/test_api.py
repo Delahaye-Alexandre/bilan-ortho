@@ -1179,6 +1179,8 @@ def test_import_reference_trop_volumineux_refuse(client, monkeypatch, mock_embed
     )
     assert r.status_code == 413
     assert appels == []
+
+
 # --- Abandon d'une analyse par le navigateur (revue 2026-08-11, 2.4) --------
 
 def test_analyse_abandonnee_quand_le_navigateur_ferme_la_requete(monkeypatch):
@@ -1248,3 +1250,213 @@ def test_structure_route_ne_sonde_pas_le_client_si_le_modele_repond(client, monk
     assert r.status_code == 200
     sections = {s["cle"]: s for s in r.json()["bilan"]["sections"]}
     assert "lecture lente" in sections["anamnese"]["contenu"]
+
+
+# --- modèles Ollama hébergés (« cloud ») --------------------------------------
+# Ollama liste dans /api/tags des modèles exécutés chez ollama.com : la dictée
+# patient partirait sur Internet. Ils sont invisibles et refusés partout.
+
+class _ClientInterdit:
+    """httpx.AsyncClient de remplacement : tout appel réseau est une faute."""
+
+    def __init__(self, *a, **k):
+        raise AssertionError("appel réseau interdit pour un modèle hébergé")
+
+
+def test_config_refuse_un_modele_cloud(client):
+    for section in ("llm", "embeddings"):
+        r = client.put(
+            "/api/config", json={"overrides": {section: {"model": "glm-5.2:cloud"}}}
+        )
+        assert r.status_code == 422, section
+        assert "quittent pas la machine" in r.text
+    assert client.get("/api/config").json()["llm"]["model"] != "glm-5.2:cloud"
+
+
+def test_pull_refuse_un_modele_cloud(client):
+    r = client.post("/api/installation/pull", json={"modele": "gpt-oss:120b-cloud"})
+    assert r.status_code == 400
+    assert "Internet" in r.json()["detail"]
+
+
+def test_appels_ollama_refusent_un_modele_cloud(monkeypatch):
+    """Défense en profondeur : même présent dans une ancienne configuration,
+    un modèle hébergé n'est jamais appelé — aucun octet ne part."""
+    import asyncio
+
+    import pytest
+
+    monkeypatch.setattr(llm.httpx, "AsyncClient", _ClientInterdit)
+    with pytest.raises(llm.ModeleCloud):
+        asyncio.run(llm.chat_json("système", "dictée", model="glm-5.2:cloud"))
+    with pytest.raises(rag.EmbeddingUnavailable, match="Internet"):
+        asyncio.run(rag.embed("dictée", {
+            "embeddings": {"model": "embed:cloud", "host": "http://127.0.0.1:11434"},
+        }))
+
+
+def test_structure_modele_cloud_400(client, monkeypatch, mock_embed):
+    async def refuse(*a, **k):
+        raise llm.ModeleCloud("glm-5.2:cloud")
+
+    monkeypatch.setattr(llm, "structure", refuse)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.status_code == 400
+    assert "Internet" in r.json()["detail"]
+
+
+def test_list_models_ecarte_les_modeles_cloud(monkeypatch):
+    """Le sélecteur de modèle (et l'écran d'installation) ne montrent que ce
+    qui s'exécute sur cette machine."""
+    import asyncio
+
+    class Reponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"models": [
+                {"name": "qwen3.5:4b"},
+                {"name": "glm-5.2:cloud", "remote_host": "https://ollama.com:443"},
+            ]}
+
+    class Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            return Reponse()
+
+    monkeypatch.setattr(llm.httpx, "AsyncClient", Client)
+    assert asyncio.run(llm.list_models()) == ["qwen3.5:4b"]
+
+
+def test_abandon_vu_a_travers_les_middlewares(client, monkeypatch, mock_embed):
+    """Le navigateur ferme la requête pendant l'analyse : le serveur doit le
+    voir À TRAVERS la pile de middlewares (anti-CSRF, hôtes de confiance).
+
+    Reproduit en conditions réelles (Chromium + Ollama) : un
+    `@app.middleware("http")` (BaseHTTPMiddleware) masquait la déconnexion à
+    `request.is_disconnected()` ; l'analyse « annulée » continuait jusqu'au
+    bout, gardait sa place (409 à la relance) et persistait son résultat. Le
+    test pilote l'application au niveau ASGI, seul moyen de simuler la
+    fermeture de la connexion."""
+    import asyncio
+    import json
+
+    from app import main as main_mod
+
+    monkeypatch.setattr(main_mod, "_PAS_SURVEILLANCE_S", 0.01)
+    etat = {"annulee": False}
+
+    async def analyse_longue(*a, **k):
+        try:
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            etat["annulee"] = True
+            raise
+        return {"updates": [{"section": "anamnese", "texte": "Ne doit pas être écrit."}],
+                "questions": []}
+
+    monkeypatch.setattr(llm, "structure", analyse_longue)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    corps = json.dumps({"transcription": "Texte."}).encode()
+    scope = {
+        "type": "http", "http_version": "1.1", "method": "POST",
+        "path": f"/api/bilans/{bid}/structure", "raw_path": b"", "root_path": "",
+        "query_string": b"", "scheme": "http",
+        "server": ("127.0.0.1", 8000), "client": ("127.0.0.1", 40000),
+        "headers": [
+            (b"host", b"127.0.0.1"),
+            (b"origin", b"http://127.0.0.1:8000"),
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(corps)).encode()),
+        ],
+    }
+    messages = [{"type": "http.request", "body": corps, "more_body": False}]
+    navigateur = {"parti": False}
+    envoyes = []
+
+    async def receive():
+        # Comme uvicorn : bloque tant que rien n'arrive, puis répond
+        # http.disconnect sans suspension une fois la connexion fermée.
+        if messages:
+            return messages.pop(0)
+        while not navigateur["parti"]:
+            await asyncio.sleep(0.005)
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        envoyes.append(message)
+
+    async def scenario():
+        async def fermer_la_fenetre():
+            await asyncio.sleep(0.1)
+            navigateur["parti"] = True
+
+        asyncio.ensure_future(fermer_la_fenetre())
+        await asyncio.wait_for(main_mod.app(scope, receive, send), timeout=3)
+
+    asyncio.run(scenario())
+    statut = next(m["status"] for m in envoyes if m["type"] == "http.response.start")
+    assert statut == 499
+    assert etat["annulee"] is True
+    assert bid not in main_mod._analyses_en_cours
+    anamnese = next(
+        s for s in client.get(f"/api/bilans/{bid}").json()["sections"]
+        if s["cle"] == "anamnese"
+    )
+    assert "Ne doit pas" not in (anamnese["contenu"] or "")
+
+
+def test_signalement_survit_a_un_tour_propre_sur_la_meme_rubrique(client, monkeypatch, mock_embed):
+    """Tour 1 : le modèle invente « 42 points » (signalé). Tour 2 : fragment
+    propre sur la même rubrique. Le texte inventé est toujours là
+    (apply_updates concatène) : l'avertissement doit rester, sinon la rubrique
+    redevient une « source » légitime au tour suivant."""
+    tours = iter([
+        {"updates": [{"section": "anamnese", "texte": "Il a obtenu 42 points."}], "questions": []},
+        {"updates": [{"section": "anamnese", "texte": "Il rapporte des difficultés."}], "questions": []},
+    ])
+
+    async def structure_scriptee(*a, **k):
+        return next(tours)
+
+    monkeypatch.setattr(llm, "structure", structure_scriptee)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    r1 = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Il parle peu."})
+    assert r1.status_code == 200 and r1.json()["rubriques_a_verifier"]
+    r2 = client.post(f"/api/bilans/{bid}/structure",
+                     json={"transcription": "Il rapporte des difficultés."})
+    assert r2.status_code == 200 and not r2.json()["rubriques_a_verifier"]
+    anamnese = next(s for s in client.get(f"/api/bilans/{bid}").json()["sections"]
+                    if s["cle"] == "anamnese")
+    assert "42 points" in anamnese["contenu"] and "difficultés" in anamnese["contenu"]
+    assert anamnese["signalements"] and any("42" in m for m in anamnese["signalements"])
+    # L'enregistrement par l'orthophoniste, lui, efface bien l'avertissement.
+    client.put(f"/api/bilans/{bid}/sections/anamnese", json={"contenu": "Relu.", "statut": "valide"})
+    anamnese = next(s for s in client.get(f"/api/bilans/{bid}").json()["sections"]
+                    if s["cle"] == "anamnese")
+    assert not anamnese["signalements"]
+
+
+def test_transcribe_audio_illisible_400(client, monkeypatch):
+    """Un fichier que ffmpeg ne sait pas décoder est un 400 qui nomme le
+    fichier, pas un 500 qui parle d'installation du modèle (vu en conditions
+    réelles avec un envoi corrompu)."""
+    from app import stt
+
+    def illisible(data, filename, cfg):
+        raise stt.AudioIllisible("Invalid data found when processing input")
+
+    monkeypatch.setattr(stt, "transcribe", illisible)
+    r = client.post("/api/transcribe", files={"audio": ("d.webm", b"\x00\x01", "audio/webm")})
+    assert r.status_code == 400
+    assert "illisible" in r.json()["detail"]

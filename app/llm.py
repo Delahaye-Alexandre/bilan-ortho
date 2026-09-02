@@ -10,7 +10,7 @@ import unicodedata
 
 import httpx
 
-from . import catalogues, prompts
+from . import catalogues, prompts, systeme
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,12 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
 class ModeleIntrouvable(RuntimeError):
     """Le modèle demandé n'est pas téléchargé dans Ollama (404 « model not
     found »). Le message est le nom du modèle."""
+
+
+class ModeleCloud(RuntimeError):
+    """Le modèle configuré est hébergé par Ollama sur Internet : refusé, les
+    données patient ne quittent pas la machine. Le message est le nom du
+    modèle."""
 
 
 class ReponseIllisible(RuntimeError):
@@ -38,7 +44,7 @@ async def list_models(host: str | None = None) -> list[str]:
         resp = await client.get(f"{host or OLLAMA_HOST}/api/tags")
         resp.raise_for_status()
         data = resp.json()
-    return [m["name"] for m in data.get("models", [])]
+    return systeme.modeles_locaux(data)
 
 
 async def chat_json(
@@ -58,11 +64,14 @@ async def chat_json(
 
     ``timeout_s`` borne l'attente : sans lui, un Ollama gelé suspendait
     l'interface à l'infini (audit)."""
+    nom = model or OLLAMA_MODEL
+    if systeme.nom_modele_cloud(nom):
+        raise ModeleCloud(nom)
     options = {"temperature": temperature}
     if num_ctx:
         options["num_ctx"] = int(num_ctx)
     payload = {
-        "model": model or OLLAMA_MODEL,
+        "model": nom,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
