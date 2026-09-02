@@ -45,6 +45,34 @@ def test_purge_conservation(data_dir):
         assert "purge_conservation" in actions
 
 
+def test_migration_v1_vers_v2_ajoute_le_rattachement(data_dir):
+    """Un coffre créé avant le rattachement patient doit s'ouvrir et se migrer
+    sans perte, dans une seule transaction."""
+    chemin = config.db_path()
+    con = db.connect(chemin, PASSPHRASE)
+    db.init_schema(con)
+    # On simule un coffre v1 : colonne absente, version 1.
+    con.execute("DROP TABLE bilan_reference")
+    con.execute(
+        "CREATE TABLE bilan_reference (id INTEGER PRIMARY KEY, praticien_id INTEGER, "
+        "source TEXT, domaine TEXT, section_cle TEXT, titre TEXT, texte TEXT, "
+        "meta TEXT, created_at TEXT)"
+    )
+    con.execute("INSERT INTO bilan_reference(source, titre, texte) VALUES('import','T','Texte')")
+    con.execute("PRAGMA user_version = 1")
+    con.commit()
+    con.close()
+
+    assert security.unlock(PASSPHRASE)
+    with security.transaction() as con2:
+        assert con2.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
+        cols = {r[1] for r in con2.execute("PRAGMA table_info(bilan_reference)")}
+        assert "patient_id" in cols
+        assert con2.execute("SELECT texte FROM bilan_reference").fetchone()[0] == "Texte"
+    # Une copie de sécurité a été prise avant d'écrire dans le coffre.
+    assert (config.data_dir() / "coffre-avant-migration-v1.db").exists()
+
+
 # --- config persistée -----------------------------------------------------------
 
 def test_config_overrides_et_reset(con):
