@@ -47,7 +47,7 @@ def create(
     # plusieurs jours après la séance).
     cur = con.execute(
         "INSERT INTO bilan(patient_id, domaines, type, motif, date_bilan) "
-        "VALUES(?,?,?,?,COALESCE(NULLIF(?,''), date('now')))",
+        "VALUES(?,?,?,?,COALESCE(NULLIF(?,''), date('now', 'localtime')))",
         (patient_id, json.dumps(domaines), type_, motif, date_bilan),
     )
     bid = cur.lastrowid
@@ -103,7 +103,7 @@ def maj_entete(
         return False
     if date_bilan is not None:
         con.execute(
-            "UPDATE bilan SET date_bilan=COALESCE(NULLIF(?,''), date('now')), "
+            "UPDATE bilan SET date_bilan=COALESCE(NULLIF(?,''), date('now', 'localtime')), "
             "updated_at=datetime('now') WHERE id=?",
             (date_bilan, bilan_id),
         )

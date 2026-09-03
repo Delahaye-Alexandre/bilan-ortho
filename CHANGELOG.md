@@ -7,6 +7,9 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Date du bilan en heure locale** : un bilan créé entre minuit et 2 h du
+  matin (heure d'été) portait la date de la veille, la base datant en temps
+  universel. Le test correspondant échouait au même moment.
 - **Mise à jour sans passer par GitHub** : quand l'installation intégrée est
   possible (Windows, application installée), le bandeau ne propose plus que
   « Installer maintenant » ; le lien de téléchargement manuel ne réapparaît
