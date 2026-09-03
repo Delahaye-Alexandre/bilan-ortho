@@ -136,6 +136,26 @@ DEFAULTS: dict[str, Any] = {
         # Lieu porté sur la formule « Fait à …, le … ». Vide = la ville.
         "lieu_signature": "",
     },
+    # Mise en page des documents exportés (Word et PDF) : police, corps,
+    # interligne, marges, couleur des titres, numérotation des rubriques,
+    # numéros de page, logo. Lot B du plan « mise en forme » : jusqu'ici tout
+    # était en dur dans export.py et le praticien finissait dans Word. Le logo
+    # (PNG/JPEG en base64) se dépose par PUT /api/config/logo, jamais par le
+    # PUT général. Les polices sont celles de Word ; le PDF prend la même quand
+    # le fichier de police est trouvé sur la machine, sinon l'équivalente
+    # intégrée (Helvetica ou Times) — voir export._polices_pdf.
+    "mise_en_page": {
+        "police": "Calibri",
+        "taille_corps": 11,          # points
+        "interligne": 1.15,          # multiple (1 = simple)
+        "marges_mm": 20,
+        "couleur_titres": "#000000",
+        "rubriques_numerotees": False,
+        "numeros_de_page": True,
+        "logo": None,                # {"type": "image/png", "donnees": base64, ...}
+        "logo_position": "gauche",   # gauche | centre | droite
+        "logo_hauteur_mm": 20,
+    },
     "llm": {
         "model": "qwen2.5:7b-instruct-q4_K_M",
         "temperature": 0.3,

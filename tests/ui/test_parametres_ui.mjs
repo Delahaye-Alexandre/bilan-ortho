@@ -29,6 +29,9 @@ globalThis.confirm = () => true;
 const DEFAUTS = {
   praticien: { nom: "", prenom: "", titre: "Orthophoniste", adeli: "", rpps: "", siret: "", adresse: "",
                code_postal: "", ville: "", telephone: "", email: "", lieu_signature: "" },
+  mise_en_page: { police: "Calibri", taille_corps: 11, interligne: 1.15, marges_mm: 20, couleur_titres: "#000000",
+                  rubriques_numerotees: false, numeros_de_page: true, logo: null, logo_position: "gauche",
+                  logo_hauteur_mm: 20 },
   llm: { model: "qwen2.5:7b-instruct-q4_K_M", temperature: 0.3 },
   stt: { device: "auto", model: "auto", beam_size: 5, vad: true, language: "fr",
          hotwords: ["orthophonie", "bilan"], corrections: {} },
@@ -49,14 +52,22 @@ CFG.style.few_shot_k = 7;        // hors liste → « personnalisé »
 CFG.sauvegarde.auto_jours = 3;   // hors liste
 CFG.llm.model = "qwen3.5:9b";    // configuré mais non installé (cf. /api/models)
 CFG.stt.corrections = { ortofonie: "orthophonie" };
+CFG.mise_en_page.police = "Garamond";   // hors liste → « personnalisé »
+CFG.mise_en_page.logo = { type: "image/png", donnees: "iVBORw0KGgo=", largeur: 10, hauteur: 10 };
 
-const configPuts = [], deletes = [];
+const configPuts = [], deletes = [], apercus = [];
+let logoRetire = 0;
 const rep = (r) => ({ ok: true, status: 200, json: async () => r });
 globalThis.fetch = async (p, o = {}) => {
   const url = String(p);
   if (url.includes("/api/config/defauts")) return rep(structuredClone(DEFAUTS));
   if (url.includes("/api/config/overrides")) return rep({});
-  const mSec = url.match(/\/api\/config\/([a-z]+)(\?cles=([^&]+))?$/);
+  if (url.endsWith("/api/config/mise_en_page/apercu")) { apercus.push(JSON.parse(o.body)); return rep({}); }
+  if (url.endsWith("/api/config/logo") && o.method === "DELETE") {
+    logoRetire++;
+    const eff = structuredClone(CFG); eff.mise_en_page.logo = null; return rep(eff);
+  }
+  const mSec = url.match(/\/api\/config\/([a-z_]+)(\?cles=([^&]+))?$/);
   if (mSec && o.method === "DELETE") {
     deletes.push({ section: mSec[1], cles: mSec[3] ? decodeURIComponent(mSec[3]) : null });
     return rep(structuredClone(CFG));
@@ -101,8 +112,8 @@ check("ouverture : focus sur le premier champ de « Mon cabinet »",
 check("ouverture : bloc technique replié",
   $("techCorps").hidden === true && $("techToggle").getAttribute("aria-expanded") === "false");
 const liens = [...document.querySelectorAll(".sommaire a")];
-check("sommaire : sept sections, chacune présente dans la page",
-  liens.length === 7 && liens.every((a) => $(a.getAttribute("href").slice(1)) !== null));
+check("sommaire : huit sections, chacune présente dans la page",
+  liens.length === 8 && liens.every((a) => $(a.getAttribute("href").slice(1)) !== null));
 
 // === 2. Chaque réglage a sa bulle ============================================
 const champs = [...modal().querySelectorAll('input[id^="cfg"], select[id^="cfg"], textarea[id^="cfg"]')]
@@ -190,6 +201,37 @@ check("modèle d'IA : liste des modèles installés, configuré non installé si
   && choisi($("cfgLlmModel")).textContent.includes("non installé")
   && $("cfgLlmModel").options.length === 3);
 
+// === 7 bis. Mise en page : listes, logo, aperçu ==============================
+check("police hors liste → « Garamond (personnalisé) » sélectionnée",
+  choisi($("cfgMepPolice")).textContent === "Garamond (personnalisé)" && $("cfgMepPolice").value === "Garamond");
+check("polices proposées en clair",
+  [...$("cfgMepPolice").options].map((o) => o.textContent).slice(0, 5).join("|") === "Calibri|Arial|Verdana|Times New Roman|Georgia");
+check("interligne : libellés en clair, 1,15 sélectionné",
+  [...$("cfgMepInterligne").options].map((o) => o.textContent).join("|") === "simple|confortable (1,15)|aéré (1,5)"
+  && $("cfgMepInterligne").value === "1.15");
+check("couleur des titres : noms de couleurs, pas de codes",
+  choisi($("cfgMepCouleur")).textContent === "noir" && bulleDe("cfgMepCouleur").textContent.includes("Recommandé : noir"));
+check("police modifiée → « modifié » ; marges au défaut → rien",
+  modifDe("cfgMepPolice").hidden === false && modifDe("cfgMepMarges").hidden === true);
+check("logo enregistré : vignette affichée depuis les octets du serveur, bouton « Retirer » visible",
+  $("mepLogoImg").hidden === false && $("mepLogoImg").getAttribute("src").startsWith("data:image/png;base64,iVBOR")
+  && $("mepLogoRetirer").hidden === false && $("mepLogoAucun").hidden === true);
+await new Promise((r) => setTimeout(r, 500));
+check("aperçu demandé à l'ouverture avec les réglages de l'écran (POST, rien d'enregistré)",
+  apercus.length >= 1 && apercus[apercus.length - 1].police === "Garamond" && !("logo" in apercus[apercus.length - 1]));
+const nbApercus = apercus.length;
+$("cfgMepMarges").value = "25"; $("cfgMepMarges").dispatchEvent(new Event("change", { bubbles: true }));
+$("cfgMepNumerotees").checked = true; $("cfgMepNumerotees").dispatchEvent(new Event("change", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 500));
+check("un changement → un seul nouvel aperçu (regroupé), avec les nouvelles valeurs",
+  apercus.length === nbApercus + 1 && apercus[apercus.length - 1].marges_mm === 25
+  && apercus[apercus.length - 1].rubriques_numerotees === true);
+$("mepLogoRetirer").click();
+await settle();
+check("retirer le logo : DELETE /api/config/logo, vignette masquée",
+  logoRetire === 1 && $("mepLogoImg").hidden === true && $("mepLogoRetirer").hidden === true
+  && $("mepLogoStatus").textContent.includes("✓"));
+
 // === 8. Bloc technique et sommaire ==========================================
 $("techToggle").click();
 check("bouton : bloc technique ouvert",
@@ -218,6 +260,10 @@ check("listes à choix → nombres",
 check("vouvoiement absent de l'enregistrement (valeur enregistrée conservée)", !("vouvoiement" in envoye.style));
 check("mise en forme par l'assistant renvoyée", envoye.style.mise_en_forme_ia === true);
 check("modèle non installé renvoyé tel quel", envoye.llm.model === "qwen3.5:9b");
+check("mise en page renvoyée sans le logo (déposé par sa propre route)",
+  envoye.mise_en_page.police === "Garamond" && envoye.mise_en_page.marges_mm === 25
+  && envoye.mise_en_page.interligne === 1.15 && envoye.mise_en_page.rubriques_numerotees === true
+  && envoye.mise_en_page.numeros_de_page === true && !("logo" in envoye.mise_en_page));
 check("corrections relues", JSON.stringify(envoye.stt.corrections) === JSON.stringify({ ortofonie: "orthophonie" }));
 const lire = (o, ch) => ch.split(".").reduce((x, k) => (x == null ? undefined : x[k]), o);
 const nonRenvoyes = Object.values(__t.CHAMPS).map((c) => c.chemin).filter((ch) => ch && lire(envoye, ch) === undefined);
@@ -236,6 +282,11 @@ check("dictée : seules les clés du bloc (vocabulaire, corrections)",
 $("secSecurite").querySelector("[data-reset-btn]").click();
 await settle();
 check("sécurité : rgpd, sauvegarde et mises à jour", deletes.slice(2).map((d) => d.section).join(",") === "rgpd,sauvegarde,maj");
+$("secMiseEnPage").querySelector("[data-reset-btn]").click();
+await settle();
+check("mise en page : toutes les clés sauf le logo, qui reste",
+  deletes[5] && deletes[5].section === "mise_en_page"
+  && deletes[5].cles === "police,taille_corps,interligne,marges_mm,couleur_titres,rubriques_numerotees,numeros_de_page,logo_position,logo_hauteur_mm");
 globalThis.confirm = () => false;
 deletes.length = 0;
 $("secCotation").querySelector("[data-reset-btn]").click();

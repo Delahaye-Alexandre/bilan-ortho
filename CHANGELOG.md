@@ -7,6 +7,28 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+Lot B du plan « mise en forme » (`docs/plan-mise-en-forme-2026-09-03.md`) :
+
+- **Mise en page de mes documents** : nouvelle section de ⚙️ Paramètres qui
+  règle, pour le Word et le PDF, la police (Calibri, Arial, Verdana, Times
+  New Roman, Georgia), la taille du texte, l'interligne, les marges, la
+  couleur des titres, la numérotation des rubriques (1. Anamnèse, 2. …) et
+  les numéros de page (Page 1 / 3). Tout était jusqu'ici en dur dans
+  `app/export.py`, et le praticien finissait dans Word.
+- **Logo du cabinet** en tête du document (Word et PDF), déposé en PNG ou
+  JPEG depuis l'écran, vérifié et réduit par l'application, rangé dans le
+  coffre chiffré (jamais en fichier à part) ; position et hauteur réglables.
+- **Aperçu en direct** : un compte-rendu fictif mis en page avec les réglages
+  de l'écran, même non enregistrés (`POST /api/config/mise_en_page/apercu`),
+  s'affiche sous les réglages et suit chaque changement.
+- Le PDF incorpore la police choisie quand son fichier est installé sur la
+  machine (Windows en particulier) et prend sinon la police intégrée
+  équivalente ; le tableau des résultats suit désormais la largeur utile de
+  la page au lieu de déborder quand les marges s'élargissent.
+- Section réinitialisable clé par clé (`DELETE /api/config/mise_en_page`,
+  le logo a ses routes `PUT`/`DELETE /api/config/logo`). Pillow devient une
+  dépendance explicite (elle venait déjà avec reportlab).
+
 - **Date du bilan en heure locale** : un bilan créé entre minuit et 2 h du
   matin (heure d'été) portait la date de la veille, la base datant en temps
   universel. Le test correspondant échouait au même moment.

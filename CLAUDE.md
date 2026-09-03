@@ -43,4 +43,4 @@ Monolithe local-first : un serveur FastAPI (`app/main.py`, ~48 routes) sert un f
 - **Cadre médico-légal** : l'app est une *aide à la rédaction*, jamais un outil de diagnostic. Ne pas introduire de formulation qui suggère que l'IA diagnostique, cote ou décide — l'orthophoniste relit, valide et signe (voir `docs/notice-medico-legale.md`).
 - **Local only** : ne jamais introduire d'appel réseau externe dans le flux de données patient, ni proposer de modèle Ollama `:cloud`. Les tests doivent rester exécutables hors ligne (mocker via les fixtures de `tests/conftest.py`).
 - `docs/business-plan.md` et `docs/audit-2026-07-17.md` sont volontairement hors git (voir `.gitignore`) — ne pas les commiter.
-- **Workflow** : proposer un plan et le faire valider avant toute implémentation multi-fichiers. Définition de « fini » : `pytest` + `ruff check .` + tests UI passent.
+- **Workflow** : travailler en autonomie (plus de validation préalable de plan exigée depuis le 2026-09-04) ; un commit par lot, vérifié isolément. Définition de « fini » : `pytest` + `ruff check .` + tests UI passent.

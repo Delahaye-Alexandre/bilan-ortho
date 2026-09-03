@@ -64,6 +64,7 @@ from .models import (
     MajInstallation,
     MajResponse,
     MajTelechargement,
+    MiseEnPagePatch,
     OkResponse,
     PassphraseChange,
     PatientIn,
@@ -533,6 +534,55 @@ async def delete_config_prompts() -> dict:
         return eff
 
 
+# --- Mise en page des exports (lot B du plan « mise en forme ») ------------
+
+@app.put("/api/config/logo", dependencies=[Depends(require_unlock)])
+async def put_logo(fichier: UploadFile = File(...)) -> dict:
+    """Logo du cabinet pour l'en-tête des exports : PNG ou JPEG vérifié avec
+    Pillow (pas seulement l'extension), réduit à 400 px de haut et rangé en
+    base64 dans la configuration chiffrée — jamais en fichier à côté du
+    coffre. Retourne la configuration effective."""
+    data = await _lire_borne(fichier, export.TAILLE_MAX_LOGO, "Logo")
+    try:
+        logo = await run_in_threadpool(export.preparer_logo, data)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    with security.transaction() as con:
+        eff = config.ConfigStore(con).set_overrides({"mise_en_page": {"logo": logo}})
+        security.audit("config_logo", "config", None, "dépôt")
+        return eff
+
+
+@app.delete("/api/config/logo", dependencies=[Depends(require_unlock)])
+async def delete_logo() -> dict:
+    """Retire le logo sans toucher aux autres réglages de mise en page."""
+    with security.transaction() as con:
+        eff = config.ConfigStore(con).effacer_cles("mise_en_page", ["logo"])
+        security.audit("config_logo", "config", None, "retrait")
+        return eff
+
+
+@app.post("/api/config/mise_en_page/apercu", dependencies=[Depends(require_unlock)])
+async def apercu_mise_en_page(reglages: MiseEnPagePatch):
+    """PDF d'un bilan fictif mis en page avec les réglages envoyés (ceux de
+    l'écran, pas encore enregistrés) par-dessus la configuration en place
+    (logo compris) : l'écran Paramètres montre l'effet avant d'enregistrer."""
+    with security.transaction() as con:
+        cfg = config.ConfigStore(con).effective()
+    cfg["mise_en_page"] = config._deep_merge(
+        cfg["mise_en_page"], reglages.model_dump(exclude_unset=True)
+    )
+    try:
+        pdf = await run_in_threadpool(export.to_pdf, export.bilan_exemple(cfg), cfg)
+    except Exception:
+        logger.exception("Échec de l'aperçu de mise en page")
+        raise HTTPException(500, "L'aperçu n'a pas pu être mis en page avec ces réglages.")
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="apercu-mise-en-page.pdf"'},
+    )
+
+
 @app.get("/api/config/defauts", dependencies=[Depends(require_unlock)])
 async def get_config_defauts() -> dict:
     """Valeurs par défaut seules. L'écran Paramètres affiche la valeur
@@ -544,9 +594,10 @@ async def get_config_defauts() -> dict:
 # Sections qu'un bouton « Revenir aux valeurs recommandées » peut effacer.
 # Jamais `praticien` (une identité n'a pas de valeur recommandée) ; trame,
 # catalogues et prompts ont leurs routes propres, déclarées avant celle-ci.
-SECTIONS_REINITIALISABLES = frozenset(
-    {"llm", "stt", "embeddings", "style", "seuils", "cotation", "rgpd", "sauvegarde", "maj"}
-)
+SECTIONS_REINITIALISABLES = frozenset({
+    "llm", "stt", "embeddings", "style", "seuils", "cotation", "rgpd", "sauvegarde", "maj",
+    "mise_en_page",
+})
 
 
 @app.delete("/api/config/{section}", dependencies=[Depends(require_unlock)])

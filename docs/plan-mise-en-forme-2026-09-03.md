@@ -74,3 +74,41 @@ implémentation serveur (analyse, sérialisation canonique, version en clair).
 
 `pytest` + `ruff check .` + suites UI vertes (dont la nouvelle
 `tests/ui/test_texte_riche_ui.mjs`), CHANGELOG et guide de test à jour.
+
+## Lot B — mise en page du document (fait le 2026-09-04)
+
+### Décisions
+
+1. Une section de configuration `mise_en_page` (défauts dans `config.py`,
+   patch validé par `models.MiseEnPagePatch`), lue par `to_docx` et `to_pdf`
+   via `export.mise_en_page(cfg)` : police, taille du corps, interligne,
+   marges, couleur des titres, rubriques numérotées, numéros de page, logo
+   (position, hauteur). Markdown et texte ne connaissent que la numérotation.
+2. Polices proposées : celles de Word (Calibri, Arial, Verdana, Times New
+   Roman, Georgia). Le PDF incorpore le fichier TrueType s'il est trouvé sur
+   la machine (`export._polices_pdf`, dossiers Windows, Linux, macOS), sinon
+   Helvetica ou Times selon les empattements — jamais d'échec.
+3. Le logo est une image vérifiée par Pillow (PNG ou JPEG, pas l'extension),
+   réduite à 400 px de haut, ré-encodée et rangée en base64 dans la
+   configuration chiffrée. Déposé et retiré par `PUT`/`DELETE
+   /api/config/logo` dès le choix du fichier, jamais par le `PUT /api/config`
+   (refusé : 422). Un logo illisible ne bloque pas l'export.
+4. Numérotation des rubriques : tous les titres de niveau 2 à la suite
+   (résultats et cotation compris), sans toucher au contenu stocké.
+5. Numéros de page : « Page i / n » en pied de page, champs `PAGE` /
+   `NUMPAGES` dans le Word, canvas à deux passes dans le PDF.
+6. Aperçu : `POST /api/config/mise_en_page/apercu` reçoit les réglages de
+   l'écran (non enregistrés), les pose sur la configuration en place (logo
+   compris) et renvoie le PDF d'un bilan fictif (`export.bilan_exemple`),
+   affiché dans un cadre de la section, regroupé à 400 ms.
+7. Retour aux valeurs recommandées de la section clé par clé, le logo reste.
+8. Le Word passe de « Title / Heading 1 » à « Heading 1 / Heading 2 » (styles
+   posés explicitement : police, taille, couleur, renvois au thème retirés).
+   Le lot D (gabarit .docx) court-circuitera `export._docx_mise_en_page`.
+
+### Vérification
+
+`tests/test_mise_en_page.py` (Word, PDF, logo, numérotation, polices de
+repli et TrueType, bilan d'exemple, routes) ; `tests/ui/test_parametres_ui.mjs`
+(section, listes, pastilles, logo, aperçu, enregistrement, retour aux valeurs
+recommandées) ; pytest, ruff et les six suites UI verts.

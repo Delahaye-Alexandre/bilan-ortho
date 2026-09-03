@@ -261,8 +261,40 @@ class PraticienPatch(_SectionPatch):
     lieu_signature: str | None = Field(None, max_length=120)
 
 
+POSITIONS_LOGO = ("gauche", "centre", "droite")
+
+
+class MiseEnPagePatch(_SectionPatch):
+    """Mise en page des exports. Bornes larges mais fermes : une taille de
+    corps à 40 points ou une marge de 90 mm ne produisent plus un document,
+    et une couleur libre finirait dans le balisage du PDF."""
+
+    police: str | None = Field(None, min_length=1, max_length=60)
+    taille_corps: float | None = Field(None, ge=8, le=16)
+    interligne: float | None = Field(None, ge=0.8, le=2.5)
+    marges_mm: float | None = Field(None, ge=5, le=40)
+    couleur_titres: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+    rubriques_numerotees: bool | None = None
+    numeros_de_page: bool | None = None
+    logo_position: Literal["gauche", "centre", "droite"] | None = None
+    logo_hauteur_mm: float | None = Field(None, ge=5, le=60)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _logo_par_sa_route(cls, data):
+        # Le logo est une image validée et redimensionnée par PUT /api/config/logo ;
+        # accepté ici, n'importe quel texte deviendrait « l'image » de l'en-tête.
+        if isinstance(data, dict) and "logo" in data:
+            raise ValueError(
+                "le logo se dépose par PUT /api/config/logo (fichier image), "
+                "pas dans les réglages"
+            )
+        return data
+
+
 class OverridesPatch(_SectionPatch):
     praticien: PraticienPatch | None = None
+    mise_en_page: MiseEnPagePatch | None = None
     llm: LlmPatch | None = None
     stt: SttPatch | None = None
     embeddings: EmbeddingsPatch | None = None

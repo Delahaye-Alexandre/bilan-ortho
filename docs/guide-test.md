@@ -79,6 +79,9 @@ irrécupérable** (personne, pas même Alexandre, ne peut la retrouver).
    professionnelle ; l'aperçu montre la signature qui sortira sur le document.
    Survolez un bouton ⓘ : chaque réglage dit à quoi il sert et quelle valeur
    est recommandée. Le bloc « Réglages techniques », en bas, peut rester fermé.
+   Dans **Mise en page de mes documents**, choisissez police, marges, couleur
+   des titres, numérotation, et déposez votre logo (PNG ou JPEG) : l'aperçu
+   d'un bilan fictif se met à jour sous les réglages avant d'enregistrer.
 8. **€ Coter**, **⬇ Word**, puis « Marquer validé ».
 9. Optionnel : importez un de vos bilans **anonymisé** dans « Mes bilans de
    référence » — les prochaines rédactions imiteront votre style, y compris

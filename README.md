@@ -63,6 +63,10 @@ ci-dessous.
   reportés fidèlement dans le Word et le PDF ; un passage collé depuis Word,
   LibreOffice ou Google Docs garde sa mise en forme, et l'IA calque la sienne
   sur celle de vos bilans de référence (réglable dans ⚙️ Paramètres).
+- **Mise en page des documents** : police, taille, interligne, marges, couleur
+  des titres, rubriques numérotées, numéros de page et logo du cabinet, réglés
+  dans ⚙️ Paramètres avec un aperçu en direct ; le Word et le PDF les
+  appliquent tous deux.
 - **Un document envoyable tel quel** : renseignez une fois votre identité
   professionnelle (nom, titre, ADELI/RPPS, adresse, coordonnées) dans
   ⚙️ Paramètres, et chaque export porte votre en-tête, la date du bilan, le

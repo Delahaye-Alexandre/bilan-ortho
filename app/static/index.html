@@ -310,6 +310,7 @@
     <nav class="sommaire" aria-label="Sections des paramètres">
       <a href="#secCabinet">🪪 Mon cabinet</a>
       <a href="#secRedaction">📝 Mes comptes-rendus</a>
+      <a href="#secMiseEnPage">🖨️ Mise en page</a>
       <a href="#secDictee">🎤 Ma dictée</a>
       <a href="#secSeuils">📊 Mes tests et seuils</a>
       <a href="#secCotation">💶 Cotation</a>
@@ -364,6 +365,36 @@
           <button id="trameReset" class="ghost">Revenir à la trame réglementaire</button>
           <span class="status" id="trameStatus"></span>
         </div>
+      </fieldset>
+
+      <fieldset id="secMiseEnPage" tabindex="-1" data-reset="mise_en_page:police,taille_corps,interligne,marges_mm,couleur_titres,rubriques_numerotees,numeros_de_page,logo_position,logo_hauteur_mm" data-reset-nom="Mise en page">
+        <legend>🖨️ Mise en page de mes documents</legend>
+        <p class="muted" style="margin:0 0 4px">Apparence des comptes-rendus exportés en Word et en PDF. L'aperçu ci-dessous, sur un bilan fictif, suit chaque changement ; le contenu de vos bilans n'est pas concerné.</p>
+        <div class="grid3">
+          <div><label for="cfgMepPolice">Police</label><select id="cfgMepPolice"></select></div>
+          <div><label for="cfgMepTaille">Taille du texte</label><select id="cfgMepTaille"></select></div>
+          <div><label for="cfgMepInterligne">Interligne</label><select id="cfgMepInterligne"></select></div>
+        </div>
+        <div class="grid3">
+          <div><label for="cfgMepMarges">Marges</label><select id="cfgMepMarges"></select></div>
+          <div><label for="cfgMepCouleur">Couleur des titres</label><select id="cfgMepCouleur"></select></div>
+          <div><label for="cfgMepLogoHaut">Hauteur du logo</label><select id="cfgMepLogoHaut"></select></div>
+        </div>
+        <label class="check" for="cfgMepNumerotees"><input type="checkbox" id="cfgMepNumerotees"> Numéroter les rubriques (1. Anamnèse, 2. …)</label>
+        <label class="check" for="cfgMepPages"><input type="checkbox" id="cfgMepPages"> Numéroter les pages en pied de page (Page 1 / 3)</label>
+        <div class="soustitre" id="mepLogoLib">Logo du cabinet</div>
+        <div class="row" style="flex-wrap:wrap;gap:12px;margin-top:4px">
+          <img id="mepLogoImg" alt="Logo actuel" hidden style="max-height:48px;max-width:200px;border:1px solid var(--border);border-radius:6px;padding:2px;background:#fff">
+          <span class="muted" id="mepLogoAucun">Aucun logo : l'en-tête ne porte que votre identité.</span>
+          <div><label for="cfgMepLogo">Déposer un logo (PNG ou JPEG)</label><input type="file" id="cfgMepLogo" accept="image/png,image/jpeg"></div>
+          <div><label for="cfgMepLogoPos">Position du logo</label><select id="cfgMepLogoPos"></select></div>
+          <button class="ghost" id="mepLogoRetirer" hidden>Retirer le logo</button>
+          <span class="status" id="mepLogoStatus" role="status"></span>
+        </div>
+        <div class="soustitre" id="mepApercuLib">Aperçu</div>
+        <div class="row" style="margin:4px 0"><button class="ghost" id="mepApercuBtn">↻ Actualiser l'aperçu</button><span class="status" id="mepApercuSt" role="status"></span></div>
+        <iframe id="mepApercu" title="Aperçu d'un compte-rendu fictif avec ces réglages" style="width:100%;height:460px;border:1px solid var(--border);border-radius:8px;background:#fff"></iframe>
+        <div class="secfoot"><button class="ghost" data-reset-btn>Revenir aux valeurs recommandées</button><span class="status" data-reset-st role="status"></span></div>
       </fieldset>
 
       <fieldset id="secDictee" tabindex="-1" data-reset="stt:hotwords,corrections" data-reset-nom="Ma dictée">
@@ -2493,6 +2524,15 @@ const CHOIX = {
   cfgRgpdCons: { valeurs: [0, 365, 730, 1825], libelle: CHOIX_LIBELLES.jours },
   cfgSauvAuto: { valeurs: [1, 7, 30, 0], libelle: CHOIX_LIBELLES.auto },
   cfgStyleK: { valeurs: [0, 2, 4, 8], libelle: CHOIX_LIBELLES.extraits },
+  // Mise en page : valeurs textuelles (`texte`) ou nombres, même mécanique.
+  cfgMepPolice: { texte: true, valeurs: ['Calibri', 'Arial', 'Verdana', 'Times New Roman', 'Georgia'], libelle: v => v },
+  cfgMepTaille: { valeurs: [10, 11, 12], libelle: v => `${nombreFr(v)} points` },
+  cfgMepInterligne: { valeurs: [1, 1.15, 1.5], libelle: v => ({ 1: 'simple', 1.15: 'confortable (1,15)', 1.5: 'aéré (1,5)' })[v] || nombreFr(v) },
+  cfgMepMarges: { valeurs: [15, 20, 25], libelle: v => `${nombreFr(v)} mm` },
+  cfgMepCouleur: { texte: true, valeurs: ['#000000', '#1f3a5f', '#2f5496', '#7a1f2b', '#2f5d3a', '#555555'],
+    libelle: v => ({ '#000000': 'noir', '#1f3a5f': 'bleu marine', '#2f5496': 'bleu', '#7a1f2b': 'bordeaux', '#2f5d3a': 'vert', '#555555': 'gris foncé' })[v] || v },
+  cfgMepLogoPos: { texte: true, valeurs: ['gauche', 'centre', 'droite'], libelle: v => ({ gauche: 'à gauche', centre: 'centré', droite: 'à droite' })[v] || v },
+  cfgMepLogoHaut: { valeurs: [15, 20, 30], libelle: v => `${nombreFr(v)} mm` },
 };
 const CHAMPS = {
   cfgPratTitre: { aide: "Tel qu'il figurera sous votre signature (« Orthophoniste », « Orthophoniste D.E. »…)." },
@@ -2507,6 +2547,19 @@ const CHAMPS = {
     aide: "Nombre de passages de vos bilans importés montrés à l'assistant pour qu'il adopte votre façon d'écrire. « Non » : il n'en tient pas compte. Sans bilans de référence importés, ce réglage est sans effet." },
   cfgStyleForme: { chemin: 'style.mise_en_forme_ia',
     aide: "Autorise gras, italique, souligné et listes, sobrement et à l'image de vos bilans de référence. Décoché : l'assistant écrit en texte simple, vous mettez en forme vous-même." },
+  cfgMepPolice: { chemin: 'mise_en_page.police',
+    aide: "Police du document Word et du PDF. Le PDF l'incorpore quand elle est installée sur cet ordinateur ; sinon il prend la police intégrée la plus proche, avec ou sans empattements." },
+  cfgMepTaille: { chemin: 'mise_en_page.taille_corps', aide: "Taille du texte courant, en points. Les titres sont un peu plus grands, dans la même proportion." },
+  cfgMepInterligne: { chemin: 'mise_en_page.interligne', aide: "Espace entre les lignes d'un paragraphe. « Simple » est le plus compact ; « aéré » facilite la lecture mais allonge le document." },
+  cfgMepMarges: { chemin: 'mise_en_page.marges_mm', aide: "Blanc autour du texte, identique sur les quatre côtés. 20 mm convient à l'impression et à la reliure." },
+  cfgMepCouleur: { chemin: 'mise_en_page.couleur_titres', aide: "Couleur des titres et des noms de rubriques. Le texte reste noir. « Noir » est le plus sûr pour une impression en noir et blanc." },
+  cfgMepNumerotees: { chemin: 'mise_en_page.rubriques_numerotees', aide: "Fait précéder chaque rubrique d'un numéro (1. Anamnèse, 2. Observations…), tableau des résultats et cotation compris. Le contenu des rubriques ne change pas." },
+  cfgMepPages: { chemin: 'mise_en_page.numeros_de_page', aide: "Écrit « Page 1 / 3 » au bas de chaque page du Word et du PDF, utile quand un compte-rendu de plusieurs pages est imprimé." },
+  mepLogoLib: { aide: "Image placée en tête du document, au-dessus de votre identité, dans le Word comme dans le PDF. Un PNG ou un JPEG ; l'image est réduite si elle est très grande et rangée dans votre coffre chiffré, jamais dans un fichier à part." },
+  cfgMepLogo: { aide: "Choisissez un fichier PNG ou JPEG : il est déposé aussitôt, sans attendre « Enregistrer ». Pour l'enlever, « Retirer le logo »." },
+  cfgMepLogoPos: { chemin: 'mise_en_page.logo_position', aide: "Où placer le logo sur la ligne : à gauche, centré ou à droite. Sans logo, ce réglage est sans effet." },
+  cfgMepLogoHaut: { chemin: 'mise_en_page.logo_hauteur_mm', aide: "Hauteur imprimée du logo ; la largeur suit. 20 mm correspond à un logo de papier à en-tête." },
+  mepApercuLib: { aide: "Un compte-rendu fictif (patient et résultats inventés) mis en page avec les réglages de cet écran, même non enregistrés, et votre identité. Il se met à jour à chaque changement." },
   trameLib: { aide: "Rubriques créées pour chaque nouveau bilan, dans cet ordre. La trame intégrée suit l'arrêté du 25 juillet 2023 et les mises à jour de l'application ; une trame personnalisée ne bouge plus tant que vous n'y revenez pas." },
   cfgSttHotwords: { chemin: 'stt.hotwords',
     aide: "Termes que la reconnaissance vocale écorche : noms de tests, termes techniques, prénoms fréquents. Un par ligne. Elle les privilégie quand elle hésite. Quelques dizaines suffisent.",
@@ -2572,20 +2625,20 @@ function nombreFr(v) { return String(v).replace('.', ',').replace('-', '\u2212')
 function formatDefaut(id, v) {
   const champ = CHAMPS[id];
   if (champ.format) return champ.format(v);
-  if (CHOIX[id]) return CHOIX[id].libelle(Number(v));
+  if (CHOIX[id]) return CHOIX[id].libelle(CHOIX[id].texte ? String(v) : Number(v));
   if (typeof v === 'boolean') return v ? 'coché' : 'décoché';
   if (typeof v === 'number') return nombreFr(v);
   return v === '' || v == null ? 'vide' : String(v);
 }
 function remplirChoix(id, valeur) {
-  const sel = $(id), { valeurs, libelle } = CHOIX[id];
-  const v = Number(valeur);
-  if (valeur == null || !Number.isFinite(v)) {
+  const sel = $(id), { valeurs, libelle, texte } = CHOIX[id];
+  const v = texte ? String(valeur == null ? '' : valeur) : Number(valeur);
+  if (valeur == null || (texte ? v === '' : !Number.isFinite(v))) {
     // Valeur absente : rien n'est présélectionné, rien ne sera renvoyé.
     sel.innerHTML = '<option value="">—</option>'; sel.value = ''; return;
   }
   const liste = valeurs.includes(v) ? valeurs : [...valeurs, v];
-  sel.innerHTML = liste.map(x => `<option value="${x}">${escapeHtml(libelle(x))}${valeurs.includes(x) ? '' : ' (personnalisé)'}</option>`).join('');
+  sel.innerHTML = liste.map(x => `<option value="${escapeHtml(String(x))}">${escapeHtml(libelle(x))}${valeurs.includes(x) ? '' : ' (personnalisé)'}</option>`).join('');
   sel.value = String(v);
 }
 // Liste des modèles installés (barre principale et Paramètres). Modèle
@@ -2612,6 +2665,15 @@ function fillSettings(c) {
   $('cfgStyleDetail').value = c.style.niveau_detail;
   remplirChoix('cfgStyleK', c.style.few_shot_k);
   $('cfgStyleForme').checked = c.style.mise_en_forme_ia !== false;
+  const mep = c.mise_en_page || {};
+  remplirChoix('cfgMepPolice', mep.police); remplirChoix('cfgMepTaille', mep.taille_corps);
+  remplirChoix('cfgMepInterligne', mep.interligne); remplirChoix('cfgMepMarges', mep.marges_mm);
+  remplirChoix('cfgMepCouleur', mep.couleur_titres); remplirChoix('cfgMepLogoPos', mep.logo_position);
+  remplirChoix('cfgMepLogoHaut', mep.logo_hauteur_mm);
+  $('cfgMepNumerotees').checked = !!mep.rubriques_numerotees;
+  $('cfgMepPages').checked = mep.numeros_de_page !== false;
+  afficherLogo(mep.logo);
+  planifierApercu();
   $('cfgSttHotwords').value = (c.stt.hotwords || []).join('\n');
   $('cfgSttCorr').value = Object.entries(c.stt.corrections || {}).map(([k, v]) => `${k} => ${v}`).join('\n');
   $('cfgSeuilFrag').value = c.seuils.fragilite_et; $('cfgSeuilPatho').value = c.seuils.pathologique_et;
@@ -2765,6 +2827,75 @@ initAides();
   'cfgCotAmo', 'cfgCotSimple', 'cfgCotComplexe', 'cfgCotRenouv',
   'cfgSeuilFrag', 'cfgSeuilPatho', 'cfgSeuilSev', 'cfgSeuilFragP', 'cfgSeuilPathoP', 'cfgSeuilSevP',
 ].forEach(id => $(id).addEventListener('input', majApercus));
+// --- Mise en page des documents (lot B) --------------------------------------
+// Réglages de l'écran, enregistrés ou non, tels que le serveur les attend. Le
+// logo n'en fait pas partie : il se dépose et se retire par ses routes propres,
+// dès le choix du fichier — renvoyer son image à chaque « Enregistrer » ferait
+// transiter des centaines de Ko pour rien.
+function collectMiseEnPage() {
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
+  return {
+    police: $('cfgMepPolice').value || undefined,
+    taille_corps: num($('cfgMepTaille').value), interligne: num($('cfgMepInterligne').value),
+    marges_mm: num($('cfgMepMarges').value), couleur_titres: $('cfgMepCouleur').value || undefined,
+    rubriques_numerotees: $('cfgMepNumerotees').checked, numeros_de_page: $('cfgMepPages').checked,
+    logo_position: $('cfgMepLogoPos').value || undefined, logo_hauteur_mm: num($('cfgMepLogoHaut').value),
+  };
+}
+function afficherLogo(logo) {
+  const present = !!(logo && logo.donnees);
+  const img = $('mepLogoImg');
+  // Source construite depuis le type et les octets vérifiés par le serveur.
+  img.src = present ? `data:${logo.type};base64,${logo.donnees}` : '';
+  img.hidden = !present; $('mepLogoRetirer').hidden = !present; $('mepLogoAucun').hidden = present;
+}
+// Aperçu : PDF d'un bilan fictif mis en page par le serveur avec les réglages
+// de l'écran (POST, réglages dans le corps : rien n'est enregistré), affiché
+// dans le cadre. Regroupé (400 ms) pour ne pas mettre en page à chaque frappe.
+let APERCU_TIMER = null, APERCU_URL = null;
+function planifierApercu() { clearTimeout(APERCU_TIMER); APERCU_TIMER = setTimeout(rafraichirApercu, 400); }
+async function rafraichirApercu() {
+  const st = $('mepApercuSt');
+  statutOccupe(st, 'Mise en page de l\'exemple…');
+  try {
+    const r = await api('/api/config/mise_en_page/apercu', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(collectMiseEnPage()),
+    });
+    if (typeof r.blob !== 'function' || typeof URL.createObjectURL !== 'function') { st.textContent = ''; return; }
+    const blob = await r.blob();
+    if (APERCU_URL) URL.revokeObjectURL(APERCU_URL);
+    APERCU_URL = URL.createObjectURL(blob);
+    $('mepApercu').src = APERCU_URL + '#toolbar=0&navpanes=0&view=FitH';
+    st.textContent = '';
+  } catch (e) { st.textContent = 'Aperçu indisponible : ' + e.message; }
+}
+$('mepApercuBtn').addEventListener('click', e => avecBouton(e.target, rafraichirApercu));
+['cfgMepPolice', 'cfgMepTaille', 'cfgMepInterligne', 'cfgMepMarges', 'cfgMepCouleur', 'cfgMepLogoPos',
+  'cfgMepLogoHaut', 'cfgMepNumerotees', 'cfgMepPages',
+].forEach(id => $(id).addEventListener('change', planifierApercu));
+$('cfgMepLogo').addEventListener('change', async () => {
+  const entree = $('cfgMepLogo'), st = $('mepLogoStatus');
+  const fichier = entree.files && entree.files[0];
+  if (!fichier) return;
+  statutOccupe(st, 'Dépôt du logo…');
+  try {
+    const fd = new FormData(); fd.append('fichier', fichier, fichier.name);
+    const eff = await (await api('/api/config/logo', { method: 'PUT', body: fd })).json();
+    if (CFG_EFF) CFG_EFF.mise_en_page = eff.mise_en_page;
+    afficherLogo((eff.mise_en_page || {}).logo);
+    st.textContent = '✓ logo déposé'; planifierApercu();
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+  entree.value = '';
+});
+$('mepLogoRetirer').addEventListener('click', e => avecBouton(e.target, async () => {
+  const st = $('mepLogoStatus');
+  try {
+    const eff = await (await api('/api/config/logo', { method: 'DELETE' })).json();
+    if (CFG_EFF) CFG_EFF.mise_en_page = eff.mise_en_page;
+    afficherLogo(null);
+    st.textContent = '✓ logo retiré'; planifierApercu();
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
 // Bloc technique replié par défaut ; le sommaire l'ouvre quand on y va.
 function ouvrirTech(ouvert) {
   $('techCorps').hidden = !ouvert;
@@ -3399,6 +3530,7 @@ function collectSettings() {
   Object.entries(PRAT_CHAMPS).forEach(([cle, id]) => { praticien[cle] = $(id).value.trim(); });
   return {
     praticien,
+    mise_en_page: collectMiseEnPage(),
     llm: { model: $('cfgLlmModel').value.trim() || undefined, temperature: num($('cfgLlmTemp').value) },
     stt: {
       device: $('cfgSttDevice').value, model: $('cfgSttModel').value.trim() || 'auto',
