@@ -38,6 +38,13 @@ class UnlockRequest(BaseModel):
     passphrase: str
 
 
+class PassphraseChange(BaseModel):
+    """Rotation de la passphrase : l'ancienne sert à vérifier, la nouvelle
+    re-chiffre le coffre. Ni l'une ni l'autre n'est journalisée."""
+    ancienne: str
+    nouvelle: str
+
+
 class RestaurationRequest(BaseModel):
     """Restauration d'une sauvegarde : nom de fichier (jamais un chemin) +
     passphrase, indispensable pour vérifier la copie et rouvrir le coffre."""

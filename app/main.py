@@ -60,6 +60,7 @@ from .models import (
     EpreuveCreate,
     MajResponse,
     OkResponse,
+    PassphraseChange,
     PatientIn,
     PromptRemplacement,
     RestaurationRequest,
@@ -193,17 +194,16 @@ async def status() -> StatusResponse:
     )
 
 
-@app.post("/api/unlock")
-async def unlock(req: UnlockRequest) -> OkResponse:
-    if not req.passphrase.strip():
-        raise HTTPException(400, "Passphrase vide.")
-    if not security.db_exists() and len(req.passphrase) < PASSPHRASE_MIN:
+def _refuser_passphrase_faible(p: str) -> None:
+    """Politique commune à la création du coffre et au changement de passphrase
+    (les coffres existants restent ouvrables tels quels)."""
+    if len(p) < PASSPHRASE_MIN:
         raise HTTPException(
             400,
             f"Passphrase trop courte : {PASSPHRASE_MIN} caractères minimum "
             "pour protéger le coffre.",
         )
-    raison = "" if security.db_exists() else security.passphrase_faible(req.passphrase)
+    raison = security.passphrase_faible(p)
     if raison:
         raise HTTPException(
             400,
@@ -211,6 +211,14 @@ async def unlock(req: UnlockRequest) -> OkResponse:
             "de votre coffre (clé USB perdue) peut être attaquée hors ligne, sans "
             "limite d'essais.",
         )
+
+
+@app.post("/api/unlock")
+async def unlock(req: UnlockRequest) -> OkResponse:
+    if not req.passphrase.strip():
+        raise HTTPException(400, "Passphrase vide.")
+    if not security.db_exists():
+        _refuser_passphrase_faible(req.passphrase)
     # Threadpool : dérivation de clé + purge + sauvegarde auto (VACUUM INTO)
     # peuvent prendre plusieurs secondes sur une grosse base — l'event loop
     # (keepalive, dictée) doit rester réactif.
@@ -612,6 +620,23 @@ async def list_sauvegardes() -> dict:
 # gèlerait sur le verrou global puis restaurerait par-dessus le résultat de
 # la première. Même esprit que la garde des analyses (_analyses_en_cours).
 _restauration_verrou = threading.Lock()
+
+
+@app.post("/api/passphrase", dependencies=[Depends(require_unlock)])
+async def changer_passphrase(req: PassphraseChange) -> dict:
+    """Rotation de la passphrase du coffre : re-chiffrement sur place, puis
+    nouvelle sauvegarde chiffrée avec la nouvelle clé."""
+    if not req.ancienne.strip() or not req.nouvelle.strip():
+        raise HTTPException(400, "Passphrase vide.")
+    if req.nouvelle == req.ancienne:
+        raise HTTPException(400, "La nouvelle passphrase est identique à l'actuelle.")
+    _refuser_passphrase_faible(req.nouvelle)
+    try:
+        # Threadpool : le re-chiffrement réécrit chaque page, puis VACUUM INTO.
+        res = await run_in_threadpool(security.changer_passphrase, req.ancienne, req.nouvelle)
+    except security.PassphraseIncorrecte as exc:
+        raise HTTPException(401, str(exc))
+    return res
 
 
 @app.post("/api/restauration", dependencies=[Depends(require_unlock)])

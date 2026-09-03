@@ -62,6 +62,7 @@ let epreuveResponder = () => ({});
 let statusResponder = () => ({ db_exists: true, unlocked: true, first_run: false, version: "1.8.0" });
 let installResponder = () => ({ ollama: true, pret: true, config_lisible: true, modeles: [] });
 let lockCalls = 0;
+let passphrasePosts = [];
 // Abandon d'une requête via AbortController : le stub rejette comme fetch
 // (erreur nommée AbortError) dès que le signal est levé.
 const erreurAbandon = () => { const e = new Error("aborted"); e.name = "AbortError"; return e; };
@@ -114,6 +115,11 @@ globalThis.fetch = async (p, o = {}) => {
     return rep(structureResponder());
   }
   if (url.endsWith("/api/lock")) { lockCalls++; return rep({ ok: true }); }
+  if (url.endsWith("/api/passphrase")) {
+    passphrasePosts.push(JSON.parse(o.body));
+    return rep({ sauvegarde: { fichier: "s/bilan-ortho-sauvegarde-20260903-101500.db", octets: 4096 },
+                 sauvegarde_erreur: "", anciennes_copies: 2 });
+  }
   if (url.endsWith("/api/bilans") && o.method === "POST") {
     bilanCreates++;
     if (holdNext) await holdNext;
@@ -1088,6 +1094,27 @@ selDom.value = "langage_oral";
 document.getElementById("newBilan").click();
 await settle();
 check("« + Nouveau bilan » avec un domaine : créé", bilanCreates === 1);
+
+// === 5.2 (revue 2026-08-11) : changer la passphrase depuis Paramètres =======
+const ppStatus = () => document.getElementById("ppStatus").textContent;
+document.getElementById("ppAncienne").value = "passphrase-de-test";
+document.getElementById("ppNouvelle").value = "les hérons volent bas ce soir";
+document.getElementById("ppConfirm").value = "les hérons volent bas ce matin";
+document.getElementById("ppBtn").click();
+await settle();
+check("passphrase : confirmation différente → aucun appel, message explicite",
+  passphrasePosts.length === 0 && ppStatus().includes("confirmation"));
+document.getElementById("ppConfirm").value = "les hérons volent bas ce soir";
+document.getElementById("ppBtn").click();
+await settle();
+check("passphrase : POST avec l'ancienne et la nouvelle",
+  passphrasePosts.length === 1
+  && passphrasePosts[0].ancienne === "passphrase-de-test"
+  && passphrasePosts[0].nouvelle === "les hérons volent bas ce soir");
+check("passphrase changée : succès, nouvelle sauvegarde nommée, copies antérieures signalées",
+  ppStatus().includes("✓") && ppStatus().includes("20260903-101500") && ppStatus().includes("2 copie"));
+check("passphrase changée : les trois champs sont vidés",
+  ["ppAncienne", "ppNouvelle", "ppConfirm"].every((id) => document.getElementById(id).value === ""));
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

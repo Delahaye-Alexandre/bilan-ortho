@@ -1460,3 +1460,24 @@ def test_transcribe_audio_illisible_400(client, monkeypatch):
     r = client.post("/api/transcribe", files={"audio": ("d.webm", b"\x00\x01", "audio/webm")})
     assert r.status_code == 400
     assert "illisible" in r.json()["detail"]
+
+
+# --- Changement de passphrase (revue 2026-08-11, 5.2) -----------------------
+
+def test_changement_de_passphrase_par_l_api(client):
+    nouvelle = "les hérons volent bas ce soir"
+    r = client.post("/api/passphrase", json={"ancienne": PASSPHRASE, "nouvelle": "motdepasse12"})
+    assert r.status_code == 400 and "hors ligne" in r.json()["detail"]
+    r = client.post("/api/passphrase", json={"ancienne": PASSPHRASE, "nouvelle": PASSPHRASE})
+    assert r.status_code == 400 and "identique" in r.json()["detail"]
+    r = client.post("/api/passphrase", json={"ancienne": "fausse fausse fausse", "nouvelle": nouvelle})
+    assert r.status_code == 401
+    r = client.post("/api/passphrase", json={"ancienne": PASSPHRASE, "nouvelle": nouvelle})
+    assert r.status_code == 200
+    # La sauvegarde automatique du déverrouillage s'ouvre encore avec l'ancienne
+    # passphrase : c'est exactement ce que l'interface doit dire.
+    assert r.json()["sauvegarde"]["octets"] > 0 and r.json()["anciennes_copies"] == 1
+    # Verrouillage puis réouverture : seule la nouvelle passphrase ouvre.
+    assert client.post("/api/lock").status_code == 200
+    assert client.post("/api/unlock", json={"passphrase": PASSPHRASE}).status_code == 401
+    assert client.post("/api/unlock", json={"passphrase": nouvelle}).status_code == 200

@@ -502,3 +502,50 @@ def test_sauvegarde_refusee_sur_support_debranche(tmp_path, monkeypatch):
     (tmp_path / "disque").mkdir()
     ailleurs = tmp_path / "disque" / "sauvegardes"
     assert sauvegarde.dossier({"sauvegarde": {"dossier": str(ailleurs)}}) == ailleurs
+
+
+# --- Changement de passphrase (revue 2026-08-11, 5.2) -----------------------
+
+NOUVELLE = "les hérons volent bas ce soir"
+
+
+def test_changer_passphrase_rechiffre_le_coffre_et_sa_sauvegarde(data_dir):
+    from pathlib import Path
+
+    assert security.unlock(PASSPHRASE)
+    with security.transaction() as con:
+        bid = bilan.create(con, [])
+        cfg = config.ConfigStore(con).effective()
+        sauvegarde.creer(con, cfg)  # une copie antérieure, chiffrée avec l'ANCIENNE clé
+    res = security.changer_passphrase(PASSPHRASE, NOUVELLE)
+    # Deux copies antérieures chiffrées avec l'ancienne clé : celle du
+    # déverrouillage (sauvegarde automatique) et la manuelle ci-dessus.
+    assert res["anciennes_copies"] == 2 and res["sauvegarde"] and not res["sauvegarde_erreur"]
+    # Le coffre reste ouvert et intact pendant la session…
+    assert security.is_unlocked()
+    with security.transaction() as con:
+        assert bilan.get(con, bid) is not None
+        assert con.execute(
+            "SELECT count(*) FROM audit_log WHERE action='rekey'"
+        ).fetchone()[0] == 1
+    # … et ne s'ouvre plus qu'avec la nouvelle passphrase.
+    security.lock()
+    assert security.unlock(PASSPHRASE) is False
+    assert security.unlock(NOUVELLE)
+    with security.transaction() as con:
+        assert bilan.get(con, bid) is not None
+    security.lock()
+    # La sauvegarde prise après le changement s'ouvre avec la nouvelle clé, pas l'ancienne.
+    copie = Path(res["sauvegarde"]["fichier"])
+    security._verifier_copie(copie, NOUVELLE)
+    with pytest.raises(security.RestaurationImpossible):
+        security._verifier_copie(copie, PASSPHRASE)
+
+
+def test_changer_passphrase_refuse_une_ancienne_fausse(data_dir):
+    assert security.unlock(PASSPHRASE)
+    with pytest.raises(security.PassphraseIncorrecte):
+        security.changer_passphrase("pas celle-là, vraiment pas", NOUVELLE)
+    security.lock()
+    assert security.unlock(PASSPHRASE)  # rien n'a changé
+    security.lock()

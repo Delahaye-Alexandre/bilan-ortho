@@ -338,6 +338,17 @@
           <div><label for="cfgRgpdCons">Conservation des bilans (jours, 0 = illimitée)</label><input id="cfgRgpdCons" type="number" min="0"></div>
         </div>
         <div class="muted" style="margin-top:8px">L'audio de dictée est toujours supprimé après transcription (non désactivable).</div>
+        <div style="margin-top:14px"><b>Changer la passphrase du coffre</b></div>
+        <div class="grid3">
+          <div><label for="ppAncienne">Passphrase actuelle</label><input id="ppAncienne" type="password" autocomplete="current-password"></div>
+          <div><label for="ppNouvelle">Nouvelle passphrase (12 caractères min.)</label><input id="ppNouvelle" type="password" autocomplete="new-password"></div>
+          <div><label for="ppConfirm">Confirmer la nouvelle</label><input id="ppConfirm" type="password" autocomplete="new-password"></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="ppBtn" class="ghost">🔑 Changer la passphrase</button>
+          <span class="status" id="ppStatus" role="status"></span>
+        </div>
+        <div class="muted">Le coffre est re-chiffré sur place et une sauvegarde est aussitôt créée avec la nouvelle passphrase. Les copies antérieures (sauvegardes, copie avant migration) s'ouvrent encore avec l'ancienne : supprimez-les si vous pensez qu'elle a été vue.</div>
       </fieldset>
       <fieldset>
         <legend>Mises à jour de l'application</legend>
@@ -2029,6 +2040,31 @@ document.getElementById('sauvBtn').addEventListener('click', e => avecBouton(e.t
     const s = await r.json();
     st.textContent = `✓ ${s.fichier.split('/').pop()} (${Math.round(s.octets / 1024)} Ko)`;
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+}));
+// Changement de passphrase (revue 2026-08-11, 5.2) : la passphrase vue
+// par-dessus l'épaule ou tapée en partage d'écran doit pouvoir être tournée
+// sans repartir d'un coffre vide. Rien n'est vérifié ici que la saisie : la
+// politique (longueur, prévisibilité, ancienne exacte) est celle du serveur.
+document.getElementById('ppBtn').addEventListener('click', e => avecBouton(e.target, async () => {
+  const st = $('ppStatus');
+  const a = $('ppAncienne').value, n = $('ppNouvelle').value, c = $('ppConfirm').value;
+  if (!a || !n) { st.textContent = 'Saisissez la passphrase actuelle et la nouvelle.'; return; }
+  if (n !== c) { st.textContent = 'La confirmation ne correspond pas à la nouvelle passphrase.'; $('ppConfirm').focus(); return; }
+  statutOccupe(st, 'Re-chiffrement du coffre…');
+  try {
+    const r = await api('/api/passphrase', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ancienne: a, nouvelle: n }) });
+    const s = await r.json();
+    ['ppAncienne', 'ppNouvelle', 'ppConfirm'].forEach(id => { $(id).value = ''; });
+    const copie = s.sauvegarde
+      ? `nouvelle sauvegarde créée (${s.sauvegarde.fichier.split('/').pop()})`
+      : `sauvegarde impossible : ${s.sauvegarde_erreur}`;
+    const anciennes = s.anciennes_copies
+      ? ` ⚠️ ${s.anciennes_copies} copie(s) antérieure(s) s'ouvrent encore avec l'ancienne passphrase.`
+      : '';
+    st.textContent = `✓ Passphrase changée — ${copie}.${anciennes}`;
+    // La liste des sauvegardes vient de gagner une copie : la rafraîchir.
+    api('/api/sauvegardes').then(r => r.json()).then(renderSauvegardes).catch(() => {});
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
 }));
 // --- Mise à jour de l'application ---------------------------------------------
 // Seul appel réseau externe de l'app (un GET vers GitHub, rien n'est envoyé) :

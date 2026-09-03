@@ -28,7 +28,8 @@ ci-dessous.
 ## Fonctionnalités
 
 - **Coffre chiffré** (SQLCipher, AES-256) déverrouillé par passphrase ;
-  verrouillage automatique après inactivité ; journal d'audit ;
+  verrouillage automatique après inactivité ; passphrase modifiable (le
+  coffre est re-chiffré sur place) ; journal d'audit ;
   **sauvegardes chiffrées** automatiques (au déverrouillage, cadence
   configurable) et manuelles, avec rotation — la copie s'ouvre avec la même
   passphrase.

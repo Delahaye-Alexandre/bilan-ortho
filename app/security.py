@@ -34,6 +34,11 @@ class RestaurationImpossible(RuntimeError):
     base courante est restée intacte. Mappée en 400 par le serveur."""
 
 
+class PassphraseIncorrecte(RuntimeError):
+    """L'ancienne passphrase fournie n'ouvre pas le coffre : rien n'a été
+    modifié. Mappée en 401 par le serveur."""
+
+
 # Mots qu'une attaque hors ligne essaie en premier. Volontairement court : on
 # attrape « motdepasse12 », pas la subtilité — et aucune règle de composition,
 # qui pousse vers « Motdepasse1! » sans rien changer au fond.
@@ -151,6 +156,54 @@ def _con():
     if con is None:
         raise CoffreVerrouille("Application verrouillée.")
     return con
+
+
+def changer_passphrase(ancienne: str, nouvelle: str) -> dict:
+    """Re-chiffre le coffre sur place avec une nouvelle passphrase.
+
+    Vue par-dessus l'épaule ou tapée pendant un partage d'écran, la passphrase
+    ne pouvait pas être tournée : la seule issue était de repartir d'un coffre
+    vide (revue du 2026-08-11, 5.2). ``PRAGMA rekey`` réécrit chaque page dans
+    une transaction ; l'ancienne passphrase est vérifiée sur une seconde
+    connexion — elle n'est stockée nulle part. Une sauvegarde chiffrée avec la
+    NOUVELLE clé est prise aussitôt ; les copies antérieures, elles, s'ouvrent
+    toujours avec l'ancienne : leur nombre est rendu pour que l'interface le
+    dise, plutôt que de laisser croire à une rotation complète."""
+    with _lock:
+        con = _con()
+        chemin = config.db_path()
+        try:
+            essai = db.connect(chemin, ancienne)
+        except Exception:
+            raise PassphraseIncorrecte("Passphrase actuelle incorrecte : rien n'a été modifié.")
+        try:
+            if not db.verify(essai):
+                raise PassphraseIncorrecte(
+                    "Passphrase actuelle incorrecte : rien n'a été modifié."
+                )
+        finally:
+            essai.close()
+        con.commit()  # rekey refuse de tourner dans une transaction ouverte
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        safe = nouvelle.replace("'", "''")
+        con.execute(f"PRAGMA rekey = '{safe}'")
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        audit("rekey", "app", None, "")
+        con.commit()
+        from . import sauvegarde  # import tardif (évite un cycle au chargement)
+
+        cfg = config.ConfigStore(con).effective()
+        res: dict = {"sauvegarde": None, "sauvegarde_erreur": "", "anciennes_copies": 0}
+        try:
+            dossier = sauvegarde.dossier(cfg)
+            res["anciennes_copies"] = len(list(dossier.glob(sauvegarde.PREFIXE + "*.db")))
+            res["sauvegarde"] = sauvegarde.creer(con, cfg)
+            con.commit()
+        except Exception as exc:
+            # Le coffre est bien re-chiffré ; seule la copie manque, et on le dit.
+            logger.warning("Sauvegarde après changement de passphrase impossible : %s", exc)
+            res["sauvegarde_erreur"] = str(exc)
+        return res
 
 
 def _supprimer_sidecars(chemin) -> None:

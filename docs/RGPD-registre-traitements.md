@@ -42,8 +42,10 @@
 ## 4. Mesures de sécurité (mises en œuvre par l'app)
 - **Chiffrement au repos** : base SQLCipher (AES-256), déverrouillage par
   passphrase non stockée.
-- **Contrôle d'accès** : passphrase + **verrouillage automatique sur inactivité**
-  (`rgpd.verrouillage_inactivite_minutes`).
+- **Contrôle d'accès** : passphrase (modifiable, le coffre est alors re-chiffré
+  sur place — `app/security.py::changer_passphrase`) + **verrouillage
+  automatique sur inactivité** (`rgpd.verrouillage_inactivite_minutes`), y
+  compris sans aucune requête.
 - **Journalisation** : table `audit_log` (déverrouillages, actions).
 - **Réseau** : service lié à `127.0.0.1` ; aucun appel réseau sortant dans le
   traitement des données. Seule exception, hors traitement : la vérification de
