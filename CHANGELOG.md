@@ -80,7 +80,8 @@ Mises à jour (`app/maj.py`, plan « mise à jour » validé le 2026-09-03) :
   secrets — voir `docs/signature-code.md`. Le test de mise à niveau a bloqué
   les premiers builds : sans Ollama sur le runner, l'installeur silencieux
   téléchargeait Ollama puis attendait sans fin son installeur ; il trouve
-  désormais un Ollama factice, et l'étape est bornée à vingt minutes.
+  désormais un Ollama factice, l'attente ne couvre plus l'application
+  relancée par l'installeur, et l'étape est bornée à vingt minutes.
 
 ## 1.9.0 — 2026-09-03
 

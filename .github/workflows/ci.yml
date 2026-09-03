@@ -306,8 +306,11 @@ jobs:
             }
             throw "Le serveur n'a pas répondu sur le port $port"
           }
+          # .WaitForExit() et non Start-Process -Wait : -Wait attend aussi les
+          # processus descendants, donc l'application que l'installeur relance
+          # (/RELANCER) — le build restait suspendu jusqu'au timeout.
           Write-Host "1. Installation de $($ancien.Name)"
-          Start-Process -Wait -FilePath $ancien.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART"
+          (Start-Process -PassThru -FilePath $ancien.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART").WaitForExit()
           $p = Start-Process -FilePath $app -PassThru
           $s = Attendre-Status 8000
           Write-Host "   version installée : $($s.version)"
@@ -317,7 +320,7 @@ jobs:
           Start-Sleep -Seconds 2
           Write-Host "2. Installation de la version construite par-dessus, avec relance sur le port 8000"
           $neuf = Get-Item "packaging\windows\Output\BilanOrtho-Setup-*.exe"
-          Start-Process -Wait -FilePath $neuf.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/RELANCER=8000"
+          (Start-Process -PassThru -FilePath $neuf.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/RELANCER=8000").WaitForExit()
           $s2 = Attendre-Status 8000
           Write-Host "   version après mise à niveau : $($s2.version) (relancée par l'installeur)"
           if ($s2.version -eq $s.version) { throw "La version n'a pas changé après la mise à niveau." }
