@@ -533,6 +533,41 @@ async def delete_config_prompts() -> dict:
         return eff
 
 
+@app.get("/api/config/defauts", dependencies=[Depends(require_unlock)])
+async def get_config_defauts() -> dict:
+    """Valeurs par défaut seules. L'écran Paramètres affiche la valeur
+    recommandée dans chaque bulle d'aide et signale les réglages qui s'en
+    écartent — lues ici, jamais recopiées à la main (elles se périmeraient)."""
+    return copy.deepcopy(config.DEFAULTS)
+
+
+# Sections qu'un bouton « Revenir aux valeurs recommandées » peut effacer.
+# Jamais `praticien` (une identité n'a pas de valeur recommandée) ; trame,
+# catalogues et prompts ont leurs routes propres, déclarées avant celle-ci.
+SECTIONS_REINITIALISABLES = frozenset(
+    {"llm", "stt", "embeddings", "style", "seuils", "cotation", "rgpd", "sauvegarde", "maj"}
+)
+
+
+@app.delete("/api/config/{section}", dependencies=[Depends(require_unlock)])
+async def delete_config_section(section: str, cles: str | None = None) -> dict:
+    """Retour aux défauts d'une section, ou de quelques-unes de ses clés
+    (`?cles=a,b`), sans toucher au reste : le « tout rétablir » global
+    emportait vocabulaire, seuils, cotation et identité pour annuler l'essai
+    d'un seul réglage."""
+    if section not in SECTIONS_REINITIALISABLES:
+        raise HTTPException(404, f"Section inconnue ou non réinitialisable : {section}.")
+    liste = [c.strip() for c in (cles or "").split(",") if c.strip()]
+    with security.transaction() as con:
+        store = config.ConfigStore(con)
+        eff = store.effacer_cles(section, liste) if liste else store.effacer_section(section)
+        security.audit(
+            "config_section", "config", None,
+            section + (f":{','.join(liste)}" if liste else ""),
+        )
+        return eff
+
+
 @app.get("/api/prompts/structure-defaut", dependencies=[Depends(require_unlock)])
 async def prompt_structure_defaut() -> dict:
     """Consigne de structuration intégrée, prête à personnaliser.

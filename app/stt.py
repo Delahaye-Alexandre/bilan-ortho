@@ -147,13 +147,31 @@ def _get_model(spec: dict):
         return _cache["model"]
 
 
+# Corrections appliquées après transcription. Une correction remplace le mot
+# entier, tel qu'il est écrit, majuscule ou non : « ortofonie => orthophonie ».
+# L'expression régulière (comportement d'origine, sensible à la casse) se garde
+# avec le préfixe « re: » — sans ce garde-fou, « N.E.E.L » remplaçait n'importe
+# quels caractères et « ortho » transformait « orthophoniste ».
+PREFIXE_REGEX = "re:"
+
+
 def _apply_corrections(text: str, corrections: dict) -> str:
-    for pattern, repl in (corrections or {}).items():
-        try:
-            text = re.sub(pattern, repl, text)
-        except re.error:
-            # Corrections mal formées : on ignore plutôt que de planter la dictée.
-            continue
+    for motif, repl in (corrections or {}).items():
+        motif = str(motif)
+        if motif.startswith(PREFIXE_REGEX):
+            try:
+                text = re.sub(motif[len(PREFIXE_REGEX):], repl, text)
+            except re.error:
+                # Corrections mal formées : on ignore plutôt que de planter la dictée.
+                continue
+        elif motif.strip():
+            # (?<!\w) / (?!\w) plutôt que \b : « N.E.E.L » finit par un signe,
+            # où \b ne marque pas de frontière. Remplacement littéral (lambda) :
+            # un « \ » dans le texte voulu n'est pas interprété.
+            text = re.sub(
+                rf"(?<!\w){re.escape(motif.strip())}(?!\w)",
+                lambda _m, r=repl: r, text, flags=re.IGNORECASE,
+            )
     return text
 
 

@@ -1253,3 +1253,29 @@ def test_telechargement_du_modele_de_dictee_en_arriere_plan(monkeypatch):
         time.sleep(0.01)
     assert stt.etat_telechargement() == {"etat": "erreur", "message": "Connection error",
                                          "modele": stt.resolved(config.DEFAULTS)["model"]}
+
+
+# --- corrections de dictée (Paramètres compréhensibles, 2026-09-03) ----------
+
+
+def test_corrections_dictee_litterales_par_defaut():
+    """Une correction remplace le mot entier, casse ignorée, sans regex
+    implicite : « N.E.E.L » ne matche plus n'importe quels caractères et
+    « ortho » ne touche pas « orthophoniste »."""
+    from app import stt
+
+    corr = {"ortofonie": "orthophonie", "N.E.E.L": "N-EEL"}
+    assert stt._apply_corrections("Ortofonie et ortofonie.", corr) == "orthophonie et orthophonie."
+    assert stt._apply_corrections("NAEBEL puis N.E.E.L.", corr) == "NAEBEL puis N-EEL."
+    assert stt._apply_corrections("orthophoniste", {"ortho": "orthophonie"}) == "orthophoniste"
+    # remplacement littéral : un « \\ » dans le texte voulu n'est pas interprété
+    assert stt._apply_corrections("a b", {"a": "x\\1"}) == "x\\1 b"
+
+
+def test_corrections_dictee_prefixe_regex_et_motifs_invalides():
+    from app import stt
+
+    corr = {"re:\\bELO\\b": "ELO (Khomsi)"}
+    assert stt._apply_corrections("test ELO passé, VELO", corr) == "test ELO (Khomsi) passé, VELO"
+    # expression invalide ou motif vide : ignorés, la dictée n'échoue pas
+    assert stt._apply_corrections("abc", {"re:(": "x", "  ": "y"}) == "abc"

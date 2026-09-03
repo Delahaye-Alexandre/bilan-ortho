@@ -128,6 +128,37 @@ def test_domaines_publics(client):
     assert {"cle": "voix", "titre": "Voix"} in doms
 
 
+def test_config_defauts_exposes(client):
+    """L'écran Paramètres lit la valeur recommandée ici, jamais en dur."""
+    assert client.get("/api/config/defauts").json() == config.DEFAULTS
+
+
+def test_config_retour_par_section(client):
+    """Le retour aux valeurs recommandées d'une section n'emporte ni les autres
+    sections ni, avec ?cles=, les autres clés de la même section."""
+    client.put("/api/config", json={"overrides": {
+        "seuils": {"fragilite_et": -0.5}, "cotation": {"valeur_amo": 3.0},
+        "stt": {"hotwords": ["zut"], "beam_size": 2},
+    }})
+    eff = client.delete("/api/config/seuils").json()
+    assert eff["seuils"] == config.DEFAULTS["seuils"]
+    assert eff["cotation"]["valeur_amo"] == 3.0
+    eff = client.delete("/api/config/stt", params={"cles": "hotwords"}).json()
+    assert eff["stt"]["hotwords"] == config.DEFAULTS["stt"]["hotwords"]
+    assert eff["stt"]["beam_size"] == 2
+    ov = client.get("/api/config/overrides").json()
+    assert "seuils" not in ov and ov["stt"] == {"beam_size": 2}
+    # dernière clé retirée : la section disparaît des surcharges
+    client.delete("/api/config/stt", params={"cles": "beam_size"})
+    assert "stt" not in client.get("/api/config/overrides").json()
+    # identité et sections inconnues : refusées ; les éditeurs dédiés gardent leur route
+    assert client.delete("/api/config/praticien").status_code == 404
+    assert client.delete("/api/config/inconnue").status_code == 404
+    with security.transaction() as con:
+        actions = [r[0] for r in con.execute("SELECT action FROM audit_log").fetchall()]
+    assert "config_section" in actions
+
+
 def test_trame_et_catalogue_configurables_via_api(client):
     client.put("/api/config", json={"overrides": {
         "trame": {"sections": [{"cle": "libre", "titre": "Rubrique libre"}]},

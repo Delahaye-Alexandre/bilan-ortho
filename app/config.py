@@ -174,8 +174,9 @@ DEFAULTS: dict[str, Any] = {
             "MBLF", "N-EEL", "L2MA", "ZAREKI", "déglutition", "oralité", "dysphonie",
             "aphasie", "dysarthrie", "bégaiement", "fluence",
         ],
-        # Corrections déterministes appliquées après transcription (regex sensibles
-        # à la casse par défaut ; clé -> remplacement).
+        # Corrections déterministes appliquées après transcription : mot entier,
+        # casse ignorée (clé -> remplacement) ; préfixe « re: » pour une regex
+        # (voir stt._apply_corrections).
         "corrections": {},
     },
     "embeddings": {
@@ -301,6 +302,25 @@ class ConfigStore:
         suivent les mises à jour de l'application. Retourne l'effectif."""
         ov = self.overrides()
         ov.pop(cle, None)
+        if ov:
+            self._persister(ov)
+        else:
+            self._con.execute("DELETE FROM config WHERE key = ?", (self.KEY,))
+        return _deep_merge(DEFAULTS, ov)
+
+    def effacer_cles(self, cle: str, cles: list[str]) -> dict:
+        """Retire quelques clés de la surcharge d'une section (retour aux défauts
+        pour elles seules). L'écran Paramètres répartit une même section entre
+        « Ma dictée » (vocabulaire, corrections) et les réglages techniques
+        (matériel, modèle…) : chacun revient à ses valeurs sans l'autre.
+        Retourne l'effectif."""
+        ov = self.overrides()
+        section = ov.get(cle)
+        if isinstance(section, dict):
+            for k in cles:
+                section.pop(k, None)
+            if not section:
+                ov.pop(cle, None)
         if ov:
             self._persister(ov)
         else:
