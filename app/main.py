@@ -203,6 +203,14 @@ async def unlock(req: UnlockRequest) -> OkResponse:
             f"Passphrase trop courte : {PASSPHRASE_MIN} caractères minimum "
             "pour protéger le coffre.",
         )
+    raison = "" if security.db_exists() else security.passphrase_faible(req.passphrase)
+    if raison:
+        raise HTTPException(
+            400,
+            f"Passphrase {raison} : préférez une phrase de plusieurs mots. Une copie "
+            "de votre coffre (clé USB perdue) peut être attaquée hors ligne, sans "
+            "limite d'essais.",
+        )
     # Threadpool : dérivation de clé + purge + sauvegarde auto (VACUUM INTO)
     # peuvent prendre plusieurs secondes sur une grosse base — l'event loop
     # (keepalive, dictée) doit rester réactif.

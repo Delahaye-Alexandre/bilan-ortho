@@ -387,3 +387,49 @@ def test_verrouillage_manuel_desarme_le_minuteur(data_dir, monkeypatch):
     time.sleep(0.15)
     assert security.is_unlocked()
     security.lock()
+
+
+# --- Passphrase prévisible et mémoire chiffrée (revue 2026-08-11, 5.6) -------
+
+def test_passphrase_faible_raisons():
+    from app import security
+
+    assert security.passphrase_faible("motdepasse12") == (
+        "trop prévisible (un mot courant suivi de chiffres ou de signes)"
+    )
+    assert security.passphrase_faible("mot de passe 26").startswith("trop prévisible")
+    assert security.passphrase_faible("AZERTYUIOP!?1").startswith("trop prévisible")
+    assert security.passphrase_faible("111111111111") == "trop répétitive"
+    assert security.passphrase_faible("123456789012") == "composée uniquement de chiffres"
+    # Une phrase de plusieurs mots, ou un mot courant noyé dans autre chose : ok.
+    assert security.passphrase_faible("les hérons volent bas ce soir") == ""
+    assert security.passphrase_faible("motdepasse-du-cabinet-2026") == ""
+    assert security.passphrase_faible(PASSPHRASE) == ""
+
+
+def test_passphrase_previsible_refusee_a_la_creation(data_dir):
+    """« motdepasse12 » passait la longueur minimale. Une copie du coffre
+    s'attaque hors ligne sans limite d'essais : le message le dit."""
+    with TestClient(app, base_url="http://127.0.0.1") as c:
+        for p in ("motdepasse12", "azertyuiop123", "111111111111", "123456789012"):
+            r = c.post("/api/unlock", json={"passphrase": p})
+            assert r.status_code == 400, p
+            assert "hors ligne" in r.json()["detail"], p
+        assert c.post("/api/unlock", json={"passphrase": PASSPHRASE}).status_code == 200
+
+
+def test_passphrase_previsible_acceptee_sur_coffre_existant(data_dir):
+    """Comme la longueur : la règle vaut à la création, jamais à l'ouverture
+    d'un coffre historique."""
+    from app import security
+
+    assert security.unlock("motdepasse12")  # coffre créé sans passer par l'API
+    security.lock()
+    with TestClient(app, base_url="http://127.0.0.1") as c:
+        assert c.post("/api/unlock", json={"passphrase": "motdepasse12"}).status_code == 200
+
+
+def test_memoire_des_pages_dechiffrees_effacee(con):
+    """cipher_memory_security est désactivé par défaut dans cette distribution
+    de SQLCipher : la clé dérivée pouvait partir en swap ou en hibernation."""
+    assert str(con.execute("PRAGMA cipher_memory_security").fetchone()[0]) == "1"

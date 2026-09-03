@@ -238,6 +238,11 @@ def connect(path, passphrase: str):
         # existante, une clé erronée lève DatabaseError dès le 1er PRAGMA.
         safe = passphrase.replace("'", "''")
         con.execute(f"PRAGMA key = '{safe}'")
+        # Désactivé par défaut dans cette distribution de SQLCipher : sans
+        # cela, la clé dérivée et les pages déchiffrées libérées peuvent
+        # finir en swap ou dans le fichier d'hibernation — le chemin d'attaque
+        # le plus réaliste sur un portable volé (revue du 2026-08-11, 5.6).
+        con.execute("PRAGMA cipher_memory_security = ON")
         con.execute("PRAGMA journal_mode = WAL")
         con.execute("PRAGMA foreign_keys = ON")
         con.enable_load_extension(True)

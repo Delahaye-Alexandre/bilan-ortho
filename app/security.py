@@ -12,6 +12,7 @@ import os
 import shutil
 import threading
 import time
+import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -31,6 +32,37 @@ class CoffreVerrouille(RuntimeError):
 class RestaurationImpossible(RuntimeError):
     """Demande de restauration invalide (fichier, passphrase ou version) : la
     base courante est restée intacte. Mappée en 400 par le serveur."""
+
+
+# Mots qu'une attaque hors ligne essaie en premier. Volontairement court : on
+# attrape « motdepasse12 », pas la subtilité — et aucune règle de composition,
+# qui pousse vers « Motdepasse1! » sans rien changer au fond.
+_MOTS_PREVISIBLES = frozenset({
+    "motdepasse", "password", "passphrase", "passe", "azerty", "azertyuiop",
+    "qwerty", "qwertyuiop", "bilanortho", "orthophonie", "orthophoniste",
+    "secret", "bonjour", "soleil", "cabinet", "coffre", "admin", "patient",
+})
+
+
+def passphrase_faible(p: str) -> str:
+    """Raison pour laquelle une passphrase est trop prévisible ('' sinon).
+
+    Une copie du coffre (clé USB perdue, sauvegarde égarée) s'attaque hors
+    ligne, sans limite d'essais : « motdepasse12 » passe la longueur minimale
+    et tombe en quelques secondes. La longueur est vérifiée par l'appelant ;
+    ici, seulement les pièges les plus courants."""
+    p = p.strip()
+    if len(set(p)) < 4:
+        return "trop répétitive"
+    if p.isdigit():
+        return "composée uniquement de chiffres"
+    lettres = "".join(
+        c for c in unicodedata.normalize("NFKD", p.lower()) if c.isascii() and c.isalpha()
+    )
+    reste = sum(1 for c in p if not c.isalpha() and not c.isspace())
+    if lettres in _MOTS_PREVISIBLES and reste <= 4:
+        return "trop prévisible (un mot courant suivi de chiffres ou de signes)"
+    return ""
 
 
 def db_exists() -> bool:

@@ -600,7 +600,9 @@ async function gate() {
   if (s.unlocked) { startApp(); return; }
   overlay.hidden = false;
   if (s.first_run) {
-    lockMsg.textContent = "Premier lancement : créez la passphrase de votre coffre (12 caractères minimum). Notez-la : elle est irrécupérable.";
+    lockMsg.textContent = "Premier lancement : créez la passphrase de votre coffre — 12 caractères minimum, "
+      + "de préférence une phrase de plusieurs mots. Une copie du coffre (clé USB perdue) peut être "
+      + "attaquée hors ligne sans limite d'essais : « motdepasse12 » ne tient pas. Notez-la : elle est irrécupérable.";
     pass2.hidden = false; unlockBtn.textContent = 'Créer le coffre';
   }
   pass.focus();

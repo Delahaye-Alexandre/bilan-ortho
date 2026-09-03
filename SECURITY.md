@@ -29,9 +29,10 @@ L'application fonctionne **100 % en local** : serveur lié à `127.0.0.1` unique
 
 En trois points :
 
-1. **Couvert** : un poste de travail individuel — pas d'exposition réseau (loopback seul, protection anti-DNS-rebinding), aucune télémétrie, base et sauvegardes chiffrées, verrouillage automatique après inactivité. Aucune donnée patient n'est transmise en ligne : les hôtes LLM et embeddings sont contraints à la boucle locale par validation de la configuration (`app/models.py`). Seul le téléchargement initial des modèles (Ollama, dictée) nécessite une connexion internet, sans qu'aucune donnée patient n'y transite.
+1. **Couvert** : un poste de travail individuel — pas d'exposition réseau (loopback seul, protection anti-DNS-rebinding, requêtes modifiantes refusées depuis une page tierce), aucune télémétrie, base et sauvegardes chiffrées, mémoire des pages déchiffrées effacée à la libération (`cipher_memory_security`), verrouillage automatique après inactivité y compris sans requête, passphrases prévisibles refusées à la création. Aucune donnée patient n'est transmise en ligne : les hôtes LLM et embeddings sont contraints à la boucle locale par validation de la configuration (`app/models.py`). Seul le téléchargement initial des modèles (Ollama, dictée) nécessite une connexion internet, sans qu'aucune donnée patient n'y transite.
 2. **Non couvert** : la compromission du poste lui-même (malware, accès physique, session ouverte) — si la machine est compromise pendant que le coffre est déverrouillé, le chiffrement ne protège plus.
 3. **Non couvert** : l'oubli de la passphrase — il n'existe **aucun mécanisme de récupération** ; sans passphrase, les données sont définitivement irrécupérables. C'est un choix de conception, pas un oubli.
+4. **À la charge de la personne qui importe** : l'OCR d'un PDF scanné passe par Ghostscript et Tesseract (OCRmyPDF), la plus grande surface d'analyse de fichiers du produit. N'importez comme bilans de référence que des documents que vous avez produits ou reçus d'une source de confiance.
 
 ## Mises à jour de dépendances
 
