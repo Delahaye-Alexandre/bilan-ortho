@@ -395,8 +395,8 @@ await settle();
 check("trame sans modification : aucun enregistrement (défauts jamais figés)",
   editeurCalls.length === 0
   && document.getElementById("trameStatus").textContent.includes("Aucune modification"));
-check("modale : focus posé à l'ouverture",
-  document.activeElement === document.getElementById("cfgLlmModel"));
+check("modale : focus posé à l'ouverture (premier champ de « Mon cabinet »)",
+  document.activeElement === document.getElementById("cfgPratPrenom"));
 
 // === 10. Échap ferme la modale ===============================================
 document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -523,8 +523,10 @@ check("a11y : role=dialog + aria-modal sur la modale ouverte",
 const titreId = modal.getAttribute("aria-labelledby");
 check("a11y : aria-labelledby pointe le titre existant",
   titreId !== null && document.getElementById(titreId).textContent.includes("Paramètres"));
+// Même filtre que la page : le bloc « Réglages techniques » est replié
+// (conteneur [hidden]), ses champs ne sont pas atteignables au clavier.
 const focusables = [...modal.querySelectorAll("button, input, select, textarea, a[href]")]
-  .filter((el) => !el.disabled && !el.hidden);
+  .filter((el) => !el.disabled && !el.hidden && !el.closest("[hidden]"));
 focusables[focusables.length - 1].focus();
 document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
 check("a11y : Tab depuis le dernier élément revient au premier (piège)",

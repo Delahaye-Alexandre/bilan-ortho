@@ -104,6 +104,37 @@
   .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 16px; }
   .check { display: flex; gap: 8px; align-items: center; font-weight: 400; margin-top: 10px; }
   .check input { width: auto; }
+  /* Écran Paramètres : sommaire, sous-titres, bulles d'aide, pastilles, aperçus.
+     Le public n'est pas informaticien : chaque réglage explique à quoi il sert. */
+  .sommaire { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px 8px;
+              border-bottom: 1px solid var(--border); }
+  .sommaire a { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
+                color: var(--text); text-decoration: none; cursor: pointer; }
+  .sommaire a:hover, .sommaire a:focus-visible { background: #f1f5f9; border-color: var(--accent); }
+  fieldset[tabindex]:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .soustitre { font-weight: 600; font-size: 13px; margin: 16px 0 4px; }
+  /* Le libellé reste en ligne : le bouton ⓘ suit son dernier mot au lieu de
+     passer seul à la ligne sous un libellé long. */
+  .lib { position: relative; margin: 14px 0 4px; line-height: 1.5; }
+  .lib label, .lib .soustitre { display: inline; margin: 0; }
+  .lib .check { display: inline-flex; margin: 0; }
+  .lib .aide, .lib .modif { vertical-align: middle; margin-left: 5px; }
+  .aide { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+          padding: 0; border-radius: 999px; border: 1px solid var(--accent); background: transparent;
+          color: var(--accent); font: 700 11px/1 ui-serif, Georgia, serif; flex: none; }
+  button.aide { cursor: help; }
+  button.aide:hover, .aide[aria-expanded="true"] { background: var(--accent); color: #fff; }
+  .bulle { display: none; position: absolute; left: 0; top: calc(100% + 6px); z-index: 5; width: max-content;
+           max-width: min(420px, 80vw); background: #1f2430; color: #fff; font-size: 12.5px; font-weight: 400;
+           line-height: 1.45; padding: 10px 12px; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
+  .bulle.droite { left: auto; right: 0; }
+  .aide:hover + .bulle, .aide:focus-visible + .bulle, .bulle.ouverte { display: block; }
+  .bulle .reco:not([hidden]) { display: block; margin-top: 6px; color: #a7f3d0; font-weight: 600; }
+  .modif { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: #fff7ed; color: #b45309; }
+  .apercu { background: #f8fafc; border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px;
+            font-size: 13px; margin-top: 10px; }
+  .secfoot { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  fieldset.tech { border-color: #fed7aa; background: #fffdf9; }
   .help-body h3 { font-size: 14px; margin: 16px 0 4px; }
   .help-body p, .help-body li { font-size: 13.5px; }
   .reclist a { display:block; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px;
@@ -276,14 +307,21 @@
 <div class="modal-overlay" id="settingsOverlay" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="mhead"><h2 id="settingsTitle">⚙️ Paramètres</h2><button class="close" data-close="settingsOverlay">✕</button></div>
+    <nav class="sommaire" aria-label="Sections des paramètres">
+      <a href="#secCabinet">🪪 Mon cabinet</a>
+      <a href="#secRedaction">📝 Mes comptes-rendus</a>
+      <a href="#secDictee">🎤 Ma dictée</a>
+      <a href="#secSeuils">📊 Mes tests et seuils</a>
+      <a href="#secCotation">💶 Cotation</a>
+      <a href="#secSecurite">🔒 Sécurité et sauvegardes</a>
+      <a href="#secTech">🔧 Réglages techniques</a>
+    </nav>
     <div class="mbody">
-      <fieldset>
-        <legend>Mon identité professionnelle</legend>
-        <p class="muted" style="margin:0 0 10px">
-          Reportée en en-tête et en signature de vos exports (PDF, Word, Markdown).
-          À renseigner une fois. Laissé vide, l'export ne porte aucun en-tête —
-          rien n'est inventé.
-        </p>
+      <p class="muted" style="margin:10px 0 0">Survolez ou cliquez le bouton <span class="aide" aria-hidden="true">i</span> d'un réglage pour savoir à quoi il sert et quelle valeur est recommandée. Un réglage qui s'écarte de la valeur recommandée porte la mention <span class="modif">modifié</span>. Pensez à « Enregistrer », en bas.</p>
+
+      <fieldset id="secCabinet" tabindex="-1">
+        <legend>🪪 Mon cabinet</legend>
+        <p class="muted" style="margin:0 0 4px">Ces informations apparaissent en en-tête et en signature de vos comptes-rendus exportés. Non renseignées, le document sort sans en-tête : rien n'est inventé à votre place.</p>
         <div class="grid3">
           <div><label for="cfgPratPrenom">Prénom</label><input id="cfgPratPrenom" autocomplete="off"></div>
           <div><label for="cfgPratNom">Nom</label><input id="cfgPratNom" autocomplete="off"></div>
@@ -302,127 +340,21 @@
         <div class="grid3">
           <div><label for="cfgPratTel">Téléphone</label><input id="cfgPratTel"></div>
           <div><label for="cfgPratEmail">Courriel</label><input id="cfgPratEmail" type="email"></div>
-          <div><label for="cfgPratLieu">Lieu de signature</label><input id="cfgPratLieu" placeholder="vide = la ville"></div>
+          <div><label for="cfgPratLieu">Lieu de signature</label><input id="cfgPratLieu" placeholder="vide : la ville"></div>
         </div>
+        <div class="apercu" id="pratApercu" aria-live="polite"></div>
       </fieldset>
-      <fieldset>
-        <legend>Assistant IA (Ollama)</legend>
+
+      <fieldset id="secRedaction" tabindex="-1" data-reset="style" data-reset-nom="Mes comptes-rendus">
+        <legend>📝 Mes comptes-rendus</legend>
         <div class="grid2">
-          <div><label for="cfgLlmModel">Modèle LLM</label><input id="cfgLlmModel" placeholder="qwen2.5:7b-instruct-q4_K_M"></div>
-          <div><label for="cfgLlmTemp">Température (0 = factuel)</label><input id="cfgLlmTemp" type="number" step="0.1" min="0" max="1"></div>
+          <div><label for="cfgStyleDetail">Longueur des rubriques rédigées</label>
+            <select id="cfgStyleDetail"><option value="concis">Concise</option><option value="standard">Standard</option><option value="detaille">Détaillée</option></select></div>
+          <div><label for="cfgStyleK">S'inspirer de mes bilans de référence</label><select id="cfgStyleK"></select></div>
         </div>
-      </fieldset>
-      <fieldset>
-        <legend>Dictée vocale (locale)</legend>
-        <div class="grid3">
-          <div><label for="cfgSttDevice">Matériel</label>
-            <select id="cfgSttDevice"><option value="auto">auto</option><option value="cpu">cpu</option><option value="cuda">cuda (GPU)</option></select></div>
-          <div><label for="cfgSttModel">Modèle Whisper</label>
-            <input id="cfgSttModel" list="sttModels" placeholder="auto">
-            <datalist id="sttModels"><option value="auto"><option value="tiny"><option value="base"><option value="small"><option value="medium"><option value="large-v3"></datalist></div>
-          <div><label for="cfgSttBeam">Faisceau (beam)</label><input id="cfgSttBeam" type="number" min="1" max="10"></div>
-          <div><label for="cfgSttLang">Langue</label><input id="cfgSttLang" placeholder="fr"></div>
-        </div>
-        <label class="check"><input type="checkbox" id="cfgSttVad"> Filtrer les silences (VAD)</label>
-        <label for="cfgSttHotwords">Vocabulaire métier (un terme par ligne — aide la reconnaissance)</label>
-        <textarea id="cfgSttHotwords" rows="4"></textarea>
-        <label for="cfgSttCorr">Corrections automatiques (une par ligne : <code>motif =&gt; remplacement</code>, regex)</label>
-        <textarea id="cfgSttCorr" rows="3" placeholder="ortofonie => orthophonie"></textarea>
-      </fieldset>
-      <fieldset>
-        <legend>Style de rédaction</legend>
-        <div class="grid3">
-          <div><label for="cfgStyleK">Extraits de mes bilans injectés</label><input id="cfgStyleK" type="number" min="0" max="10"></div>
-          <div><label for="cfgStyleDetail">Niveau de détail</label>
-            <select id="cfgStyleDetail"><option value="concis">concis</option><option value="standard">standard</option><option value="detaille">détaillé</option></select></div>
-          <div><label class="check" style="margin-top:30px"><input type="checkbox" id="cfgStyleVouv"> Vouvoiement</label></div>
-        </div>
-        <div><label class="check"><input type="checkbox" id="cfgStyleForme"> L'IA peut mettre en forme ses propositions (gras, souligné, listes), en imitant mes bilans de référence</label>
-          <div class="muted">Décochée : l'IA rend du texte brut, la mise en forme reste entièrement à votre main.</div></div>
-        <div><label for="cfgEmbModel">Modèle d'embeddings (indexation de mes bilans)</label>
-          <input id="cfgEmbModel" list="embModels">
-          <datalist id="embModels"><option value="nomic-embed-text"><option value="bge-m3"></datalist>
-          <div class="muted">⚠️ En changer invalide l'index : les bilans de référence devront être réimportés.</div></div>
-      </fieldset>
-      <fieldset>
-        <legend>Seuils d'interprétation</legend>
-        <div class="muted">En écarts-types :</div>
-        <div class="grid3">
-          <div><label for="cfgSeuilFrag">Fragilité ≤</label><input id="cfgSeuilFrag" type="number" step="0.1" min="-6" max="0"></div>
-          <div><label for="cfgSeuilPatho">Pathologique ≤</label><input id="cfgSeuilPatho" type="number" step="0.1" min="-6" max="0"></div>
-          <div><label for="cfgSeuilSev">Sévère ≤</label><input id="cfgSeuilSev" type="number" step="0.1" min="-6" max="0"></div>
-        </div>
-        <div class="muted" style="margin-top:6px">Ce sont des seuils <b>bas</b> : ils s'écrivent en négatif (−1, −1,5, −2) et vont du plus sévère au moins sévère. Saisir 1,5 au lieu de −1,5 ferait basculer tous les résultats normaux en « zone de fragilité ».</div>
-        <div class="muted" style="margin-top:6px">En percentiles :</div>
-        <div class="grid3">
-          <div><label for="cfgSeuilFragP">Fragilité ≤ (percentile)</label><input id="cfgSeuilFragP" type="number" min="0" max="100"></div>
-          <div><label for="cfgSeuilPathoP">Pathologique ≤ (percentile)</label><input id="cfgSeuilPathoP" type="number" min="0" max="100"></div>
-          <div><label for="cfgSeuilSevP">Sévère ≤ (percentile)</label><input id="cfgSeuilSevP" type="number" min="0" max="100"></div>
-        </div>
-      </fieldset>
-      <fieldset>
-        <legend>Cotation NGAP (évolue par avenants — source : ameli.fr)</legend>
-        <div class="grid2">
-          <div><label for="cfgCotAmo">Valeur AMO (€)</label><input id="cfgCotAmo" type="number" step="0.01"></div>
-          <div><label for="cfgCotSimple">Coeff. bilan simple</label><input id="cfgCotSimple" type="number"></div>
-          <div><label for="cfgCotComplexe">Coeff. bilan complexe</label><input id="cfgCotComplexe" type="number"></div>
-          <div><label for="cfgCotRenouv">Coeff. renouvellement</label><input id="cfgCotRenouv" type="number"></div>
-        </div>
-      </fieldset>
-      <fieldset>
-        <legend>Confidentialité (RGPD)</legend>
-        <div class="grid2">
-          <div><label for="cfgRgpdLock">Verrouillage après inactivité (min, 0 = jamais)</label><input id="cfgRgpdLock" type="number" min="0"></div>
-          <div><label for="cfgRgpdDictee">Durée max d'une dictée (min, 0 = sans limite)</label><input id="cfgRgpdDictee" type="number" min="0"></div>
-          <div><label for="cfgRgpdCons">Conservation des bilans (jours, 0 = illimitée)</label><input id="cfgRgpdCons" type="number" min="0"></div>
-        </div>
-        <div class="muted" style="margin-top:8px">L'audio de dictée est toujours supprimé après transcription (non désactivable).</div>
-        <div style="margin-top:14px"><b>Changer la passphrase du coffre</b></div>
-        <div class="grid3">
-          <div><label for="ppAncienne">Passphrase actuelle</label><input id="ppAncienne" type="password" autocomplete="current-password"></div>
-          <div><label for="ppNouvelle">Nouvelle passphrase (12 caractères min.)</label><input id="ppNouvelle" type="password" autocomplete="new-password"></div>
-          <div><label for="ppConfirm">Confirmer la nouvelle</label><input id="ppConfirm" type="password" autocomplete="new-password"></div>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <button id="ppBtn" class="ghost">🔑 Changer la passphrase</button>
-          <span class="status" id="ppStatus" role="status"></span>
-        </div>
-        <div class="muted">Le coffre est re-chiffré sur place et une sauvegarde est aussitôt créée avec la nouvelle passphrase. Les copies antérieures (sauvegardes, copie avant migration) s'ouvrent encore avec l'ancienne : supprimez-les si vous pensez qu'elle a été vue.</div>
-      </fieldset>
-      <fieldset>
-        <legend>Mises à jour de l'application</legend>
-        <label class="check"><input type="checkbox" id="cfgMajAuto"> Vérifier au démarrage qu'une nouvelle version existe</label>
-        <div class="row" style="margin-top:8px">
-          <button id="majCheck" class="ghost">↻ Vérifier maintenant</button>
-          <span class="status" id="majStatus"></span>
-        </div>
-        <div class="muted">Seuls échanges réseau de l'application, toujours vers GitHub et sans aucune donnée transmise : la vérification (au plus une fois par jour si la case est cochée, ou à la demande), puis le téléchargement de l'installeur quand vous cliquez « Installer maintenant » — signature de l'éditeur et empreinte vérifiées avant toute installation. Vos données de patients ne quittent jamais cette machine.</div>
-      </fieldset>
-      <fieldset>
-        <legend>Sauvegarde du coffre (chiffrée)</legend>
-        <div class="grid3">
-          <div><label for="cfgSauvDossier">Dossier (vide = données/sauvegardes)</label><input id="cfgSauvDossier" placeholder="ex. /mnt/usb/bilan-ortho"></div>
-          <div><label for="cfgSauvRet">Copies conservées</label><input id="cfgSauvRet" type="number" min="1"></div>
-          <div><label for="cfgSauvAuto">Auto au déverrouillage (jours, 0 = off)</label><input id="cfgSauvAuto" type="number" min="0"></div>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button id="sauvBtn" class="ghost">💾 Sauvegarder maintenant</button>
-          <span class="status" id="sauvStatus"></span>
-        </div>
-        <div class="muted">La copie reste chiffrée (même passphrase). Pensez à un dossier sur un autre support (clé USB, disque externe).</div>
-        <div id="sauvListe" style="margin-top:8px"></div>
-        <div id="restZone" hidden style="margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:10px">
-          <p style="margin-top:0"><b>Restaurer « <span id="restNom"></span> »</b> remplace toutes les données actuelles par le contenu de cette sauvegarde. Par précaution, une copie de vos données actuelles est d'abord créée dans le dossier de sauvegarde.</p>
-          <div><label for="restPass">Passphrase de cette sauvegarde (en général, votre passphrase actuelle)</label><input id="restPass" type="password" autocomplete="off"></div>
-          <div class="row" style="margin-top:8px">
-            <button id="restConfirm">Restaurer maintenant</button>
-            <button id="restCancel" class="ghost">Annuler</button>
-            <span class="status" id="restStatus"></span>
-          </div>
-        </div>
-      </fieldset>
-      <fieldset>
-        <legend>Trame des bilans</legend>
+        <label class="check" for="cfgStyleForme"><input type="checkbox" id="cfgStyleForme"> L'assistant peut mettre en forme ses propositions (gras, italique, souligné, listes)</label>
+        <div class="secfoot"><button class="ghost" data-reset-btn>Revenir aux valeurs recommandées</button><span class="status" data-reset-st role="status"></span></div>
+        <div class="soustitre" id="trameLib">Trame des bilans</div>
         <div class="muted">Rubriques créées pour chaque nouveau bilan, dans l'ordre (les bilans existants ne changent pas). <span id="trameProv"></span></div>
         <div id="trameListe" style="margin-top:8px"></div>
         <div class="row" style="margin-top:6px"><button id="trameAdd" class="ghost">+ Ajouter une rubrique</button></div>
@@ -433,8 +365,36 @@
           <span class="status" id="trameStatus"></span>
         </div>
       </fieldset>
-      <fieldset>
-        <legend>Catalogues de tests par domaine</legend>
+
+      <fieldset id="secDictee" tabindex="-1" data-reset="stt:hotwords,corrections" data-reset-nom="Ma dictée">
+        <legend>🎤 Ma dictée</legend>
+        <label for="cfgSttHotwords">Mots que la dictée doit connaître (un par ligne)</label>
+        <textarea id="cfgSttHotwords" rows="4"></textarea>
+        <label for="cfgSttCorr">Mots à corriger après la dictée (une ligne par correction : <code>entendu =&gt; voulu</code>)</label>
+        <textarea id="cfgSttCorr" rows="3" placeholder="ortofonie => orthophonie"></textarea>
+        <div class="soustitre" id="sttEtatLib">État de la dictée</div>
+        <div class="apercu" id="sttEtat">—</div>
+        <div class="secfoot"><button class="ghost" data-reset-btn>Revenir aux valeurs recommandées</button><span class="status" data-reset-st role="status"></span></div>
+      </fieldset>
+
+      <fieldset id="secSeuils" tabindex="-1" data-reset="seuils" data-reset-nom="Mes tests et seuils">
+        <legend>📊 Mes tests et seuils</legend>
+        <p class="muted" style="margin:0 0 4px">Quand vous saisissez un score, l'application le compare à ces seuils pour proposer un repère : fragilité, pathologique, sévère. C'est une aide à la lecture des étalonnages ; l'interprétation vous appartient.</p>
+        <div class="soustitre" id="seuilEtLib">En écarts-types</div>
+        <div class="grid3">
+          <div><label for="cfgSeuilFrag">Fragilité à partir de</label><input id="cfgSeuilFrag" type="number" step="0.1" min="-6" max="0"></div>
+          <div><label for="cfgSeuilPatho">Pathologique à partir de</label><input id="cfgSeuilPatho" type="number" step="0.1" min="-6" max="0"></div>
+          <div><label for="cfgSeuilSev">Sévère à partir de</label><input id="cfgSeuilSev" type="number" step="0.1" min="-6" max="0"></div>
+        </div>
+        <div class="soustitre" id="seuilPLib">En percentiles</div>
+        <div class="grid3">
+          <div><label for="cfgSeuilFragP">Fragilité à partir du percentile</label><input id="cfgSeuilFragP" type="number" min="0" max="100"></div>
+          <div><label for="cfgSeuilPathoP">Pathologique à partir du percentile</label><input id="cfgSeuilPathoP" type="number" min="0" max="100"></div>
+          <div><label for="cfgSeuilSevP">Sévère à partir du percentile</label><input id="cfgSeuilSevP" type="number" min="0" max="100"></div>
+        </div>
+        <div class="apercu" id="seuilApercu" aria-live="polite"></div>
+        <div class="secfoot"><button class="ghost" data-reset-btn>Revenir aux valeurs recommandées</button><span class="status" data-reset-st role="status"></span></div>
+        <div class="soustitre" id="catLib">Catalogues de tests par domaine</div>
         <div class="muted">Tests proposés à la saisie des épreuves et rappelés à l'assistant. <span id="catProv"></span></div>
         <div style="margin-top:8px"><label for="catDomaine">Domaine</label><select id="catDomaine"></select></div>
         <div style="margin-top:8px"><label for="catGuidance">Orientations de rédaction pour ce domaine</label><textarea id="catGuidance" rows="3"></textarea></div>
@@ -446,23 +406,111 @@
           <span class="status" id="catStatus"></span>
         </div>
       </fieldset>
-      <fieldset>
-        <legend>Consigne de structuration de l'assistant</legend>
-        <div class="muted"><code>{cles}</code> est remplacé automatiquement par la liste des rubriques du bilan. L'assistant reste une aide à la rédaction : il ne pose jamais de diagnostic. <span id="promptProv"></span></div>
-        <textarea id="promptTexte" rows="10" spellcheck="false" aria-label="Consigne de structuration personnalisée" placeholder="Consigne intégrée utilisée (recommandé : elle suit les mises à jour de l'application)." style="font-family:ui-monospace,monospace;font-size:12px;margin-top:8px"></textarea>
+
+      <fieldset id="secCotation" tabindex="-1" data-reset="cotation" data-reset-nom="Cotation NGAP">
+        <legend>💶 Cotation NGAP</legend>
+        <div class="grid2">
+          <div><label for="cfgCotAmo">Valeur de la lettre-clé AMO (€)</label><input id="cfgCotAmo" type="number" step="0.01" min="0"></div>
+          <div><label for="cfgCotSimple">Coefficient du bilan simple</label><input id="cfgCotSimple" type="number" min="0"></div>
+          <div><label for="cfgCotComplexe">Coefficient du bilan complexe</label><input id="cfgCotComplexe" type="number" min="0"></div>
+          <div><label for="cfgCotRenouv">Coefficient du bilan de renouvellement</label><input id="cfgCotRenouv" type="number" min="0"></div>
+        </div>
+        <div class="apercu" id="cotApercu" aria-live="polite"></div>
+        <div class="secfoot"><button class="ghost" data-reset-btn>Revenir aux valeurs recommandées</button><span class="status" data-reset-st role="status"></span></div>
+      </fieldset>
+
+      <fieldset id="secSecurite" tabindex="-1" data-reset="rgpd;sauvegarde;maj" data-reset-nom="Sécurité et sauvegardes">
+        <legend>🔒 Sécurité et sauvegardes</legend>
+        <div class="grid3">
+          <div><label for="cfgRgpdLock">Verrouiller l'écran après</label><select id="cfgRgpdLock"></select></div>
+          <div><label for="cfgRgpdDictee">Arrêter d'elle-même une dictée après</label><select id="cfgRgpdDictee"></select></div>
+          <div><label for="cfgRgpdCons">Supprimer les bilans non modifiés depuis</label><select id="cfgRgpdCons"></select></div>
+        </div>
+        <div class="muted" style="margin-top:8px">L'audio de dictée est toujours supprimé après transcription : ce n'est pas un réglage.</div>
+        <div class="soustitre" id="ppLib">Changer la passphrase du coffre</div>
+        <div class="grid3">
+          <div><label for="ppAncienne">Passphrase actuelle</label><input id="ppAncienne" type="password" autocomplete="current-password"></div>
+          <div><label for="ppNouvelle">Nouvelle passphrase (12 caractères min.)</label><input id="ppNouvelle" type="password" autocomplete="new-password"></div>
+          <div><label for="ppConfirm">Confirmer la nouvelle</label><input id="ppConfirm" type="password" autocomplete="new-password"></div>
+        </div>
         <div class="row" style="margin-top:8px">
-          <button id="promptDefaut" class="ghost">Partir de la consigne intégrée</button>
-          <button id="promptSave" class="ghost">Enregistrer la consigne</button>
-          <button id="promptReset" class="ghost">Revenir à la consigne intégrée</button>
-          <span class="status" id="promptStatus"></span>
+          <button id="ppBtn" class="ghost">🔑 Changer la passphrase</button>
+          <span class="status" id="ppStatus" role="status"></span>
+        </div>
+        <div class="muted">Le coffre est re-chiffré sur place et une sauvegarde est aussitôt créée avec la nouvelle passphrase. Les copies antérieures (sauvegardes, copie avant migration) s'ouvrent encore avec l'ancienne : supprimez-les si vous pensez qu'elle a été vue.</div>
+        <div class="soustitre" id="sauvLib">Sauvegardes du coffre (chiffrées)</div>
+        <div class="grid3">
+          <div><label for="cfgSauvDossier">Dossier des sauvegardes</label><input id="cfgSauvDossier" placeholder="vide : dossier de l'application"></div>
+          <div><label for="cfgSauvRet">Nombre de sauvegardes gardées</label><input id="cfgSauvRet" type="number" min="1"></div>
+          <div><label for="cfgSauvAuto">Sauvegarde automatique à l'ouverture</label><select id="cfgSauvAuto"></select></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="sauvBtn" class="ghost">💾 Sauvegarder maintenant</button>
+          <span class="status" id="sauvStatus"></span>
+        </div>
+        <div id="sauvListe" style="margin-top:8px"></div>
+        <div id="restZone" hidden style="margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:10px">
+          <p style="margin-top:0"><b>Restaurer « <span id="restNom"></span> »</b> remplace toutes les données actuelles par le contenu de cette sauvegarde. Par précaution, une copie de vos données actuelles est d'abord créée dans le dossier de sauvegarde.</p>
+          <div><label for="restPass">Passphrase de cette sauvegarde (en général, votre passphrase actuelle)</label><input id="restPass" type="password" autocomplete="off"></div>
+          <div class="row" style="margin-top:8px">
+            <button id="restConfirm">Restaurer maintenant</button>
+            <button id="restCancel" class="ghost">Annuler</button>
+            <span class="status" id="restStatus"></span>
+          </div>
+        </div>
+        <div class="soustitre" id="majLib">Mises à jour de l'application</div>
+        <label class="check" for="cfgMajAuto"><input type="checkbox" id="cfgMajAuto"> Vérifier au démarrage qu'une nouvelle version existe</label>
+        <div class="row" style="margin-top:8px">
+          <button id="majCheck" class="ghost">↻ Vérifier maintenant</button>
+          <span class="status" id="majStatus"></span>
+        </div>
+        <div class="muted">Seuls échanges réseau de l'application, toujours vers GitHub et sans aucune donnée transmise : la vérification (au plus une fois par jour si la case est cochée, ou à la demande), puis le téléchargement de l'installeur quand vous cliquez « Installer maintenant » — signature de l'éditeur et empreinte vérifiées avant toute installation. Vos données de patients ne quittent jamais cette machine.</div>
+        <div class="secfoot"><button class="ghost" data-reset-btn>Revenir aux valeurs recommandées</button><span class="status" data-reset-st role="status"></span></div>
+      </fieldset>
+
+      <fieldset id="secTech" class="tech" tabindex="-1" data-reset="llm;embeddings;stt:device,model,beam_size,language,vad" data-reset-nom="Réglages techniques">
+        <legend>🔧 Réglages techniques</legend>
+        <p class="muted" style="margin:0 0 8px">Ces réglages touchent au fonctionnement interne. Les valeurs proposées conviennent à la grande majorité des installations : ne les changez que sur conseil ou en connaissance de cause. « Revenir aux valeurs recommandées » annule vos modifications de ce bloc.</p>
+        <button id="techToggle" class="ghost" type="button" aria-expanded="false" aria-controls="techCorps">Afficher les réglages techniques</button>
+        <div id="techCorps" hidden>
+          <div class="soustitre">Assistant d'intelligence artificielle</div>
+          <div class="grid3">
+            <div><label for="cfgLlmModel">Modèle d'intelligence artificielle</label><select id="cfgLlmModel"></select></div>
+            <div><label for="cfgLlmTemp">Liberté de formulation (0 à 1)</label><input id="cfgLlmTemp" type="number" step="0.1" min="0" max="1"></div>
+            <div><label for="cfgEmbModel">Modèle de lecture de mes bilans de référence</label>
+              <input id="cfgEmbModel" list="embModels">
+              <datalist id="embModels"><option value="nomic-embed-text"><option value="bge-m3"></datalist></div>
+          </div>
+          <div class="soustitre">Reconnaissance vocale</div>
+          <div class="grid3">
+            <div><label for="cfgSttDevice">Composant utilisé pour la dictée</label>
+              <select id="cfgSttDevice"><option value="auto">Automatique</option><option value="cpu">Processeur</option><option value="cuda">Carte graphique</option></select></div>
+            <div><label for="cfgSttModel">Précision de la reconnaissance vocale</label>
+              <input id="cfgSttModel" list="sttModels" placeholder="auto">
+              <datalist id="sttModels"><option value="auto"><option value="tiny"><option value="base"><option value="small"><option value="medium"><option value="large-v3"></datalist></div>
+            <div><label for="cfgSttBeam">Hypothèses examinées</label><input id="cfgSttBeam" type="number" min="1" max="10"></div>
+            <div><label for="cfgSttLang">Langue des dictées</label><input id="cfgSttLang" placeholder="fr"></div>
+          </div>
+          <label class="check" for="cfgSttVad"><input type="checkbox" id="cfgSttVad"> Ignorer les silences et bruits de fond</label>
+          <div class="secfoot"><button class="ghost" data-reset-btn>Revenir aux valeurs recommandées</button><span class="status" data-reset-st role="status"></span></div>
+          <div class="soustitre" id="promptLib">Consigne de structuration de l'assistant</div>
+          <div class="muted"><code>{cles}</code> est remplacé automatiquement par la liste des rubriques du bilan. L'assistant reste une aide à la rédaction : il ne pose jamais de diagnostic. <span id="promptProv"></span></div>
+          <textarea id="promptTexte" rows="10" spellcheck="false" aria-label="Consigne de structuration personnalisée" placeholder="Consigne intégrée utilisée (recommandé : elle suit les mises à jour de l'application)." style="font-family:ui-monospace,monospace;font-size:12px;margin-top:8px"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button id="promptDefaut" class="ghost">Partir de la consigne intégrée</button>
+            <button id="promptSave" class="ghost">Enregistrer la consigne</button>
+            <button id="promptReset" class="ghost">Revenir à la consigne intégrée</button>
+            <span class="status" id="promptStatus"></span>
+          </div>
+          <div class="soustitre">Tout rétablir</div>
+          <div class="muted">Efface l'ensemble de vos réglages personnalisés, identité professionnelle comprise, et revient aux valeurs livrées avec l'application.</div>
+          <div class="row" style="margin-top:8px"><button id="cfgReset" class="ghost">Tout rétablir</button></div>
         </div>
       </fieldset>
     </div>
     <div class="mfoot">
       <button id="cfgSave">Enregistrer</button>
-      <span class="status" id="cfgStatus"></span>
-      <span class="grow"></span>
-      <button id="cfgReset" class="ghost">Rétablir les défauts</button>
+      <span class="status" id="cfgStatus" role="status"></span>
     </div>
   </div>
 </div>
@@ -560,7 +608,7 @@
       <p>Importez vos propres bilans (PDF, Word .docx, LibreOffice .odt, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Pour démarrer sans bilans sous la main, « Charger les bilans d'exemple » indexe des bilans <b>entièrement fictifs</b> livrés avec l'application (marqués « exemple ») — retirez-les une fois vos propres bilans importés, votre style prendra toute la place. Les PDF scannés nécessitent Tesseract : sous Windows, utilisez l'installeur UB-Mannheim (<code>github.com/UB-Mannheim/tesseract</code>) puis relancez l'import ; sous Linux : <code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>.</p>
       <h3>Confidentialité & sauvegardes</h3>
       <p>Tout est chiffré (SQLCipher) et tout tourne en local : aucune donnée ne quitte votre machine. L'application se verrouille seule après inactivité. Pensez à votre passphrase : elle est <b>irrécupérable</b>.</p>
-      <p>Seule exception réseau, transparente et sans aucune donnée transmise : la <b>vérification de mise à jour</b> (⚙️ Paramètres → Mises à jour) interroge la page des versions du projet sur GitHub — uniquement quand vous cliquez « Vérifier maintenant », ou au démarrage si vous avez coché l'option (décochée par défaut).</p>
+      <p>Seule exception réseau, transparente et sans aucune donnée transmise : la <b>vérification de mise à jour</b> (⚙️ Paramètres → Sécurité et sauvegardes) interroge la page des versions du projet sur GitHub — uniquement quand vous cliquez « Vérifier maintenant », ou au démarrage si vous avez coché l'option (décochée par défaut).</p>
       <h3>Signaler un problème, proposer une amélioration</h3>
       <p>Vos retours sont ce qui fait avancer l'outil — en particulier les étapes qui vous font perdre du temps, les libellés obscurs et les relectures plus fastidieuses que la rédaction directe. Deux chemins au choix : le <b>formulaire public du projet</b> (un compte GitHub est nécessaire) ou un <b>courriel</b> à <a href="mailto:alexandre-delahaye@outlook.fr">alexandre-delahaye@outlook.fr</a>.</p>
       <p>⚠️ <b>Dans les deux cas, aucun élément identifiant</b> : ni nom, ni initiales, ni date de naissance, ni extrait de bilan réel, ni capture d'écran non floutée. Décrire la situation suffit toujours à comprendre le problème (« bilan de langage oral, enfant de 5 ans, dictée de deux minutes »). Le formulaire est une page publique et indexée ; rien ne s'en efface vraiment.</p>
@@ -568,7 +616,7 @@
         <button class="ghost" id="aideRetourLien">💬 Formulaire de retour</button>
         <button class="ghost" id="aideBugLien">🐞 Signaler un dysfonctionnement</button>
       </p>
-      <p>Une <b>sauvegarde chiffrée</b> du coffre est créée automatiquement au déverrouillage (par défaut : au plus tous les 7 jours) ; configurez le dossier dans ⚙️ Paramètres — idéalement sur un autre support (clé USB). Pour revenir à une sauvegarde : ⚙️ Paramètres → Sauvegarde du coffre → « Restaurer… » (une copie de vos données actuelles est créée avant). Supprimer un patient efface définitivement tous ses bilans (droit à l'effacement).</p>
+      <p>Une <b>sauvegarde chiffrée</b> du coffre est créée automatiquement au déverrouillage (par défaut : au plus tous les 7 jours) ; configurez le dossier dans ⚙️ Paramètres — idéalement sur un autre support (clé USB). Pour revenir à une sauvegarde : ⚙️ Paramètres → Sécurité et sauvegardes → « Restaurer… » (une copie de vos données actuelles est créée avant). Supprimer un patient efface définitivement tous ses bilans (droit à l'effacement).</p>
     </div>
   </div>
 </div>
@@ -688,7 +736,7 @@ function bandeauIA(inst) {
     if (!manquants.length) return;
     t.textContent = `⚠️ Modèle(s) non installé(s) : ${manquants.join(', ')}. `
       + 'L\'analyse restera indisponible tant qu\'ils ne sont pas téléchargés '
-      + '(⚙️ Paramètres → Assistant IA).';
+      + '(⚙️ Paramètres → Réglages techniques).';
   } else {
     // Coffre verrouillé : le serveur ne peut pas lire quel modèle est
     // configuré. Ne rien affirmer plutôt que d'annoncer un faux manquant.
@@ -1033,7 +1081,7 @@ function renderPatList() {
       + `• le dossier et ses ${p.nb_bilans} bilan(s), rubriques, épreuves et résultats\n`
       + `• les prescriptions, envois et dictées associés${refs}\n\n`
       + `Ne sont PAS effacés : vos sauvegardes déjà écrites, qui contiennent encore `
-      + `ce dossier jusqu'à leur rotation (⚙️ Paramètres → Sauvegarde).`)) return;
+      + `ce dossier jusqu'à leur rotation (⚙️ Paramètres → Sécurité et sauvegardes).`)) return;
     try { await api('/api/patients/' + x.dataset.id, { method: 'DELETE' }); }
     catch (err) { $('patStatus').textContent = 'Erreur : ' + err.message; return; }
     // Le dossier effacé ne doit rien laisser derrière lui : la dictée
@@ -1166,17 +1214,9 @@ async function loadDomaines() {
 async function loadLLM() {
   const sel = document.getElementById('llmModel');
   try {
-    const { models, default: def } = await (await api('/api/models')).json();
+    const { models } = await (await api('/api/models')).json();
     const cfg = await (await api('/api/config')).json();
-    const cur = cfg.llm.model;
-    const opts = models.map(m => `<option ${m === cur ? 'selected' : ''}>${escapeHtml(m)}</option>`);
-    // Modèle configuré mais non installé : l'afficher tel quel. Sinon le
-    // navigateur sélectionnait le premier de la liste sans émettre d'événement
-    // — l'écran montrait un modèle, la configuration en utilisait un autre.
-    if (cur && !models.includes(cur)) {
-      opts.unshift(`<option selected value="${escapeHtml(cur)}">${escapeHtml(cur)} (non installé)</option>`);
-    }
-    sel.innerHTML = opts.join('') || `<option>${escapeHtml(cur)}</option>`;
+    remplirModeles(sel, models, cfg.llm.model);
   } catch { sel.innerHTML = '<option>Ollama injoignable</option>'; }
 }
 document.getElementById('llmModel').addEventListener('change', async e => {
@@ -2389,6 +2429,8 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key !== 'Escape') return;
+  // Une bulle d'aide épinglée se ferme d'abord ; la boîte de dialogue au second appui.
+  if (document.querySelector('.bulle.ouverte')) { fermerBulles(); return; }
   document.querySelectorAll('.modal-overlay:not([hidden])').forEach(o => {
     if (o.id !== 'installOverlay') o.hidden = true;
   });
@@ -2425,36 +2467,341 @@ const PRAT_CHAMPS = {
   adresse: 'cfgPratAdresse', code_postal: 'cfgPratCp', ville: 'cfgPratVille',
   telephone: 'cfgPratTel', email: 'cfgPratEmail', lieu_signature: 'cfgPratLieu',
 };
+
+// --- Écran Paramètres --------------------------------------------------------
+// Les personnes qui utilisent l'application ne sont pas informaticiennes : les
+// réglages du quotidien viennent d'abord, dans les mots du cabinet, et le
+// fonctionnement interne est replié sous « Réglages techniques ». Chaque
+// réglage porte une bulle (à quoi il sert, quand le changer) et affiche la
+// valeur recommandée lue sur le serveur (GET /api/config/defauts) — jamais
+// recopiée ici, elle se périmerait. `chemin` relie un champ à sa clé de
+// configuration (valeur recommandée, pastille « modifié ») ; une entrée sans
+// chemin (titre de bloc) n'a qu'une bulle. Le test UI exige une bulle pour
+// chaque champ cfg* de la modale, identité exceptée.
+const CHOIX_LIBELLES = {
+  minutes: v => v === 0 ? 'jamais' : v === 60 ? '1 heure' : `${v} minutes`,
+  jours: v => v === 0 ? 'jamais' : v === 365 ? '1 an' : v % 365 === 0 ? `${v / 365} ans` : `${v} jours`,
+  auto: v => ({ 0: 'jamais', 1: 'chaque jour', 7: 'chaque semaine', 30: 'chaque mois' })[v] || `tous les ${v} jours`,
+  extraits: v => ({ 0: 'Non', 2: 'Un peu (2 extraits)', 4: 'Normalement (4 extraits)', 8: 'Beaucoup (8 extraits)' })[v] || `${v} extraits`,
+};
+// Listes à choix : les valeurs courantes ont un libellé en clair (plus de
+// « 0 = jamais » à deviner). Une valeur déjà enregistrée hors liste reste
+// affichée, marquée « personnalisé », et repart telle quelle.
+const CHOIX = {
+  cfgRgpdLock: { valeurs: [5, 15, 30, 60, 0], libelle: CHOIX_LIBELLES.minutes },
+  cfgRgpdDictee: { valeurs: [10, 30, 60, 0], libelle: v => v === 0 ? 'jamais (sans limite)' : CHOIX_LIBELLES.minutes(v) },
+  cfgRgpdCons: { valeurs: [0, 365, 730, 1825], libelle: CHOIX_LIBELLES.jours },
+  cfgSauvAuto: { valeurs: [1, 7, 30, 0], libelle: CHOIX_LIBELLES.auto },
+  cfgStyleK: { valeurs: [0, 2, 4, 8], libelle: CHOIX_LIBELLES.extraits },
+};
+const CHAMPS = {
+  cfgPratTitre: { aide: "Tel qu'il figurera sous votre signature (« Orthophoniste », « Orthophoniste D.E. »…)." },
+  cfgPratAdeli: { aide: "Reporté dans l'en-tête, comme sur vos ordonnances. Facultatif." },
+  cfgPratRpps: { aide: "Reporté dans l'en-tête, comme sur vos ordonnances. Facultatif." },
+  cfgPratSiret: { aide: "Facultatif ; utile si vos comptes-rendus tiennent lieu de document administratif." },
+  cfgPratLieu: { aide: "Complète la formule « Fait à …, le … » en fin de document. Vide : la ville de votre adresse." },
+  cfgStyleDetail: { chemin: 'style.niveau_detail',
+    aide: "Degré de développement des rubriques que l'assistant rédige à partir de votre dictée. « Concise » va à l'essentiel, « Détaillée » développe davantage. Rien n'est ajouté qui ne vienne de votre dictée : seule la longueur change.",
+    format: v => ({ concis: 'Concise', standard: 'Standard', detaille: 'Détaillée' })[v] || v },
+  cfgStyleK: { chemin: 'style.few_shot_k',
+    aide: "Nombre de passages de vos bilans importés montrés à l'assistant pour qu'il adopte votre façon d'écrire. « Non » : il n'en tient pas compte. Sans bilans de référence importés, ce réglage est sans effet." },
+  cfgStyleForme: { chemin: 'style.mise_en_forme_ia',
+    aide: "Autorise gras, italique, souligné et listes, sobrement et à l'image de vos bilans de référence. Décoché : l'assistant écrit en texte simple, vous mettez en forme vous-même." },
+  trameLib: { aide: "Rubriques créées pour chaque nouveau bilan, dans cet ordre. La trame intégrée suit l'arrêté du 25 juillet 2023 et les mises à jour de l'application ; une trame personnalisée ne bouge plus tant que vous n'y revenez pas." },
+  cfgSttHotwords: { chemin: 'stt.hotwords',
+    aide: "Termes que la reconnaissance vocale écorche : noms de tests, termes techniques, prénoms fréquents. Un par ligne. Elle les privilégie quand elle hésite. Quelques dizaines suffisent.",
+    format: v => `la liste intégrée (${v.length} termes)` },
+  cfgSttCorr: { chemin: 'stt.corrections',
+    aide: "Remplacements appliqués au texte dicté, une ligne par correction : ce que la dictée écrit, la flèche =>, ce que vous voulez. Exemple : ortofonie => orthophonie. Le mot entier est remplacé, avec ou sans majuscule.",
+    format: v => Object.keys(v).length ? `${Object.keys(v).length} corrections` : 'aucune' },
+  sttEtatLib: { aide: "Modèle et composant utilisés pour la dictée, choisis automatiquement selon votre machine. Pour changer la précision ou la vitesse : réglages techniques, en bas de cet écran." },
+  seuilEtLib: { aide: "Un score inférieur ou égal au seuil reçoit le repère. Les seuils s'écrivent en négatif et se suivent du moins sévère au plus sévère ; l'exemple ci-dessous montre ce que donnent vos valeurs." },
+  cfgSeuilFrag: { chemin: 'seuils.fragilite_et', aide: "Un score inférieur ou égal à cette valeur est signalé « fragilité »." },
+  cfgSeuilPatho: { chemin: 'seuils.pathologique_et', aide: "Un score inférieur ou égal à cette valeur est signalé « pathologique »." },
+  cfgSeuilSev: { chemin: 'seuils.severe_et', aide: "Un score inférieur ou égal à cette valeur est signalé « sévère »." },
+  seuilPLib: { aide: "Mêmes repères pour les tests étalonnés en rang sur 100. Les valeurs usuelles 16, 7 et 2 correspondent à −1, −1,5 et −2 écarts-types." },
+  cfgSeuilFragP: { chemin: 'seuils.fragilite_percentile', aide: "Un percentile inférieur ou égal à cette valeur est signalé « fragilité »." },
+  cfgSeuilPathoP: { chemin: 'seuils.pathologique_percentile', aide: "Un percentile inférieur ou égal à cette valeur est signalé « pathologique »." },
+  cfgSeuilSevP: { chemin: 'seuils.severe_percentile', aide: "Un percentile inférieur ou égal à cette valeur est signalé « sévère »." },
+  catLib: { aide: "Tests proposés à la saisie d'une épreuve, domaine par domaine, avec des orientations de rédaction rappelées à l'assistant. Ajoutez les vôtres ; le catalogue intégré suit les mises à jour tant que vous ne le personnalisez pas." },
+  cfgCotAmo: { chemin: 'cotation.valeur_amo',
+    aide: "Valeur de la lettre-clé AMO en euros, fixée par la convention nationale (source : ameli.fr). Elle change par avenant : mettez-la à jour à chaque publication.",
+    format: v => euros(v) },
+  cfgCotSimple: { chemin: 'cotation.bilan_simple_coeff', aide: "Coefficient de la nomenclature pour un bilan simple. Montant = AMO × coefficient ; le calcul s'affiche en dessous." },
+  cfgCotComplexe: { chemin: 'cotation.bilan_complexe_coeff', aide: "Coefficient de la nomenclature pour un bilan complexe. Montant = AMO × coefficient." },
+  cfgCotRenouv: { chemin: 'cotation.renouvellement_coeff', aide: "Coefficient de la nomenclature pour un bilan de renouvellement. Montant = AMO × coefficient." },
+  cfgRgpdLock: { chemin: 'rgpd.verrouillage_inactivite_minutes',
+    aide: "Passé ce délai sans activité, la passphrase est redemandée, comme une session Windows. Protège un poste laissé ouvert au cabinet. « Jamais » est déconseillé sur un poste partagé." },
+  cfgRgpdDictee: { chemin: 'rgpd.dictee_max_minutes',
+    aide: "Une dictée en cours maintient l'application déverrouillée ; cette limite évite qu'un micro oublié ne la laisse ouverte." },
+  cfgRgpdCons: { chemin: 'rgpd.conservation_jours',
+    aide: "Un bilan non modifié depuis ce délai est supprimé à l'ouverture de l'application, avec ses données. « Jamais » : vous gérez la conservation vous-même, dans le respect des durées légales." },
+  ppLib: { aide: "Une passphrase est une phrase entière, plus facile à retenir et plus solide qu'un mot de passe. Elle est irrécupérable : personne ne peut la retrouver, pas même l'auteur de l'application." },
+  cfgSauvDossier: { chemin: 'sauvegarde.dossier',
+    aide: "Où déposer les copies chiffrées. Idéalement un autre support que le disque de l'ordinateur (clé USB, disque externe) : une panne emporterait sinon données et sauvegardes.",
+    format: v => v || "le dossier de l'application" },
+  cfgSauvRet: { chemin: 'sauvegarde.retention', aide: "Nombre de sauvegardes gardées ; au-delà, la plus ancienne est effacée." },
+  cfgSauvAuto: { chemin: 'sauvegarde.auto_jours', aide: "À l'ouverture de l'application, une copie est faite si la dernière est plus ancienne que ce délai." },
+  cfgMajAuto: { chemin: 'maj.verification_auto',
+    aide: "Au plus une fois par jour, à l'ouverture, l'application demande à la page des versions du projet (GitHub) si une version plus récente existe. Aucune donnée n'est transmise. L'installation se fait ensuite en un clic, après vérification de la signature de l'éditeur." },
+  cfgLlmModel: { chemin: 'llm.model',
+    aide: "Programme installé sur votre machine (par Ollama) qui range votre dictée dans les rubriques. Seuls les modèles installés sont proposés. Plus gros : généralement plus juste, plus lent. Aucun modèle « en ligne » n'est accepté : vos données restent ici." },
+  cfgLlmTemp: { chemin: 'llm.temperature',
+    aide: "0 : la formulation la plus fidèle et la plus prévisible. Au-delà de 0,5, l'assistant reformule davantage, au risque de s'éloigner de votre dictée." },
+  cfgEmbModel: { chemin: 'embeddings.model',
+    aide: "Retrouve, dans vos bilans importés, les passages proches de votre dictée. En changer oblige à réimporter vos bilans de référence." },
+  cfgSttDevice: { chemin: 'stt.device', aide: "« Automatique » prend la carte graphique si elle est assez puissante, sinon le processeur.",
+    format: v => ({ auto: 'Automatique', cpu: 'Processeur', cuda: 'Carte graphique' })[v] || v },
+  cfgSttModel: { chemin: 'stt.model',
+    aide: "Taille du modèle de reconnaissance vocale. Plus grand : plus précis, mais plus lent et plus gourmand. « auto » choisit selon votre machine ; un chemin vers un modèle CTranslate2 est aussi accepté.",
+    format: v => v === 'auto' ? 'auto (selon la machine)' : v },
+  cfgSttBeam: { chemin: 'stt.beam_size', aide: "Nombre de transcriptions comparées avant de retenir la meilleure. Plus élevé : un peu plus précis, un peu plus lent." },
+  cfgSttLang: { chemin: 'stt.language', aide: "Code à deux lettres de la langue parlée dans les dictées ; fr pour le français." },
+  cfgSttVad: { chemin: 'stt.vad', aide: "Ignore les silences et bruits de fond pendant la dictée. À décocher seulement si des débuts de phrases sont coupés." },
+  promptLib: { aide: "Modifier ce texte change la façon dont l'assistant range votre dictée dans les rubriques. La consigne intégrée suit les mises à jour ; une consigne personnalisée ne bouge plus. À réserver aux personnes à l'aise avec ce genre d'outil." },
+};
+let CFG_EFF = null;      // configuration effective affichée (aperçus, pastilles)
+let DEFAUTS_CFG = null;  // valeurs par défaut du serveur (valeur recommandée)
+
+function lireChemin(obj, chemin) {
+  return chemin.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+// Même règle d'affichage que cotation.euros : deux décimales, virgule.
+function euros(v) { return Number(v).toFixed(2).replace('.', ',') + ' €'; }
+function nombreFr(v) { return String(v).replace('.', ',').replace('-', '\u2212'); }
+function formatDefaut(id, v) {
+  const champ = CHAMPS[id];
+  if (champ.format) return champ.format(v);
+  if (CHOIX[id]) return CHOIX[id].libelle(Number(v));
+  if (typeof v === 'boolean') return v ? 'coché' : 'décoché';
+  if (typeof v === 'number') return nombreFr(v);
+  return v === '' || v == null ? 'vide' : String(v);
+}
+function remplirChoix(id, valeur) {
+  const sel = $(id), { valeurs, libelle } = CHOIX[id];
+  const v = Number(valeur);
+  if (valeur == null || !Number.isFinite(v)) {
+    // Valeur absente : rien n'est présélectionné, rien ne sera renvoyé.
+    sel.innerHTML = '<option value="">—</option>'; sel.value = ''; return;
+  }
+  const liste = valeurs.includes(v) ? valeurs : [...valeurs, v];
+  sel.innerHTML = liste.map(x => `<option value="${x}">${escapeHtml(libelle(x))}${valeurs.includes(x) ? '' : ' (personnalisé)'}</option>`).join('');
+  sel.value = String(v);
+}
+// Liste des modèles installés (barre principale et Paramètres). Modèle
+// configuré mais non installé : affiché tel quel en tête — sinon le navigateur
+// sélectionnait le premier de la liste sans émettre d'événement, l'écran
+// montrait un modèle et la configuration en utilisait un autre.
+function remplirModeles(sel, models, cur) {
+  const opts = models.map(m => `<option ${m === cur ? 'selected' : ''}>${escapeHtml(m)}</option>`);
+  if (cur && !models.includes(cur)) {
+    opts.unshift(`<option selected value="${escapeHtml(cur)}">${escapeHtml(cur)} (non installé)</option>`);
+  }
+  sel.innerHTML = opts.join('') || `<option>${escapeHtml(cur || '')}</option>`;
+}
+function etatDictee(i, stt) {
+  const ou = i.device === 'cuda' ? 'sur la carte graphique' : 'sur le processeur';
+  const auto = (stt.model || 'auto') === 'auto' || (stt.device || 'auto') === 'auto'
+    ? ' (choix automatique selon votre machine)' : '';
+  return `En cours : modèle ${i.model}, ${ou}${auto}.`;
+}
 function fillSettings(c) {
+  CFG_EFF = c;
   const prat = c.praticien || {};
   Object.entries(PRAT_CHAMPS).forEach(([cle, id]) => { $(id).value = prat[cle] || ''; });
-  $('cfgLlmModel').value = c.llm.model; $('cfgLlmTemp').value = c.llm.temperature;
-  $('cfgSttDevice').value = c.stt.device; $('cfgSttModel').value = c.stt.model;
-  $('cfgSttBeam').value = c.stt.beam_size; $('cfgSttVad').checked = !!c.stt.vad;
-  $('cfgSttLang').value = c.stt.language || 'fr';
+  $('cfgStyleDetail').value = c.style.niveau_detail;
+  remplirChoix('cfgStyleK', c.style.few_shot_k);
+  $('cfgStyleForme').checked = c.style.mise_en_forme_ia !== false;
   $('cfgSttHotwords').value = (c.stt.hotwords || []).join('\n');
   $('cfgSttCorr').value = Object.entries(c.stt.corrections || {}).map(([k, v]) => `${k} => ${v}`).join('\n');
-  $('cfgStyleK').value = c.style.few_shot_k; $('cfgStyleDetail').value = c.style.niveau_detail;
-  $('cfgStyleVouv').checked = !!c.style.vouvoiement; $('cfgEmbModel').value = c.embeddings.model;
-  $('cfgStyleForme').checked = c.style.mise_en_forme_ia !== false;
   $('cfgSeuilFrag').value = c.seuils.fragilite_et; $('cfgSeuilPatho').value = c.seuils.pathologique_et;
   $('cfgSeuilSev').value = c.seuils.severe_et;
   $('cfgSeuilFragP').value = c.seuils.fragilite_percentile; $('cfgSeuilPathoP').value = c.seuils.pathologique_percentile;
   $('cfgSeuilSevP').value = c.seuils.severe_percentile;
   $('cfgCotAmo').value = c.cotation.valeur_amo; $('cfgCotSimple').value = c.cotation.bilan_simple_coeff;
   $('cfgCotComplexe').value = c.cotation.bilan_complexe_coeff; $('cfgCotRenouv').value = c.cotation.renouvellement_coeff;
-  $('cfgRgpdLock').value = c.rgpd.verrouillage_inactivite_minutes; $('cfgRgpdCons').value = c.rgpd.conservation_jours;
-  $('cfgRgpdDictee').value = c.rgpd.dictee_max_minutes;
+  remplirChoix('cfgRgpdLock', c.rgpd.verrouillage_inactivite_minutes);
+  remplirChoix('cfgRgpdDictee', c.rgpd.dictee_max_minutes);
+  remplirChoix('cfgRgpdCons', c.rgpd.conservation_jours);
   $('cfgSauvDossier').value = c.sauvegarde.dossier || ''; $('cfgSauvRet').value = c.sauvegarde.retention;
-  $('cfgSauvAuto').value = c.sauvegarde.auto_jours;
+  remplirChoix('cfgSauvAuto', c.sauvegarde.auto_jours);
   $('cfgMajAuto').checked = !!(c.maj || {}).verification_auto;
+  // Réglages techniques. Le modèle d'IA se choisit parmi les modèles installés ;
+  // la valeur configurée est posée tout de suite, la liste arrive ensuite.
+  const selLlm = $('cfgLlmModel');
+  const modele = String(c.llm.model || '');
+  selLlm.innerHTML = `<option value="${escapeHtml(modele)}">${escapeHtml(modele)}</option>`;
+  api('/api/models').then(r => r.json()).then(({ models }) => remplirModeles(selLlm, models, modele)).catch(() => {});
+  $('cfgLlmTemp').value = c.llm.temperature; $('cfgEmbModel').value = c.embeddings.model;
+  $('cfgSttDevice').value = c.stt.device; $('cfgSttModel').value = c.stt.model;
+  $('cfgSttBeam').value = c.stt.beam_size; $('cfgSttVad').checked = !!c.stt.vad;
+  $('cfgSttLang').value = c.stt.language || 'fr';
+  majApercus(); majPastilles();
   api('/api/sauvegardes').then(r => r.json()).then(s => {
     $('sauvStatus').textContent = s.derniere
       ? `Dernière : ${s.derniere} UTC (${s.fichiers.length} copie${s.fichiers.length > 1 ? 's' : ''})`
       : 'Aucune sauvegarde pour le moment.';
     renderSauvegardes(s);
   }).catch(() => {});
+  api('/api/stt/info').then(r => r.json()).then(i => { $('sttEtat').textContent = etatDictee(i, c.stt); })
+    .catch(() => { $('sttEtat').textContent = 'État indisponible pour le moment.'; });
 }
+// Aperçus vivants : montrer l'effet d'un réglage vaut mieux qu'une explication.
+function majApercus() {
+  const p = id => $(id).value.trim();
+  const nom = [p('cfgPratPrenom'), p('cfgPratNom')].filter(Boolean).join(' ');
+  if (!nom && !p('cfgPratAdeli') && !p('cfgPratRpps')) {
+    $('pratApercu').textContent = 'Aucune identité renseignée : vos documents sortiront sans en-tête ni signature.';
+  } else {
+    const morceaux = [[nom, p('cfgPratTitre')].filter(Boolean).join(', ')];
+    if (p('cfgPratAdeli')) morceaux.push(`N° ADELI ${p('cfgPratAdeli')}`);
+    if (p('cfgPratRpps')) morceaux.push(`RPPS ${p('cfgPratRpps')}`);
+    const lieu = p('cfgPratLieu') || p('cfgPratVille');
+    if (lieu) morceaux.push(`Fait à ${lieu}`);
+    $('pratApercu').textContent = 'Signature : ' + morceaux.filter(Boolean).join(' · ');
+  }
+  // Cotation : montant = AMO × coefficient, même règle que cotation.compute.
+  const amo = parseFloat($('cfgCotAmo').value);
+  const ligne = (lib, id) => {
+    const c = parseFloat($(id).value);
+    return `${lib} : ${isNaN(c) || isNaN(amo) ? '—' : `${nombreFr(c)} × ${euros(amo)} = ${euros(c * amo)}`}`;
+  };
+  $('cotApercu').textContent = [ligne('Bilan simple', 'cfgCotSimple'), ligne('complexe', 'cfgCotComplexe'),
+    ligne('renouvellement', 'cfgCotRenouv')].join(' · ');
+  $('seuilApercu').textContent = apercuSeuils();
+}
+// Quatre scores d'exemple classés avec la règle de bilan.interpret_drapeau (≤).
+// Des seuils dans le désordre sont dits en clair ici plutôt que par le 422 du
+// serveur à l'enregistrement.
+function apercuSeuils() {
+  const n = id => parseFloat($(id).value);
+  const f = n('cfgSeuilFrag'), pa = n('cfgSeuilPatho'), s = n('cfgSeuilSev');
+  const fp = n('cfgSeuilFragP'), pp = n('cfgSeuilPathoP'), sp = n('cfgSeuilSevP');
+  if ([f, pa, s, fp, pp, sp].some(isNaN)) return 'Renseignez les six seuils pour voir un exemple.';
+  const avert = [];
+  if (!(s <= pa && pa <= f && f <= 0)) {
+    avert.push('En écarts-types, les seuils s\'écrivent en négatif et se suivent du moins sévère au plus sévère : '
+      + 'fragilité ≥ pathologique ≥ sévère (par exemple −1, −1,5, −2).');
+  }
+  if (!(sp <= pp && pp <= fp)) avert.push('En percentiles, de même : fragilité ≥ pathologique ≥ sévère (par exemple 16, 7, 2).');
+  if (avert.length) return '⚠️ ' + avert.join(' ');
+  const repere = (v, a, b, c) => v <= c ? 'sévère' : v <= b ? 'pathologique' : v <= a ? 'fragilité' : 'norme';
+  const r1 = v => Math.round(v * 10) / 10;
+  const exET = [r1(f + 0.3), r1((f + pa) / 2), r1((pa + s) / 2), r1(s - 0.4)];
+  const exP = [Math.min(100, Math.round(fp + 4)), Math.round((fp + pp) / 2), Math.round((pp + sp) / 2), Math.max(0, Math.round(sp / 2))];
+  const et = exET.map(v => `${nombreFr(v)} ET → ${repere(v, f, pa, s)}`).join(' · ');
+  const pc = exP.map(v => `${v}${v === 1 ? 'er' : 'e'} percentile → ${repere(v, fp, pp, sp)}`).join(' · ');
+  return `Avec ces valeurs : ${et}. En percentiles : ${pc}.`;
+}
+// Valeur recommandée dans la bulle et pastille « modifié » : comparaison de la
+// configuration effective aux défauts du serveur (pas de la seule présence
+// d'une surcharge : une surcharge égale au défaut n'est pas une modification).
+function majPastilles() {
+  Object.entries(CHAMPS).forEach(([id, champ]) => {
+    if (!champ.chemin) return;
+    const btn = document.querySelector(`.aide[data-aide="${id}"]`);
+    if (!btn) return;
+    const lib = btn.parentNode;
+    const def = DEFAUTS_CFG ? lireChemin(DEFAUTS_CFG, champ.chemin) : undefined;
+    const val = CFG_EFF ? lireChemin(CFG_EFF, champ.chemin) : undefined;
+    const reco = lib.querySelector('.reco');
+    reco.hidden = def === undefined;
+    if (def !== undefined) reco.textContent = `Recommandé : ${formatDefaut(id, def)}`;
+    lib.querySelector('.modif').hidden = def === undefined || val === undefined
+      || JSON.stringify(val) === JSON.stringify(def);
+  });
+}
+function fermerBulles() {
+  document.querySelectorAll('.bulle.ouverte').forEach(b => b.classList.remove('ouverte'));
+  document.querySelectorAll('.aide[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+}
+// Une bulle qui déborderait du bord droit de la boîte s'aligne à droite.
+function placerBulle(bulle) {
+  bulle.classList.remove('droite');
+  const corps = bulle.closest('.mbody');
+  if (!corps || !bulle.getBoundingClientRect) return;
+  const r = bulle.getBoundingClientRect(), c = corps.getBoundingClientRect();
+  if (r.width && r.right > c.right - 8) bulle.classList.add('droite');
+}
+// Bouton ⓘ après chaque libellé (hors du <label> : un bouton dans le libellé
+// capturerait le clic destiné au champ). Bulle au survol et au focus clavier
+// (CSS), épinglée au clic (tactile, lecture posée) ; Échap la ferme avant la
+// boîte de dialogue.
+function initAides() {
+  Object.entries(CHAMPS).forEach(([id, champ]) => {
+    const ancre = document.querySelector(`label[for="${id}"]`) || $(id);
+    if (!ancre) return;
+    const lib = document.createElement('div'); lib.className = 'lib';
+    ancre.parentNode.insertBefore(lib, ancre); lib.appendChild(ancre);
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'aide'; btn.textContent = 'i'; btn.dataset.aide = id;
+    btn.setAttribute('aria-label', 'Aide : ' + ancre.textContent.trim().replace(/\s+/g, ' '));
+    btn.setAttribute('aria-expanded', 'false');
+    const bulle = document.createElement('span');
+    bulle.className = 'bulle'; bulle.id = 'aide-' + id; bulle.setAttribute('role', 'tooltip');
+    const texte = document.createElement('span'); texte.textContent = champ.aide;
+    const reco = document.createElement('span'); reco.className = 'reco'; reco.hidden = true;
+    bulle.append(texte, reco);
+    const modif = document.createElement('span');
+    modif.className = 'modif'; modif.hidden = true; modif.textContent = 'modifié';
+    lib.append(btn, bulle, modif);
+    const champEl = $(id);
+    if (champEl && /^(INPUT|SELECT|TEXTAREA)$/.test(champEl.tagName)) champEl.setAttribute('aria-describedby', bulle.id);
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const etait = bulle.classList.contains('ouverte');
+      fermerBulles();
+      if (!etait) { bulle.classList.add('ouverte'); btn.setAttribute('aria-expanded', 'true'); placerBulle(bulle); }
+    });
+    btn.addEventListener('mouseenter', () => placerBulle(bulle));
+    btn.addEventListener('focus', () => placerBulle(bulle));
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest || !e.target.closest('.bulle')) fermerBulles();
+  });
+}
+initAides();
+['cfgPratPrenom', 'cfgPratNom', 'cfgPratTitre', 'cfgPratAdeli', 'cfgPratRpps', 'cfgPratVille', 'cfgPratLieu',
+  'cfgCotAmo', 'cfgCotSimple', 'cfgCotComplexe', 'cfgCotRenouv',
+  'cfgSeuilFrag', 'cfgSeuilPatho', 'cfgSeuilSev', 'cfgSeuilFragP', 'cfgSeuilPathoP', 'cfgSeuilSevP',
+].forEach(id => $(id).addEventListener('input', majApercus));
+// Bloc technique replié par défaut ; le sommaire l'ouvre quand on y va.
+function ouvrirTech(ouvert) {
+  $('techCorps').hidden = !ouvert;
+  $('techToggle').setAttribute('aria-expanded', String(ouvert));
+  $('techToggle').textContent = ouvert ? 'Masquer les réglages techniques' : 'Afficher les réglages techniques';
+}
+$('techToggle').addEventListener('click', () => ouvrirTech($('techCorps').hidden));
+document.querySelectorAll('.sommaire a').forEach(a => a.addEventListener('click', e => {
+  e.preventDefault();
+  const cible = $(a.getAttribute('href').slice(1));
+  if (!cible) return;
+  if (cible.id === 'secTech') ouvrirTech(true);
+  if (cible.scrollIntoView) cible.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  cible.focus({ preventScroll: true });
+}));
+// « Revenir aux valeurs recommandées » : DELETE /api/config/{section}, avec
+// `?cles=` quand la section est répartie entre deux blocs de l'écran (stt :
+// vocabulaire ici, matériel et modèle dans les réglages techniques). Le « tout
+// rétablir » global emportait identité, trame et catalogues pour annuler un
+// essai sur un seul réglage.
+document.querySelectorAll('[data-reset-btn]').forEach(b => b.addEventListener('click', e => avecBouton(e.target, async () => {
+  const fs = b.closest('fieldset');
+  const st = fs.querySelector('[data-reset-st]');
+  if (!confirm(`Revenir aux valeurs recommandées pour « ${fs.dataset.resetNom} » ? `
+      + 'Vos modifications de ces réglages seront perdues, et les saisies non enregistrées de cet écran rechargées.')) return;
+  statutOccupe(st, 'Retour aux valeurs recommandées…');
+  try {
+    let eff = null;
+    for (const cible of fs.dataset.reset.split(';')) {
+      const [section, cles] = cible.split(':');
+      const url = '/api/config/' + section + (cles ? '?cles=' + encodeURIComponent(cles) : '');
+      eff = await (await api(url, { method: 'DELETE' })).json();
+    }
+    fillSettings(eff); st.textContent = '✓ valeurs recommandées rétablies';
+    loadLLM(); initDictee();
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+})));
 // --- Restauration guidée d'une sauvegarde ------------------------------------
 let REST_NOM = null;
 function renderSauvegardes(s) {
@@ -3018,12 +3365,17 @@ document.getElementById('promptReset').addEventListener('click', e => avecBouton
 
 document.getElementById('settingsBtn').addEventListener('click', async () => {
   try {
+    // Défauts du serveur (valeur recommandée, pastilles) : sans eux, l'écran
+    // fonctionne, privé de ces deux repères.
+    if (!DEFAUTS_CFG) { try { DEFAUTS_CFG = await (await api('/api/config/defauts')).json(); } catch {} }
     const eff = await (await api('/api/config')).json();
     fillSettings(eff);
     await fillEditeurs(eff);
   } catch { return; }
-  $('cfgStatus').textContent = ''; $('settingsOverlay').hidden = false;
-  $('cfgLlmModel').focus();
+  $('cfgStatus').textContent = ''; fermerBulles(); ouvrirTech(false);
+  $('settingsOverlay').hidden = false;
+  document.querySelector('#settingsOverlay .mbody').scrollTop = 0;
+  $('cfgPratPrenom').focus();
 });
 function collectSettings() {
   const corrections = {};
@@ -3034,13 +3386,15 @@ function collectSettings() {
   // Champ numérique vidé -> undefined : la clé est omise du JSON et la valeur
   // précédente est conservée côté serveur (fusion), au lieu d'écrire NaN/null.
   // Trame, catalogues et consigne ont leurs éditeurs dédiés (routes propres) :
-  // ils ne passent plus par cet enregistrement global.
+  // ils ne passent pas par cet enregistrement global. `style.vouvoiement`
+  // (façon dont l'assistant s'adresse à la personne qui dicte) n'est plus
+  // exposé : il garde sa valeur enregistrée, vouvoiement par défaut.
   const num = v => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
   const praticien = {};
   Object.entries(PRAT_CHAMPS).forEach(([cle, id]) => { praticien[cle] = $(id).value.trim(); });
   return {
     praticien,
-    llm: { model: $('cfgLlmModel').value.trim(), temperature: num($('cfgLlmTemp').value) },
+    llm: { model: $('cfgLlmModel').value.trim() || undefined, temperature: num($('cfgLlmTemp').value) },
     stt: {
       device: $('cfgSttDevice').value, model: $('cfgSttModel').value.trim() || 'auto',
       beam_size: num($('cfgSttBeam').value), vad: $('cfgSttVad').checked,
@@ -3050,7 +3404,7 @@ function collectSettings() {
     },
     style: {
       few_shot_k: num($('cfgStyleK').value), niveau_detail: $('cfgStyleDetail').value,
-      vouvoiement: $('cfgStyleVouv').checked, mise_en_forme_ia: $('cfgStyleForme').checked,
+      mise_en_forme_ia: $('cfgStyleForme').checked,
     },
     embeddings: { model: $('cfgEmbModel').value.trim() || 'nomic-embed-text' },
     seuils: {
@@ -3085,8 +3439,8 @@ document.getElementById('cfgSave').addEventListener('click', async () => {
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 });
 document.getElementById('cfgReset').addEventListener('click', async () => {
-  if (!confirm('Cela efface vos réglages personnalisés : vocabulaire, corrections, '
-      + 'seuils, cotation, trame, catalogues et prompts. Continuer ?')) return;
+  if (!confirm('Cela efface TOUS vos réglages personnalisés, identité professionnelle comprise : '
+      + 'vocabulaire, corrections, seuils, cotation, sauvegardes, trame, catalogues et consigne. Continuer ?')) return;
   const st = $('cfgStatus');
   try {
     const r = await api('/api/config', { method: 'DELETE' });

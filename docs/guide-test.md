@@ -75,8 +75,12 @@ irrécupérable** (personne, pas même Alexandre, ne peut la retrouver).
    listes : barre au-dessus de chaque rubrique, ou Ctrl+B / Ctrl+I / Ctrl+U) ;
    vous pouvez aussi coller un passage depuis Word, sa mise en forme est
    conservée.
-7. **€ Coter**, **⬇ Word**, puis « Marquer validé ».
-8. Optionnel : importez un de vos bilans **anonymisé** dans « Mes bilans de
+7. **⚙️ Paramètres → Mon cabinet** : renseignez votre identité
+   professionnelle ; l'aperçu montre la signature qui sortira sur le document.
+   Survolez un bouton ⓘ : chaque réglage dit à quoi il sert et quelle valeur
+   est recommandée. Le bloc « Réglages techniques », en bas, peut rester fermé.
+8. **€ Coter**, **⬇ Word**, puis « Marquer validé ».
+9. Optionnel : importez un de vos bilans **anonymisé** dans « Mes bilans de
    référence » — les prochaines rédactions imiteront votre style, y compris
    ce que vous mettez en gras ou en liste (fichiers Word).
 

@@ -74,11 +74,15 @@ ci-dessous.
   presque rien à ce que vous avez dit sont signalés rubrique par rubrique, et
   ces signalements restent attachés au bilan tant que vous n'avez pas relu la
   rubrique. L'app ne corrige jamais un chiffre d'elle-même : à vous de trancher.
-- **Tout est configurable** depuis l'écran ⚙️ Paramètres : modèles (LLM,
-  dictée, embeddings), style (détail, vouvoiement, nb d'exemples), seuils,
-  cotation, RGPD (verrouillage, durée de conservation — l'audio de dictée est,
-  lui, toujours supprimé), et même la **trame des bilans**, les **catalogues de
-  tests** et la **consigne de structuration**, chacun avec son éditeur dédié —
+- **Tout est configurable** depuis l'écran ⚙️ Paramètres, pensé pour des
+  orthophonistes et non des informaticiens : six sections dans les mots du
+  cabinet (Mon cabinet, Mes comptes-rendus, Ma dictée, Mes tests et seuils,
+  Cotation NGAP, Sécurité et sauvegardes), une bulle d'aide par réglage avec
+  la valeur recommandée, l'effet montré en direct (montant coté, score classé,
+  signature) et un retour aux valeurs recommandées section par section. Les
+  modèles d'IA et de dictée, la consigne de structuration et les autres
+  réglages internes sont repliés sous « Réglages techniques ». La **trame des
+  bilans** et les **catalogues de tests** gardent leur éditeur dédié — le tout
   sans toucher au code.
 
 ## Prérequis (installation depuis les sources)
@@ -96,7 +100,8 @@ ci-dessous.
   > Pourquoi deux familles de LLM ? `qwen2.5:7b` reste le **défaut de la
   > config** ; l'écran « 🚀 Première installation » propose, lui, `qwen3.5:9b`
   > (machines ≥ 16 Go de RAM) ou `qwen3.5:4b` (8 Go), de meilleure qualité en
-  > français. Le modèle se change à tout moment dans ⚙️ Paramètres.
+  > français. Le modèle se change à tout moment dans la barre principale ou dans
+  > ⚙️ Paramètres → Réglages techniques.
 - **Optionnel — OCR des PDF scannés** :
   ```bash
   sudo apt install tesseract-ocr tesseract-ocr-fra
@@ -162,7 +167,7 @@ si la dernière date de plus de N jours (défaut 7), et à la demande depuis
 plutôt un support externe (clé USB, disque). La copie reste chiffrée : **elle
 ne s'ouvre qu'avec votre passphrase**.
 
-**Restaurer** : depuis ⚙️ Paramètres → « Sauvegarde du coffre », bouton
+**Restaurer** : depuis ⚙️ Paramètres → Sécurité et sauvegardes, bouton
 « Restaurer… » en face de la copie voulue. L'application vérifie que la copie
 s'ouvre avec votre passphrase, crée d'abord une sauvegarde de vos données
 actuelles, puis échange les fichiers et se reconnecte. En dernier recours, la
@@ -175,7 +180,8 @@ relancez et déverrouillez avec la même passphrase.
 Par défaut (`auto`), l'app choisit selon votre matériel : GPU ≥ 6 Go VRAM →
 `large-v3`, sinon CPU + `medium` (int8). Le modèle se télécharge au premier
 usage (~1,5 Go pour `medium`). Pour la meilleure qualité FR, pointez
-`Paramètres → Dictée → Modèle` vers un modèle CTranslate2 fine-tuné français
+`Paramètres → Réglages techniques → Précision de la reconnaissance vocale`
+vers un modèle CTranslate2 fine-tuné français
 (ex. conversion de `bofenghuang/whisper-large-v3-french`).
 
 ## Tests

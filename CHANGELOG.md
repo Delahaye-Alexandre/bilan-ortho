@@ -5,6 +5,34 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
+## Non publié
+
+Plan « Paramètres compréhensibles » (`docs/plan-parametres-2026-09-03.md`) :
+
+- **Des réglages pour orthophonistes, pas pour informaticiens** : l'écran
+  ⚙️ Paramètres est réorganisé en six sections dans les mots du cabinet (Mon
+  cabinet, Mes comptes-rendus, Ma dictée, Mes tests et seuils, Cotation NGAP,
+  Sécurité et sauvegardes), avec un sommaire ; modèles, température, matériel
+  de dictée et consigne de structuration sont repliés sous « Réglages
+  techniques ».
+- **Une bulle d'aide par réglage** : à quoi il sert, quand le changer, et la
+  valeur recommandée lue sur le serveur (`GET /api/config/defauts`) ; un
+  réglage qui s'en écarte porte la mention « modifié ».
+- **Des phrases et des listes à la place des codes** : « Verrouiller l'écran
+  après 15 minutes », « jamais », « chaque semaine »… plus de « 0 = jamais » ;
+  une valeur inhabituelle déjà enregistrée reste affichée « personnalisée ».
+- **L'effet montré en direct** : montant de la cotation (AMO × coefficient),
+  quatre scores d'exemple classés selon les seuils (avertissement en clair si
+  les seuils sont dans le désordre), aperçu de la signature, état de la
+  dictée ; le modèle d'IA se choisit parmi les modèles installés.
+- **Revenir aux valeurs recommandées section par section**
+  (`DELETE /api/config/{section}`, avec `?cles=`), sans plus effacer identité,
+  trame et catalogues ; « Tout rétablir » descend dans le bloc technique.
+- **Corrections de dictée littérales** : « ortofonie => orthophonie » remplace
+  le mot entier, majuscule ou non ; le préfixe `re:` garde les expressions
+  régulières. Le réglage « Vouvoiement » (façon dont l'assistant s'adresse à
+  la personne qui dicte) quitte l'écran, sa valeur enregistrée est conservée.
+
 ## 1.10.0 — 2026-09-03
 
 Lot A du plan « mise en forme » (`docs/plan-mise-en-forme-2026-09-03.md`) :
