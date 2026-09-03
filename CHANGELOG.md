@@ -11,6 +11,10 @@ installeur Windows publié dans les releases.
   possible (Windows, application installée), le bandeau ne propose plus que
   « Installer maintenant » ; le lien de téléchargement manuel ne réapparaît
   qu'en secours, si cette installation échoue.
+- **CI** : le test de mise à niveau ne compare plus les numéros de version
+  (entre deux releases, main porte le même numéro que la dernière publiée, ce
+  qui refusait tout build après la 1.11.0) : il vérifie que l'application
+  relancée est bien celle du build (numéro de `app/__init__.py`, même binaire).
 
 ## 1.11.0 — 2026-09-03
 

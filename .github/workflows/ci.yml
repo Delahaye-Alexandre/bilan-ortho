@@ -323,7 +323,18 @@ jobs:
           (Start-Process -PassThru -FilePath $neuf.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/RELANCER=8000").WaitForExit()
           $s2 = Attendre-Status 8000
           Write-Host "   version après mise à niveau : $($s2.version) (relancée par l'installeur)"
-          if ($s2.version -eq $s.version) { throw "La version n'a pas changé après la mise à niveau." }
+          # Entre deux releases, main porte le même numéro que la dernière
+          # release publiée (le bump n'arrive qu'au tag) : le numéro ne peut
+          # donc pas « changer », et le comparer bloquait tout push après une
+          # publication. Ce qui compte : l'application relancée est celle qui
+          # vient d'être construite — numéro de app/__init__.py et binaire
+          # identique à dist\BilanOrtho (empreinte SHA-256).
+          $construite = (Select-String -Path "app\__init__.py" -Pattern '__version__ = "([^"]+)"').Matches[0].Groups[1].Value
+          if ($s2.version -ne $construite) { throw "L'application relancée est en $($s2.version), la version construite est $construite." }
+          $hInstalle = (Get-FileHash -Algorithm SHA256 $app).Hash
+          $hConstruit = (Get-FileHash -Algorithm SHA256 "dist\BilanOrtho\BilanOrtho.exe").Hash
+          if ($hInstalle -ne $hConstruit) { throw "Le BilanOrtho.exe installé n'est pas celui du build (empreintes différentes)." }
+          if ($s.version -eq $construite) { Write-Host "   (même numéro que la dernière release : c'est la réinstallation par-dessus qui est vérifiée)" }
           if (-not $s2.db_exists) { throw "Le coffre existant n'est plus vu après la mise à niveau." }
           $u = Invoke-WebRequest -TimeoutSec 60 -Method Post -Uri "http://127.0.0.1:8000/api/unlock" -ContentType "application/json" -Body '{"passphrase":"passphrase-de-mise-a-niveau-ci"}' -UseBasicParsing
           if ($u.StatusCode -ne 200) { throw "Le coffre créé par l'ancienne version ne s'ouvre plus (HTTP $($u.StatusCode))." }
