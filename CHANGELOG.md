@@ -7,6 +7,9 @@ installeur Windows publié dans les releases.
 
 ## 1.11.0 — 2026-09-03
 
+Cette version regroupe aussi tout ce qui était prévu pour la 1.10.0, dont le
+build n'a jamais abouti (voir la note CI plus bas) : elle n'a pas été publiée.
+
 Plan « Paramètres compréhensibles » (`docs/plan-parametres-2026-09-03.md`) :
 
 - **Des réglages pour orthophonistes, pas pour informaticiens** : l'écran
@@ -32,8 +35,6 @@ Plan « Paramètres compréhensibles » (`docs/plan-parametres-2026-09-03.md`) :
   le mot entier, majuscule ou non ; le préfixe `re:` garde les expressions
   régulières. Le réglage « Vouvoiement » (façon dont l'assistant s'adresse à
   la personne qui dicte) quitte l'écran, sa valeur enregistrée est conservée.
-
-## 1.10.0 — 2026-09-03
 
 Lot A du plan « mise en forme » (`docs/plan-mise-en-forme-2026-09-03.md`) :
 
@@ -76,7 +77,10 @@ Mises à jour (`app/maj.py`, plan « mise à jour » validé le 2026-09-03) :
   test de mise à niveau (version publiée précédente puis celle-ci par-dessus,
   coffre existant rouvert, relance sur le port demandé) ; signature de code
   Windows (Azure Artifact Signing) prête, activée par la seule présence des
-  secrets — voir `docs/signature-code.md`.
+  secrets — voir `docs/signature-code.md`. Le test de mise à niveau a bloqué
+  les premiers builds : sans Ollama sur le runner, l'installeur silencieux
+  téléchargeait Ollama puis attendait sans fin son installeur ; il trouve
+  désormais un Ollama factice, et l'étape est bornée à vingt minutes.
 
 ## 1.9.0 — 2026-09-03
 
