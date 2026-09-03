@@ -22,8 +22,12 @@ document.documentElement.innerHTML = markup;
 // --- Stub micro / MediaRecorder ----------------------------------------------
 class FakeMediaRecorder {
   constructor(stream) { this.stream = stream; }
-  start() {}
+  // `state` comme le vrai MediaRecorder : la page ne stoppe que si
+  // « recording » (un double-clic sur « Arrêter » lève sinon une DOMException).
+  state = "inactive";
+  start() { this.state = "recording"; }
   stop() {
+    this.state = "inactive";
     if (this.ondataavailable) this.ondataavailable({ data: { size: 5 } });
     if (this.onstop) this.onstop();
   }
@@ -159,6 +163,7 @@ globalThis.fetch = async (p, o = {}) => {
     return rep(refsList.map((r) => ({ ...r })));
   }
   if (url.includes("/api/transcribe")) return rep({ text: "texte transcrit" });
+  if (url.includes("/api/models")) return rep({ models: ["qwen3.5:4b", "qwen3.5:9b"], default: "qwen3.5:4b" });
   if (url.includes("/api/status")) return rep(statusResponder());
   if (url.includes("/api/installation")) return rep(installResponder());
   if (url.includes("/epreuves")) {
@@ -199,7 +204,7 @@ const body = scriptBody.replace(/gate\(\);\s*$/, "") + `
   get CUR() { return CUR; }, set CUR(v) { CUR = v; },
   get QUITTER_SANS_GARDE() { return QUITTER_SANS_GARDE; }, set QUITTER_SANS_GARDE(v) { QUITTER_SANS_GARDE = v; },
   renderQuestions, renderBilan, structure, saisieEnCours, loadRecents, loadRefs,
-  loadBilan, sectionsNonEnregistrees, gate,
+  loadBilan, sectionsNonEnregistrees, gate, loadLLM, loadDomaines,
 };`;
 new Function(body)();
 
@@ -926,6 +931,12 @@ check("… un bandeau nomme ce qui reste possible (consultation, export)",
   && document.getElementById("iaBannerTexte").textContent.includes("export"));
 check("… et le geste qui répare, pas une réinstallation",
   document.getElementById("iaBannerTexte").textContent.includes("Lancez Ollama"));
+// 6.5 : première visite sur ce poste → l'aide « Comment ça marche » s'est
+// ouverte d'elle-même (une seule fois : mémorisé dans localStorage).
+check("première visite : l'aide s'ouvre d'elle-même au premier déverrouillage",
+  document.getElementById("helpOverlay").hidden === false
+  && localStorage.getItem("bilan_ortho_aide_vue") === "1");
+document.getElementById("helpOverlay").hidden = true;
 
 // Coffre verrouillé : le serveur lit les défauts, pas la config du praticien —
 // aucun « modèle manquant » ne doit être affirmé.
@@ -1041,6 +1052,42 @@ const evApres = new Event("beforeunload", { cancelable: true });
 window.dispatchEvent(evApres);
 check("… sans dialogue natif : le garde-fou beforeunload s'est effacé",
   evApres.defaultPrevented === false);
+
+// === 6.4 / 6.5 (revue 2026-08-11) : sélecteur de modèle honnête, domaine choisi
+// Le modèle configuré (CFG.llm.model) n'est pas dans la liste renvoyée par
+// Ollama : l'écran doit le dire, pas afficher le premier de la liste.
+await __t.loadLLM();
+const selModele = document.getElementById("llmModel");
+// (happy-dom laisse selectedIndex à -1 : on retrouve l'option par sa valeur.)
+const optConfig = [...selModele.options].find((o) => o.value === "qwen2.5:7b");
+check("modèle configuré non installé : affiché tel quel, marqué « non installé »",
+  selModele.value === "qwen2.5:7b" && optConfig && optConfig.textContent.includes("non installé"));
+check("… les modèles installés restent proposés",
+  [...selModele.options].some((o) => o.value === "qwen3.5:9b"));
+
+// « Générique » n'est plus le défaut silencieux : sans domaine choisi, pas de
+// bilan, et le message dit où est le tronc commun.
+await __t.loadDomaines();
+const selDom = document.getElementById("domaine");
+check("domaine : l'invite « Choisissez… » est sélectionnée, Générique en bas de liste",
+  selDom.value === "__choisir__"
+  && selDom.options[selDom.options.length - 1].textContent.includes("Générique"));
+// L'enregistrement lancé au scénario 28 est toujours « en cours » : on
+// l'arrête, sinon tout changement de dossier est refusé pour cette raison.
+if (document.getElementById("recBtn").classList.contains("rec")) {
+  document.getElementById("recBtn").click();
+  await settle();
+}
+document.getElementById("dicteeText").value = "";
+__t.CUR = null; bilanCreates = 0;
+document.getElementById("newBilan").click();
+await settle();
+check("« + Nouveau bilan » sans domaine : refusé, message explicite",
+  bilanCreates === 0 && status().includes("domaine"));
+selDom.value = "langage_oral";
+document.getElementById("newBilan").click();
+await settle();
+check("« + Nouveau bilan » avec un domaine : créé", bilanCreates === 1);
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

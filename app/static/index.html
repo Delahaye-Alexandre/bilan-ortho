@@ -801,6 +801,14 @@ async function startApp() {
     } catch {}
   }
   await Promise.all([loadDomaines(), loadLLM(), initDictee(), loadRecents(), loadRefs(), loadPatients()]);
+  // Première visite sur ce poste : l'aide « Comment ça marche » s'ouvre
+  // d'elle-même — les trois minutes qui évitent un premier bilan raté.
+  try {
+    if (!localStorage.getItem('bilan_ortho_aide_vue')) {
+      localStorage.setItem('bilan_ortho_aide_vue', '1');
+      document.getElementById('helpBtn').click();
+    }
+  } catch {}
   // Second passage sur l'état d'installation : au chargement de la page le
   // coffre était verrouillé, le serveur lisait les défauts et ne pouvait donc
   // affirmer aucun modèle manquant (`config_lisible`). C'est ici, et seulement
@@ -979,8 +987,13 @@ async function loadDomaines() {
   const sel = document.getElementById('domaine');
   try {
     const doms = await (await api('/api/domaines')).json();
-    sel.innerHTML = '<option value="">Générique (tronc commun)</option>' +
-      doms.map(d => `<option value="${escapeHtml(d.cle)}">${escapeHtml(d.titre)}</option>`).join('');
+    // « Générique » était présélectionné : la majorité des premiers bilans se
+    // faisaient sans domaine, donc sans catalogue de tests ni orientation du
+    // prompt — en dessous des capacités réelles de l'outil. Le choix est
+    // désormais explicite ; le tronc commun reste possible, en bas de liste.
+    sel.innerHTML = '<option value="__choisir__" disabled selected>Choisissez le domaine…</option>' +
+      doms.map(d => `<option value="${escapeHtml(d.cle)}">${escapeHtml(d.titre)}</option>`).join('') +
+      '<option value="">Générique (tronc commun)</option>';
   } catch { sel.innerHTML = '<option value="">Générique (tronc commun)</option>'; }
 }
 async function loadLLM() {
@@ -989,7 +1002,14 @@ async function loadLLM() {
     const { models, default: def } = await (await api('/api/models')).json();
     const cfg = await (await api('/api/config')).json();
     const cur = cfg.llm.model;
-    sel.innerHTML = models.map(m => `<option ${m === cur ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('') || `<option>${escapeHtml(cur)}</option>`;
+    const opts = models.map(m => `<option ${m === cur ? 'selected' : ''}>${escapeHtml(m)}</option>`);
+    // Modèle configuré mais non installé : l'afficher tel quel. Sinon le
+    // navigateur sélectionnait le premier de la liste sans émettre d'événement
+    // — l'écran montrait un modèle, la configuration en utilisait un autre.
+    if (cur && !models.includes(cur)) {
+      opts.unshift(`<option selected value="${escapeHtml(cur)}">${escapeHtml(cur)} (non installé)</option>`);
+    }
+    sel.innerHTML = opts.join('') || `<option>${escapeHtml(cur)}</option>`;
   } catch { sel.innerHTML = '<option>Ollama injoignable</option>'; }
 }
 document.getElementById('llmModel').addEventListener('change', async e => {
@@ -1036,6 +1056,12 @@ document.getElementById('newBilan').addEventListener('click', e => avecBouton(e.
   const suite = quitterBilanOk();
   if (!suite) return;
   const dom = document.getElementById('domaine').value;
+  if (dom === '__choisir__') {
+    statutDossier('Choisissez d\'abord le domaine du bilan : il oriente la trame, les tests '
+      + 'proposés et l\'analyse. « Générique (tronc commun) » est en bas de la liste.');
+    document.getElementById('domaine').focus();
+    return;
+  }
   const type = document.getElementById('btype').value;
   const pid = +document.getElementById('patientSel').value || null;
   const body = { domaines: dom ? [dom] : [], type, patient_id: pid };

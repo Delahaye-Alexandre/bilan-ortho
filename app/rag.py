@@ -40,9 +40,14 @@ async def embed(text: str, cfg: dict) -> list[float]:
             emb = r.json().get("embedding")
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
+            # Pas de commande de terminal dans un message d'interface : la
+            # personne qui lit ceci vient de cliquer « Charger les bilans
+            # d'exemple », elle n'a pas de terminal sous la main.
             raise EmbeddingUnavailable(
-                f"Modèle d'embeddings « {e['model']} » absent. "
-                f"Faites : ollama pull {e['model']}"
+                f"Le modèle d'embeddings « {e['model']} » n'est pas installé dans "
+                "Ollama : vos bilans de référence ne peuvent pas être indexés. "
+                "Choisissez dans ⚙️ Paramètres un modèle d'embeddings déjà installé, "
+                f"ou installez « {e['model']} » dans Ollama puis réessayez."
             ) from exc
         raise EmbeddingUnavailable(str(exc)) from exc
     except httpx.HTTPError as exc:
