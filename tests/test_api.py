@@ -1481,3 +1481,20 @@ def test_changement_de_passphrase_par_l_api(client):
     assert client.post("/api/lock").status_code == 200
     assert client.post("/api/unlock", json={"passphrase": PASSPHRASE}).status_code == 401
     assert client.post("/api/unlock", json={"passphrase": nouvelle}).status_code == 200
+
+
+# --- revue 2026-08-11, 9.4 : les champs percentile/note standard sont relus --
+
+def test_epreuve_par_percentile_seul_drapeau_alerte_et_export(client):
+    b = client.post("/api/bilans", json={"domaines": []}).json()
+    r = client.post(f"/api/bilans/{b['id']}/epreuves", json={
+        "test_nom": "Alouette-R",
+        "resultats": [{"sous_epreuve": "vitesse", "score_brut": "312", "percentile": "2"},
+                      {"sous_epreuve": "précision", "percentile": "-300"}],
+    })
+    assert r.status_code == 200
+    resultats = r.json()["epreuves"][0]["resultats"]
+    assert resultats[0]["drapeau_seuil"] == "severe"      # 2e percentile → sévère
+    assert any("-300" in a for a in r.json()["avertissements"])
+    md = client.get(f"/api/bilans/{b['id']}/export?format=md").text
+    assert "2e percentile" in md and "déficit sévère" in md

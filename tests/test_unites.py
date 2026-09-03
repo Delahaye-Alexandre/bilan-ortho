@@ -1131,3 +1131,27 @@ def test_une_seule_alerte_par_test_cite():
     assert verif_tests.tests_non_sources(
         "L'EXALANG 3-6 a été proposé.", ["rien de tel"], NOMS_TESTS,
     ) == ["EXALANG 3-6"]
+
+
+# --- revue 2026-08-11, 9.4 : percentile / note standard / âge dév. relus -----
+
+def test_etalonnage_effectif_et_texte_avec_complements():
+    from app import bilan
+
+    # Champs propres (API) sans étalonnage explicite : ils valent étalonnage.
+    assert bilan.etalonnage_effectif({"percentile": "5"}) == ("percentile", "5")
+    assert bilan.etalonnage_effectif({"note_standard": "7"}) == ("note_standard", "7")
+    assert bilan.etalonnage_texte({"percentile": "5"}) == "5e percentile"
+    # Étalonnage explicite + compléments : tout est restitué, sans doublon.
+    r = {"etalonnage_type": "ecart_type", "etalonnage_valeur": "-1,5",
+         "percentile": "7", "note_standard": "6", "age_dev": "5 ans 6 mois"}
+    assert bilan.etalonnage_texte(r) == "-1,5 ET · 7e percentile · 6 NS · 5 ans 6 mois (âge dév.)"
+    doublon = {"etalonnage_type": "percentile", "etalonnage_valeur": "7", "percentile": "7"}
+    assert bilan.etalonnage_texte(doublon) == "7e percentile"
+    assert bilan.etalonnage_texte({}) == ""
+    # Le drapeau et la plausibilité suivent l'étalonnage effectif.
+    assert bilan.interpret_drapeau(*bilan.etalonnage_effectif({"percentile": "2"}), config.DEFAULTS) == "severe"
+    alertes = bilan.alertes_plausibilite("Alouette-R", [{"percentile": "-300"}])
+    assert alertes and "-300" in alertes[0]
+
+

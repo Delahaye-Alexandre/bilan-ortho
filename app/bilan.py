@@ -461,7 +461,7 @@ def alertes_plausibilite(test_nom: str, resultats: list[dict]) -> list[str]:
     """Alertes de saisie pour une épreuve, prêtes à être affichées telles quelles."""
     out = []
     for r in resultats:
-        msg = alerte_etalonnage(r.get("etalonnage_type"), r.get("etalonnage_valeur"))
+        msg = alerte_etalonnage(*etalonnage_effectif(r))
         if msg:
             tete = test_nom + (f" — {r['sous_epreuve']}" if r.get("sous_epreuve") else "")
             out.append(
@@ -471,19 +471,48 @@ def alertes_plausibilite(test_nom: str, resultats: list[dict]) -> list[str]:
     return out
 
 
+def etalonnage_effectif(r: dict) -> tuple[str | None, str | None]:
+    """(type, valeur) sur lesquels porte le drapeau.
+
+    L'étalonnage explicite prime ; à défaut, un percentile ou une note standard
+    saisis dans leur champ propre (API) valent étalonnage. Ces champs étaient
+    écrits en base et jamais relus — ni pour le drapeau, ni à l'export : une
+    illusion de saisie conservée (revue du 2026-08-11, 9.4)."""
+    if r.get("etalonnage_valeur"):
+        return r.get("etalonnage_type"), r.get("etalonnage_valeur")
+    if r.get("percentile"):
+        return "percentile", r.get("percentile")
+    if r.get("note_standard"):
+        return "note_standard", r.get("note_standard")
+    if r.get("age_dev"):
+        return "age_dev", r.get("age_dev")
+    return None, None
+
+
+def _valeur_texte(t: str | None, v) -> str:
+    if t == "percentile":
+        # collé à la valeur : « 25e percentile », pas « 25 e percentile »
+        return f"{v}e percentile"
+    return f"{v} {_ET_LBL.get(t, '')}".strip()
+
+
 def etalonnage_texte(r: dict) -> str:
-    """Valeur d'étalonnage suivie de son unité (« -1,5 ET », « 25e percentile »).
+    """Étalonnage suivi de son unité (« -1,5 ET », « 25e percentile »), puis
+    les compléments saisis à part (percentile, note standard, âge de
+    développement) qui ne le répètent pas, séparés par « · ».
 
     Source unique de cette mise en forme : la phrase-type et le tableau des
     résultats de l'export doivent afficher la même unité, faute de quoi le
     praticien ne pourrait plus relire l'échelle sur laquelle il a coté."""
-    v = r.get("etalonnage_valeur")
-    if not v:
-        return ""
-    if r.get("etalonnage_type") == "percentile":
-        # collé à la valeur : « 25e percentile », pas « 25 e percentile »
-        return f"{v}e percentile"
-    return f"{v} {_ET_LBL.get(r.get('etalonnage_type'), '')}".strip()
+    t, v = etalonnage_effectif(r)
+    parts = [_valeur_texte(t, v)] if v else []
+    if r.get("percentile") and (t, str(v)) != ("percentile", str(r["percentile"])):
+        parts.append(_valeur_texte("percentile", r["percentile"]))
+    if r.get("note_standard") and (t, str(v)) != ("note_standard", str(r["note_standard"])):
+        parts.append(_valeur_texte("note_standard", r["note_standard"]))
+    if r.get("age_dev") and (t, str(v)) != ("age_dev", str(r["age_dev"])):
+        parts.append(_valeur_texte("age_dev", r["age_dev"]))
+    return " · ".join(parts)
 
 
 def resultat_phrase(test_nom: str, r: dict) -> str:
@@ -522,9 +551,7 @@ def add_epreuve(
     ).lastrowid
     stored = []
     for r in resultats:
-        drap = r.get("drapeau_seuil") or interpret_drapeau(
-            r.get("etalonnage_type"), r.get("etalonnage_valeur"), cfg
-        )
+        drap = r.get("drapeau_seuil") or interpret_drapeau(*etalonnage_effectif(r), cfg)
         con.execute(
             "INSERT INTO resultat(epreuve_id, sous_epreuve, score_brut, etalonnage_type, "
             "etalonnage_valeur, percentile, note_standard, age_dev, interpretation, drapeau_seuil) "
