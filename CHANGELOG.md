@@ -39,7 +39,13 @@ Corrections de la revue complète du 2026-08-11 (v1.8.0 en conditions réelles) 
   des pages déchiffrées effacée, passphrases prévisibles refusées, changement
   de passphrase (re-chiffrement sur place, nouvelle sauvegarde).
 - **Parcours d'arrivée** : Ollama absent n'enferme plus dehors un coffre déjà
-  installé (bandeau non bloquant et geste qui répare).
+  installé (bandeau non bloquant et geste qui répare) ; un téléchargement de
+  modèle qui échoue n'est plus un cul-de-sac (message en français, autre
+  modèle, « passer cette étape »), espace disque vérifié avant, progression en
+  mégaoctets ; le domaine du bilan se choisit explicitement ; l'aide s'ouvre à
+  la première visite ; le sélecteur de modèle ne ment plus.
+- **Épreuves** : percentile, note standard et âge de développement saisis à
+  part sont enfin pris en compte (drapeau, alerte de plausibilité, export).
 - **Coffre** : schéma v2 avec migration transactionnelle et copie de sécurité
   préalable.
 - **Docs** : citations du code par symbole, vérifiées par test ; README,

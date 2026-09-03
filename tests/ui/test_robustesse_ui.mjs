@@ -63,6 +63,11 @@ let statusResponder = () => ({ db_exists: true, unlocked: true, first_run: false
 let installResponder = () => ({ ollama: true, pret: true, config_lisible: true, modeles: [] });
 let lockCalls = 0;
 let passphrasePosts = [];
+let pullPosts = [];
+let pullLignes = () => ['{"error":"pull model manifest: file does not exist"}'];
+const fluxNdjson = (lignes) => new ReadableStream({
+  start(ctrl) { ctrl.enqueue(new TextEncoder().encode(lignes.join("\n") + "\n")); ctrl.close(); },
+});
 // Abandon d'une requête via AbortController : le stub rejette comme fetch
 // (erreur nommée AbortError) dès que le signal est levé.
 const erreurAbandon = () => { const e = new Error("aborted"); e.name = "AbortError"; return e; };
@@ -115,6 +120,10 @@ globalThis.fetch = async (p, o = {}) => {
     return rep(structureResponder());
   }
   if (url.endsWith("/api/lock")) { lockCalls++; return rep({ ok: true }); }
+  if (url.includes("/api/installation/pull")) {
+    pullPosts.push(JSON.parse(o.body));
+    return { ok: true, status: 200, body: fluxNdjson(pullLignes()) };
+  }
   if (url.endsWith("/api/passphrase")) {
     passphrasePosts.push(JSON.parse(o.body));
     return rep({ sauvegarde: { fichier: "s/bilan-ortho-sauvegarde-20260903-101500.db", octets: 4096 },
@@ -1115,6 +1124,60 @@ check("passphrase changée : succès, nouvelle sauvegarde nommée, copies antér
   ppStatus().includes("✓") && ppStatus().includes("20260903-101500") && ppStatus().includes("2 copie"));
 check("passphrase changée : les trois champs sont vidés",
   ["ppAncienne", "ppNouvelle", "ppConfirm"].every((id) => document.getElementById(id).value === ""));
+
+// === 6.2 (revue 2026-08-11) : un téléchargement qui échoue n'est plus un cul-de-sac
+statusResponder = () => ({ db_exists: false, unlocked: false, first_run: true, version: "1.8.0" });
+installResponder = () => ({ ollama: true, pret: false, config_lisible: false, modeles: [],
+                            llm_present: false, embeddings_present: false,
+                            embeddings_configure: "nomic-embed-text",
+                            disque_libre_gio: 3.0, taille_a_telecharger_gio: 5.8,
+                            proposition: { modele: "qwen3.5:9b", raison: "RAM 32 Gio" } });
+await __t.gate();
+await settle();
+const instStatut = () => document.getElementById("instPullStatus").textContent;
+check("installation : l'espace disque insuffisant est annoncé AVANT le téléchargement",
+  document.getElementById("instModeles").textContent.includes("Espace disque")
+  && document.getElementById("instModeles").textContent.includes("3 Gio"));
+check("installation : « Passer cette étape » est proposé tant que rien n'est prêt",
+  document.getElementById("instPasser").hidden === false
+  && document.getElementById("instContinuer").disabled === true);
+pullPosts = [];
+document.getElementById("instPull").click();
+await settle(); await settle();
+check("téléchargement en échec : message en français, pas le texte brut d'Ollama",
+  instStatut().includes("n'existe pas") && !instStatut().includes("manifest"));
+check("téléchargement en échec : un autre modèle est proposé, le compact pré-rempli",
+  document.getElementById("instAutre").hidden === false
+  && document.getElementById("instAutreNom").value === "qwen3.5:4b");
+// Le modèle de remplacement se télécharge (progression en Mo), puis l'état
+// est revérifié AVEC ce modèle, et « Continuer » s'ouvre.
+pullLignes = () => ['{"status":"pulling manifest"}', '{"status":"pulling 8f4c","total":2400000000,"completed":1200000000}', '{"status":"success"}'];
+installResponder = () => ({ ollama: true, pret: true, config_lisible: false, modeles: ["qwen3.5:4b", "nomic-embed-text"],
+                            llm_present: false, embeddings_present: true, embeddings_configure: "nomic-embed-text",
+                            disque_libre_gio: 3.0, taille_a_telecharger_gio: 0,
+                            proposition: { modele: "qwen3.5:4b", raison: "modèle choisi à l'installation" } });
+let urlInstallation = [];
+const fetchOrig = globalThis.fetch;
+globalThis.fetch = async (p, o) => { if (String(p).includes("/api/installation") && !String(p).includes("/pull")) urlInstallation.push(String(p)); return fetchOrig(p, o); };
+document.getElementById("instAutreBtn").click();
+await settle(); await settle();
+globalThis.fetch = fetchOrig;
+check("autre modèle : téléchargé sous le nom saisi",
+  pullPosts.length === 2 && pullPosts[1].modele === "qwen3.5:4b");
+check("autre modèle : la revérification passe le modèle choisi au serveur",
+  urlInstallation.some((u) => u.includes("modele=qwen3.5%3A4b")));
+check("autre modèle installé : « Continuer » s'ouvre, statut terminé",
+  document.getElementById("instContinuer").disabled === false && instStatut().includes("terminé"));
+// « Passer cette étape » sort de l'écran d'installation vers la création du coffre.
+installResponder = () => ({ ollama: false, pret: false, config_lisible: false, modeles: [],
+                            proposition: { modele: "qwen3.5:4b", raison: "" } });
+document.getElementById("installOverlay").hidden = false;
+document.getElementById("instPasser").hidden = false;
+document.getElementById("instPasser").click();
+await settle();
+check("« Passer cette étape » : écran d'installation fermé, création du coffre proposée",
+  document.getElementById("installOverlay").hidden === true && overlay().hidden === false);
+overlay().hidden = true;
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

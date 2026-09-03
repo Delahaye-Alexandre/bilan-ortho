@@ -253,8 +253,10 @@ def _cfg_courante() -> dict:
 
 
 @app.get("/api/installation")
-async def etat_installation() -> dict:
-    etat = await run_in_threadpool(systeme.etat_installation, _cfg_courante())
+async def etat_installation(modele: str = "") -> dict:
+    """``modele`` : modèle de remplacement choisi à l'écran d'installation
+    quand la proposition n'a pas pu être téléchargée."""
+    etat = await run_in_threadpool(systeme.etat_installation, _cfg_courante(), modele)
     # Coffre verrouillé : la config lue est celle des *défauts*, pas celle du
     # praticien — le modèle « manquant » annoncé serait alors faux (et redemandé
     # à chaque lancement). L'interface a besoin de le savoir pour ne rien

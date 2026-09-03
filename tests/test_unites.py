@@ -1155,3 +1155,32 @@ def test_etalonnage_effectif_et_texte_avec_complements():
     assert alertes and "-300" in alertes[0]
 
 
+# --- revue 2026-08-11, 6.2 : installation sans cul-de-sac (côté serveur) ------
+
+def test_etat_installation_modele_de_remplacement_et_disque(monkeypatch):
+    from app import config, systeme
+
+    monkeypatch.setattr(
+        systeme, "ollama_etat",
+        lambda cfg: {"ok": True, "modeles": ["autre-llm:1b", "nomic-embed-text:latest"]},
+    )
+    monkeypatch.setattr(systeme, "disque_libre_gio", lambda: 42.0)
+    # La proposition n'est pas installée : pas prêt, et il reste à télécharger.
+    etat = systeme.etat_installation(config.DEFAULTS)
+    assert etat["pret"] is False
+    assert etat["taille_a_telecharger_gio"] > 0 and etat["disque_libre_gio"] == 42.0
+    # Le modèle de remplacement présent rend l'installation prête.
+    etat = systeme.etat_installation(config.DEFAULTS, modele_choisi="autre-llm:1b")
+    assert etat["pret"] is True and etat["proposition"]["modele"] == "autre-llm:1b"
+    assert etat["taille_a_telecharger_gio"] == 0
+    # Un nom invalide ou hébergé (« cloud ») est ignoré, jamais adopté.
+    for mauvais in ("nom avec espaces", "gpt-oss:120b-cloud"):
+        assert systeme.etat_installation(config.DEFAULTS, modele_choisi=mauvais)["pret"] is False
+
+
+def test_taille_estimee_des_modeles():
+    from app import systeme
+
+    assert systeme.taille_estimee_go(systeme.MODELE_16GO) == 5.5
+    assert systeme.taille_estimee_go("nomic-embed-text:latest") == 0.3
+    assert systeme.taille_estimee_go("modele-inconnu:7b") == 4.0

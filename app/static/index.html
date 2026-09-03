@@ -451,9 +451,15 @@
         <div style="background:#eef1f4;border-radius:6px;height:10px;margin-top:8px;overflow:hidden">
           <div id="instBarre" style="background:var(--accent);height:100%;width:0%"></div>
         </div>
+        <div id="instAutre" hidden style="margin-top:10px">
+          <label for="instAutreNom">Essayer un autre modèle (nom dans la bibliothèque Ollama)</label>
+          <div class="row"><input id="instAutreNom" class="grow" placeholder="ex. qwen3.5:4b"><button class="ghost" id="instAutreBtn">⬇ Télécharger celui-ci</button></div>
+          <div class="muted">Si le nom proposé a changé dans la bibliothèque Ollama, ou si le modèle est trop lourd pour votre disque, un modèle plus compact suffit pour commencer.</div>
+        </div>
       </fieldset>
       <div class="row" style="margin-top:14px">
         <span class="muted grow" id="instResume"></span>
+        <button id="instPasser" class="ghost" hidden title="Vous pourrez consulter et exporter vos bilans ; la dictée et l'analyse attendront les modèles">Passer cette étape</button>
         <button id="instContinuer" disabled>Continuer →</button>
       </div>
     </div>
@@ -668,10 +674,46 @@ function showInstall(inst) {
     `Proposé pour votre machine : <b>${escapeHtml(prop.modele || '')}</b> <span class="muted">(${escapeHtml(prop.raison || '')})</span>` +
     (prop.deconseille ? '<div style="color:var(--warn)">⚠️ Machine en dessous du minimum recommandé (8 Go de RAM).</div>' : '') +
     `<div class="muted" style="margin-top:4px">${manquants.length ? 'À télécharger : ' + manquants.join(' + ') : '✅ Modèles déjà présents.'}</div>`;
+  // Prévenir AVANT le téléchargement plutôt qu'un « no space left on device »
+  // brut à la 40e minute.
+  const libre = Number(inst.disque_libre_gio || 0), besoin = Number(inst.taille_a_telecharger_gio || 0);
+  if (libre && besoin && libre < besoin + 1) {
+    document.getElementById('instModeles').insertAdjacentHTML('beforeend',
+      `<div style="color:var(--warn)">⚠️ Espace disque : ${libre} Gio libres pour environ ${besoin} Gio à télécharger. Libérez de la place ou choisissez un modèle plus compact.</div>`);
+  }
   document.getElementById('instPull').disabled = !inst.ollama || !manquants.length;
   const pret = inst.pret;
   document.getElementById('instContinuer').disabled = !pret;
+  // Jamais un cul-de-sac : sans Ollama ou sans modèle, on peut quand même
+  // créer le coffre, consulter et exporter. Le bandeau de l'application dira
+  // ce qui manque et le geste qui répare.
+  document.getElementById('instPasser').hidden = pret;
   document.getElementById('instResume').textContent = pret ? '✅ Tout est prêt.' : '';
+}
+// Messages d'Ollama relayés tels quels jusqu'ici (« pull model manifest: file
+// does not exist », « no space left on device »), en anglais, sans issue.
+function messageErreurPull(brut) {
+  const m = String(brut || '');
+  if (/file does not exist|manifest.*not found|not found|unknown model/i.test(m))
+    return 'Ce modèle n\'existe pas (ou plus) sous ce nom dans la bibliothèque Ollama — essayez un autre modèle ci-dessous.';
+  if (/no space left|not enough space|insufficient/i.test(m))
+    return 'Espace disque insuffisant pour ce modèle — libérez de la place ou choisissez un modèle plus compact ci-dessous.';
+  if (/injoignable|connection refused|dial tcp|no such host|EOF|timeout|reset by peer/i.test(m))
+    return 'Connexion interrompue pendant le téléchargement — vérifiez votre accès Internet, puis réessayez (Ollama reprend là où il s\'était arrêté).';
+  return 'Le téléchargement a échoué : ' + m;
+}
+// « pulling manifest », « pulling 8f4c… 37 % »… → un libellé en français avec
+// les mégaoctets, seule information utile pendant 20 à 40 minutes.
+function libelleProgression(j) {
+  const s = String(j.status || '');
+  if (j.total && j.completed !== undefined) {
+    const mo = n => Math.round(n / 1048576);
+    return `${mo(j.completed)} / ${mo(j.total)} Mo (${Math.round(100 * j.completed / j.total)} %)`;
+  }
+  if (/manifest/i.test(s) && !/writing/i.test(s)) return 'préparation…';
+  if (/verifying/i.test(s)) return 'vérification…';
+  if (/writing|success/i.test(s)) return 'finalisation…';
+  return s || '…';
 }
 function modelesManquants(inst) {
   const l = [];
@@ -682,7 +724,9 @@ function modelesManquants(inst) {
 }
 async function recheckInstall() {
   try {
-    const inst = await (await api('/api/installation')).json();
+    const choisi = INST && INST.modele_choisi ? '?modele=' + encodeURIComponent(INST.modele_choisi) : '';
+    const inst = await (await api('/api/installation' + choisi)).json();
+    if (INST && INST.modele_choisi) inst.modele_choisi = INST.modele_choisi;
     if (inst.pret) { INST = inst; showInstall(inst); }
     else showInstall(inst);
   } catch {}
@@ -734,7 +778,7 @@ async function pullUn(modele, base, part) {
       if (j.total && j.completed !== undefined) {
         barre.style.width = Math.round((base + part * (j.completed / j.total)) * 100) + '%';
       }
-      st.textContent = `${modele} : ${j.status || '…'}`;
+      st.textContent = `${modele} : ${libelleProgression(j)}`;
     }
   }
 }
@@ -757,7 +801,33 @@ document.getElementById('instPull').addEventListener('click', async () => {
       ? '⚠️ Téléchargement incomplet — réessayez.'
       : '✅ Téléchargement terminé.';
     if (restants.length) btn.disabled = false;
-  } catch (e) { st.textContent = 'Erreur : ' + e.message; btn.disabled = false; }
+  } catch (e) {
+    st.textContent = '❌ ' + messageErreurPull(e.message);
+    btn.disabled = false;
+    const autre = document.getElementById('instAutre');
+    autre.hidden = false;
+    // Proposer d'emblée le modèle compact si c'est le grand qui a échoué.
+    const nom = document.getElementById('instAutreNom');
+    if (!nom.value) nom.value = ((INST || {}).proposition || {}).modele === 'qwen3.5:9b' ? 'qwen3.5:4b' : '';
+  }
+});
+document.getElementById('instAutreBtn').addEventListener('click', e => avecBouton(e.target, async () => {
+  const nom = document.getElementById('instAutreNom').value.trim();
+  const st = document.getElementById('instPullStatus');
+  if (!nom) { st.textContent = 'Indiquez le nom du modèle (par exemple qwen3.5:4b).'; return; }
+  if (!INST) INST = {};
+  INST.modele_choisi = nom;
+  INST.proposition = { ...(INST.proposition || {}), modele: nom, raison: 'modèle choisi à l\'installation' };
+  try {
+    await pullUn(nom, 0, 1);
+    st.textContent = 'Vérification…';
+    await recheckInstall();
+    st.textContent = modelesManquants(INST || {}).length ? '⚠️ Téléchargement incomplet — réessayez.' : '✅ Téléchargement terminé.';
+  } catch (err) { st.textContent = '❌ ' + messageErreurPull(err.message); }
+}));
+document.getElementById('instPasser').addEventListener('click', () => {
+  document.getElementById('installOverlay').hidden = true;
+  gateApresInstall();
 });
 async function doUnlock() {
   lockErr.textContent = '';
