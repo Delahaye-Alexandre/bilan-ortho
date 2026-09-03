@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 import sqlcipher3
@@ -242,7 +243,12 @@ def connect(path, passphrase: str):
         # cela, la clé dérivée et les pages déchiffrées libérées peuvent
         # finir en swap ou dans le fichier d'hibernation — le chemin d'attaque
         # le plus réaliste sur un portable volé (revue du 2026-08-11, 5.6).
-        con.execute("PRAGMA cipher_memory_security = ON")
+        # Sous Windows, la distribution SQLCipher des roues sqlcipher3 fait
+        # déborder la pile dès l'opération suivante quand cette option est
+        # activée (vérifié en CI le 2026-09-03, « Windows fatal exception:
+        # stack overflow ») : elle y reste désactivée, et SECURITY.md le dit.
+        if sys.platform != "win32":
+            con.execute("PRAGMA cipher_memory_security = ON")
         con.execute("PRAGMA journal_mode = WAL")
         con.execute("PRAGMA foreign_keys = ON")
         con.enable_load_extension(True)

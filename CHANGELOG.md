@@ -36,7 +36,7 @@ Corrections de la revue complète du 2026-08-11 (v1.8.0 en conditions réelles) 
   (anti-CSRF), modèles Ollama hébergés (« cloud ») refusés partout, bornes sur
   les fichiers envoyés, verrouillage d'inactivité actif même sans requête,
   refus d'écrire des sauvegardes sur un point de montage débranché, mémoire
-  des pages déchiffrées effacée, passphrases prévisibles refusées, changement
+  des pages déchiffrées effacée (hors Windows), passphrases prévisibles refusées, changement
   de passphrase (re-chiffrement sur place, nouvelle sauvegarde).
 - **Parcours d'arrivée** : Ollama absent n'enferme plus dehors un coffre déjà
   installé (bandeau non bloquant et geste qui répare) ; un téléchargement de

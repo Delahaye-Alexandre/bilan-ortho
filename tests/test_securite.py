@@ -8,6 +8,9 @@
 """
 from __future__ import annotations
 
+import sys
+
+import pytest
 from fastapi.testclient import TestClient
 
 from app import config, db
@@ -429,6 +432,11 @@ def test_passphrase_previsible_acceptee_sur_coffre_existant(data_dir):
         assert c.post("/api/unlock", json={"passphrase": "motdepasse12"}).status_code == 200
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="la distribution SQLCipher des roues Windows plante (stack overflow) "
+           "avec cipher_memory_security = ON : option désactivée sur cette plateforme",
+)
 def test_memoire_des_pages_dechiffrees_effacee(con):
     """cipher_memory_security est désactivé par défaut dans cette distribution
     de SQLCipher : la clé dérivée pouvait partir en swap ou en hibernation."""
