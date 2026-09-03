@@ -2892,6 +2892,10 @@ function majAfficher(m) {
   g('majNotesBloc').hidden = !m.notes;
   g('majInstaller').hidden = !m.installation_possible;
   g('majManuel').hidden = !!m.installation_possible;
+  // Quand l'installation intégrée est possible, la mise à jour se fait dans
+  // l'application, sans passer par la page GitHub : le lien de téléchargement
+  // manuel ne réapparaît qu'en secours, si l'installation intégrée échoue.
+  g('majOuvrir').hidden = !!m.installation_possible;
   g('majProgression').hidden = true;
   g('majBanner').hidden = false;
 }
@@ -3004,6 +3008,7 @@ async function installerMaj() {
     attendreRedemarrage(res.sauvegarde || '');
   } catch (err) {
     barre.style.width = '0%';
+    document.getElementById('majOuvrir').hidden = false;  // secours : téléchargement manuel
     etape.textContent = 'Mise à jour interrompue : ' + err.message
       + ' Vous pouvez aussi télécharger l\'installeur depuis GitHub (bouton « Télécharger »).';
   }

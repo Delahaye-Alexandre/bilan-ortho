@@ -108,8 +108,11 @@ MAJ.installation_possible = false;
 await __t.verifierMaj(false); await settle();
 check("dépôt cloné / autre OS : bouton d'installation absent, explication affichée",
   g("majInstaller").hidden === true && g("majManuel").hidden === false);
+check("dépôt cloné / autre OS : le lien de téléchargement manuel est le seul chemin", g("majOuvrir").hidden === false);
 MAJ.installation_possible = true;
 await __t.verifierMaj(false); await settle();
+check("installation intégrée possible : pas de lien vers GitHub, la mise à jour se fait dans l'application",
+  g("majInstaller").hidden === false && g("majOuvrir").hidden === true);
 
 // === 4. Installation en un clic ==================================================
 // Travail non enregistré : refus explicite, rien n'est lancé.
@@ -144,6 +147,7 @@ await __t.installerMaj(); await settle(10);
 check("signature invalide : interruption expliquée, installeur jamais lancé",
   g("majEtape").textContent.includes("signature") && g("majEtape").textContent.includes("Télécharger")
   && !appels.some((a) => a.url === "/api/maj/installer"));
+check("après un échec : le lien de téléchargement manuel réapparaît en secours", g("majOuvrir").hidden === false);
 
 console.log(failures ? `\n${failures} scénario(s) en échec.` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

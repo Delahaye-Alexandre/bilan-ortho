@@ -5,6 +5,13 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
+## Non publié
+
+- **Mise à jour sans passer par GitHub** : quand l'installation intégrée est
+  possible (Windows, application installée), le bandeau ne propose plus que
+  « Installer maintenant » ; le lien de téléchargement manuel ne réapparaît
+  qu'en secours, si cette installation échoue.
+
 ## 1.11.0 — 2026-09-03
 
 Cette version regroupe aussi tout ce qui était prévu pour la 1.10.0, dont le
