@@ -63,7 +63,7 @@ jobs:
         run: |
           # Toutes les suites, sans liste à tenir à jour : une suite ajoutée
           # mais oubliée ici restait verte… parce qu'elle ne tournait pas.
-          for f in tests/ui/test_*_ui.mjs; do echo "== $f"; bun "$f"; done
+          for f in tests/ui/test_*_ui.mjs; do echo "== $f"; bun "$f" || exit 1; done
 
   build-windows:
     needs: [tests, tests-ui, lint]
