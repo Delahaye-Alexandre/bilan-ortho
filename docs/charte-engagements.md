@@ -1,7 +1,7 @@
 # Charte d'engagements
 
 **Bilan Ortho** — assistant local de rédaction de bilans orthophoniques
-Version 1.8.0 · 18 juillet 2026, révisée le 2 septembre 2026
+Version 1.9.0 · 18 juillet 2026, révisée le 3 septembre 2026
 Titulaire : Alexandre Delahaye · alexandre-delahaye@outlook.fr
 
 Cette charte énonce les engagements que prend Bilan Ortho envers les

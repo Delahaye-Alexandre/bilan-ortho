@@ -5,7 +5,7 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
-## Non publié
+## 1.9.0 — 2026-09-03
 
 Corrections de la revue complète du 2026-08-11 (v1.8.0 en conditions réelles) :
 

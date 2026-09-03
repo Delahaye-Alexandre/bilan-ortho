@@ -4,11 +4,11 @@
 
 ## Versions supportées
 
-Seule la **dernière release** publiée est supportée (actuellement **v1.8.0**). Les versions antérieures ne reçoivent pas de correctifs : mettez à jour vers la dernière release avant de signaler un problème.
+Seule la **dernière release** publiée est supportée (actuellement **v1.9.0**). Les versions antérieures ne reçoivent pas de correctifs : mettez à jour vers la dernière release avant de signaler un problème.
 
 | Version | Supportée |
 |---|---|
-| Dernière release (v1.8.0) | Oui |
+| Dernière release (v1.9.0) | Oui |
 | Versions antérieures | Non |
 
 ## Signaler une vulnérabilité

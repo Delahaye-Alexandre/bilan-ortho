@@ -4,4 +4,4 @@
 (`git tag vX.Y.Z && git push origin vX.Y.Z`).
 """
 
-__version__ = "1.8.0"
+__version__ = "1.9.0"

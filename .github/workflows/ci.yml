@@ -225,6 +225,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          PYTHONUTF8: "1"
         run: |
           # Notes en fichier : la page de release est souvent la première (voire
           # la seule) page vue — un chemin relatif en texte brut n'y est pas
@@ -248,6 +249,13 @@ jobs:
 
           Premier lancement : connexion internet nécessaire (téléchargement d'Ollama et des modèles d'IA). Un problème ? Écrivez à alexandre-delahaye@outlook.fr.
           '@
+          # Les notes ne parlaient que d'installation, jamais des changements :
+          # la section de CHANGELOG.md correspondant au tag est reprise ici.
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $changements = python -c "import re,sys; s=open('CHANGELOG.md',encoding='utf-8').read(); m=re.search(r'^## ' + re.escape(sys.argv[1]) + r'[^\n]*\n(.*?)(?=^## |\Z)', s, re.S|re.M); print(m.group(1).strip() if m else '')" $version
+          if ($changements) {
+            $notes = $notes + "`n`n## ✨ Nouveautés de la version $version`n`n" + ($changements -join "`n")
+          }
           Set-Content -Path notes-release.md -Value $notes -Encoding utf8
           gh release create "${{ github.ref_name }}" (Get-Item packaging/windows/Output/*.exe).FullName `
             --title "Bilan Ortho ${{ github.ref_name }}" `

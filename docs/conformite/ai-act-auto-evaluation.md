@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Date d'établissement** | 18 juillet 2026 |
-| **Version du logiciel évaluée** | 1.8.0 (`app/__init__.py`) |
+| **Version du logiciel évaluée** | 1.9.0 (`app/__init__.py`) |
 | **Responsable de l'évaluation** | Alexandre Delahaye — alexandre-delahaye@outlook.fr |
 | **Référentiel** | Règlement (UE) 2024/1689 (« AI Act »), en tenant compte du paquet « omnibus numérique » adopté en juin 2026 (voir § 6.3) |
 | **Statut du logiciel** | Non encore mis sur le marché : dépôt privé à ce jour, publication prévue sous licence AGPL v3 |
@@ -14,7 +14,7 @@
 
 ## 1. Objet et conclusion anticipée
 
-Le présent document constitue l'auto-évaluation de classification du logiciel **Bilan Ortho** au regard du règlement (UE) 2024/1689. Il conclut que le système **n'est pas un système d'IA à haut risque** : à titre principal parce qu'il ne relève d'aucun cas d'usage de l'annexe III, et à titre subsidiaire parce que, même dans une lecture extensive de cette annexe, les conditions de la dérogation de l'**article 6, paragraphe 3** sont remplies. Il est établi **avant toute mise sur le marché** et tient lieu de documentation de l'évaluation au sens de l'article 6, paragraphe 4. Toutes les références au code renvoient au dépôt du projet, version 1.8.0, sous la forme `fichier::symbole` — un test automatisé (`tests/test_docs.py`) vérifie que chaque symbole cité existe.
+Le présent document constitue l'auto-évaluation de classification du logiciel **Bilan Ortho** au regard du règlement (UE) 2024/1689. Il conclut que le système **n'est pas un système d'IA à haut risque** : à titre principal parce qu'il ne relève d'aucun cas d'usage de l'annexe III, et à titre subsidiaire parce que, même dans une lecture extensive de cette annexe, les conditions de la dérogation de l'**article 6, paragraphe 3** sont remplies. Il est établi **avant toute mise sur le marché** et tient lieu de documentation de l'évaluation au sens de l'article 6, paragraphe 4. Toutes les références au code renvoient au dépôt du projet, version 1.9.0, sous la forme `fichier::symbole` — un test automatisé (`tests/test_docs.py`) vérifie que chaque symbole cité existe.
 
 ## 2. Description du système
 
@@ -95,7 +95,7 @@ Le titulaire du projet s'engage à **ne jamais ajouter** de fonction de suspicio
 
 ## 8. Conclusion motivée
 
-Bilan Ortho, version 1.8.0, est un outil local d'assistance à la rédaction, dont chaque production est une simple proposition soumise à la validation expresse d'un professionnel qui demeure seul auteur de l'évaluation clinique. Il ne relève d'aucun cas d'usage de l'annexe III du règlement (UE) 2024/1689 et, à titre subsidiaire, remplit les conditions a), b) et d) de la dérogation de l'article 6, paragraphe 3, sans effectuer de profilage. **Il n'est donc pas un système d'IA à haut risque.** Les obligations résiduelles identifiées (documentation au titre de l'article 6, paragraphe 4 ; transparence au titre de l'article 50 ; enregistrement éventuel au titre de l'article 49, paragraphe 2) sont traitées au § 6. Cette conclusion sera réexaminée à chaque évolution fonctionnelle significative du logiciel et à chaque évolution du cadre réglementaire.
+Bilan Ortho, version 1.9.0, est un outil local d'assistance à la rédaction, dont chaque production est une simple proposition soumise à la validation expresse d'un professionnel qui demeure seul auteur de l'évaluation clinique. Il ne relève d'aucun cas d'usage de l'annexe III du règlement (UE) 2024/1689 et, à titre subsidiaire, remplit les conditions a), b) et d) de la dérogation de l'article 6, paragraphe 3, sans effectuer de profilage. **Il n'est donc pas un système d'IA à haut risque.** Les obligations résiduelles identifiées (documentation au titre de l'article 6, paragraphe 4 ; transparence au titre de l'article 50 ; enregistrement éventuel au titre de l'article 49, paragraphe 2) sont traitées au § 6. Cette conclusion sera réexaminée à chaque évolution fonctionnelle significative du logiciel et à chaque évolution du cadre réglementaire.
 
 ---
 
@@ -105,4 +105,4 @@ Fait à : ______________________ , le : ______________________
 
 Signature : ______________________
 
-*Document établi le 18 juillet 2026 pour la version 1.5.0 ; révisé le 2 septembre 2026 pour la version 1.8.0 (références au code par symbole, vérifiées par test). Projet de document — à faire relire par un juriste avant publication.*
+*Document établi le 18 juillet 2026 pour la version 1.5.0 ; révisé le 3 septembre 2026 pour la version 1.9.0 (références au code par symbole, vérifiées par test). Projet de document — à faire relire par un juriste avant publication.*
