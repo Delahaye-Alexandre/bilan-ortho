@@ -7,7 +7,9 @@
 // Lancer : bun tests/ui/test_robustesse_ui.mjs
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
-GlobalRegistrator.register();
+// L'aperçu de mise en page pose un PDF (blob:) dans un iframe : happy-dom ne
+// doit pas tenter de le charger.
+GlobalRegistrator.register({ settings: { disableIframePageLoading: true } });
 
 const HTML_PATH = new URL("../../app/static/index.html", import.meta.url).pathname;
 const html = await Bun.file(HTML_PATH).text();
@@ -81,6 +83,11 @@ const abandon = (signal) => new Promise((_, rej) => {
 let restaurationCalls = [];
 let restaurationResponder = () => ({ ok: true, fichier: "f", filet: "g" });
 let editeurCalls = [];       // PUT/DELETE des routes /api/config/{trame,catalogues,prompts}
+let analyses = [];           // POST /api/config/trame/analyse (reprise de trame, lot C)
+const TRAME_PROPOSEE = [
+  { cle: "anamnese", titre: "Anamnèse" }, { cle: "contexte_scolaire", titre: "Contexte scolaire" },
+  { cle: "epreuves", titre: "Bilan analytique" },
+];
 let editeurResponder = null; // null = succès (config effective renvoyée)
 let refsList = [];           // GET /api/references
 let packPosts = 0, packDeletes = 0;
@@ -151,6 +158,10 @@ globalThis.fetch = async (p, o = {}) => {
     sectionPuts.push({ url, body: JSON.parse(o.body) });
     return rep(sectionResponder());
   }
+  if (url.includes("/api/config/trame/analyse")) {
+    analyses.push(o.body && o.body.get ? o.body.get("fichier") : null);
+    return rep({ sections: structuredClone(TRAME_PROPOSEE), detection: "styles" });
+  }
   const mEd = url.match(/\/api\/config\/(trame|catalogues|prompts)/);
   if (mEd) {
     editeurCalls.push({ cible: mEd[1], method: o.method, body: o.body ? JSON.parse(o.body) : null });
@@ -173,6 +184,10 @@ globalThis.fetch = async (p, o = {}) => {
     }
   }
   if (url.includes("/api/references")) {
+    if (o.method === "POST") {
+      return rep({ n: 3, sections: [], extraits_ecartes: 0, elements_caviardes: 0,
+                   trame_proposee: { sections: structuredClone(TRAME_PROPOSEE), detection: "gras" } });
+    }
     if (o.method === "DELETE") {
       refsList = refsList.filter((r) => r.id !== +url.split("/").pop());
       return rep({ ok: true });
@@ -640,6 +655,28 @@ check("trame : l'enregistrement passe malgré l'avertissement",
   && JSON.stringify(editeurCalls[0].body.sections)
      === JSON.stringify([{ cle: "anamnese", titre: "Anamnèse" }]));
 
+// === 22 bis. Reprendre la trame d'un de mes bilans (lot C) ==================
+const trameFichier = document.getElementById("trameFichier");
+Object.defineProperty(trameFichier, "files", { value: [new File(["x"], "bilan.docx")], configurable: true });
+editeurCalls = [];
+trameFichier.dispatchEvent(new Event("change", { bubbles: true }));
+await settle();
+check("reprise : le document part à l'analyse, rien n'est enregistré",
+  analyses.length === 1 && analyses[0] && analyses[0].name === "bilan.docx" && editeurCalls.length === 0);
+const titresTrame = () => [...document.querySelectorAll("#trameListe .trTitre")].map((i) => i.value).join("|");
+const clesTrame = () => [...document.querySelectorAll("#trameListe .trCle")].map((i) => i.value).join("|");
+check("reprise : les intitulés du document remplacent la liste en édition, dans l'ordre, avec leurs clés",
+  titresTrame() === "Anamnèse|Contexte scolaire|Bilan analytique" && clesTrame() === "anamnese|contexte_scolaire|epreuves");
+check("reprise : le statut dit d'où viennent les rubriques et invite à enregistrer",
+  document.getElementById("trameDepuisSt").textContent.includes("3 rubriques reprises")
+  && document.getElementById("trameDepuisSt").textContent.includes("titres du document")
+  && document.getElementById("trameDepuisSt").textContent.includes("Enregistrer la trame"));
+document.getElementById("trameSave").click();
+await settle();
+check("reprise : « Enregistrer la trame » envoie la liste reprise telle quelle",
+  editeurCalls.length === 1 && editeurCalls[0].method === "PUT"
+  && JSON.stringify(editeurCalls[0].body.sections) === JSON.stringify(TRAME_PROPOSEE));
+
 // === 23. Éditeur de catalogues : PUT complet, retour à l'intégré =============
 check("catalogues : le domaine affiche le catalogue intégré (guidance + tests)",
   document.getElementById("catGuidance").value.includes("Guidance intégrée")
@@ -747,6 +784,25 @@ await settle();
 check("pack : erreur réseau → message français dans le statut, pas de crash",
   refStatus().startsWith("Erreur"));
 reseauCoupe = false;
+
+// === 26 bis. Import d'un bilan : lien « Reprendre sa trame » (lot C) ========
+const refFichier = document.getElementById("refFile");
+Object.defineProperty(refFichier, "files", { value: [new File(["x"], "mon-bilan.docx")], configurable: true });
+editeurCalls = [];
+document.getElementById("refImport").click();
+await settle();
+const lienTrame = [...document.querySelectorAll("#refStatus a")].find((a) => a.textContent.includes("Reprendre sa trame"));
+check("import : le statut propose de reprendre la trame du document, avec le compte de rubriques",
+  refStatus().startsWith("✓ 3 extrait(s)") && !!lienTrame && lienTrame.textContent.includes("3 rubriques"));
+check("import : rien n'est appliqué sans clic sur le lien", editeurCalls.length === 0);
+lienTrame.click();
+await settle(); await settle();
+check("lien : les Paramètres s'ouvrent avec la trame du document en édition, non enregistrée",
+  document.getElementById("settingsOverlay").hidden === false && editeurCalls.length === 0
+  && clesTrame() === "anamnese|contexte_scolaire|epreuves"
+  && document.getElementById("trameDepuisSt").textContent.includes("du bilan importé")
+  && document.getElementById("trameDepuisSt").textContent.includes("lignes en gras"));
+document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
 // === 27. Corrections en cours : rien ne part sans elles (audit 08-11, 1.1) ===
 // Export, copie et validation lisaient le contenu enregistré, jamais les zones

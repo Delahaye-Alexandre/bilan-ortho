@@ -67,6 +67,9 @@ ci-dessous.
   des titres, rubriques numérotées, numéros de page et logo du cabinet, réglés
   dans ⚙️ Paramètres avec un aperçu en direct ; le Word et le PDF les
   appliquent tous deux.
+- **Trame reprise d'un de vos bilans** : les intitulés de rubriques d'un
+  compte-rendu existant (Word, LibreOffice, PDF, texte) deviennent, après
+  vérification, la trame des prochains bilans.
 - **Un document envoyable tel quel** : renseignez une fois votre identité
   professionnelle (nom, titre, ADELI/RPPS, adresse, coordonnées) dans
   ⚙️ Paramètres, et chaque export porte votre en-tête, la date du bilan, le

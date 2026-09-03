@@ -467,6 +467,38 @@ async def put_config_trame(corps: TrameRemplacement) -> dict:
         return eff
 
 
+@app.post("/api/config/trame/analyse", dependencies=[Depends(require_unlock)])
+async def analyser_trame(fichier: UploadFile = File(...)) -> dict:
+    """Trame proposée d'après les intitulés d'un bilan du praticien (lot C).
+
+    Le document est lu, jamais conservé ni indexé ; rien n'est enregistré :
+    la proposition remplace la liste en édition de l'écran Paramètres, que le
+    praticien vérifie avant « Enregistrer la trame ». Le nom du fichier n'est
+    pas journalisé (il porte souvent l'identité du patient)."""
+    data = await _lire_borne(fichier, TAILLE_MAX_DOCUMENT, "Document")
+    if not data:
+        raise HTTPException(400, "Fichier vide.")
+    try:
+        lignes = await run_in_threadpool(importer.extraire_lignes, data, fichier.filename or "")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    proposition = importer.proposer_trame_lignes(lignes)
+    if not proposition:
+        raise HTTPException(
+            422,
+            "Moins de deux rubriques repérées dans ce document. La reprise de trame "
+            "s'appuie sur les titres (styles Word ou LibreOffice), les lignes en gras "
+            "ou les intitulés courts seuls sur leur ligne.",
+        )
+    with security.transaction():
+        security.audit(
+            "config_trame", "config", None,
+            f"analyse · {_type_fichier(fichier.filename)} · "
+            f"{len(proposition['sections'])} rubriques",
+        )
+    return proposition
+
+
 @app.delete("/api/config/trame", dependencies=[Depends(require_unlock)])
 async def delete_config_trame() -> dict:
     """Retour à la trame réglementaire (les défauts suivent les mises à jour)."""
@@ -1305,9 +1337,10 @@ async def import_reference(
     # 1. Extraction du texte (PDF/OCR : potentiellement plusieurs minutes)
     #    dans le threadpool — l'event loop reste réactif.
     try:
-        chunks = await run_in_threadpool(importer.decouper, data, file.filename or "")
+        lignes = await run_in_threadpool(importer.extraire_lignes, data, file.filename or "")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    chunks = importer.decouper_lignes(lignes)
     # 1 bis. Le bloc qui précède le premier en-tête d'un vrai compte-rendu est
     # son bloc d'identité (nom, naissance, adresse, prescripteur) — et il est
     # exempté du filtre de rubrique à la sélection, donc réinjectable dans
@@ -1358,6 +1391,9 @@ async def import_reference(
         # son document, plutôt que de l'apprendre dans la documentation.
         "extraits_ecartes": ecartes,
         "elements_caviardes": caviardes,
+        # Intitulés du document, dans l'ordre : l'interface propose d'en faire
+        # la trame des prochains bilans (lot C). None si rien de net.
+        "trame_proposee": importer.proposer_trame_lignes(lignes),
     }
 
 

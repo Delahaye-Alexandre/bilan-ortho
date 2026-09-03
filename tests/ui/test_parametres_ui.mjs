@@ -6,7 +6,7 @@
 // Lancer : bun tests/ui/test_parametres_ui.mjs
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
-GlobalRegistrator.register();
+GlobalRegistrator.register({ settings: { disableIframePageLoading: true } });
 
 const HTML_PATH = new URL("../../app/static/index.html", import.meta.url).pathname;
 const html = await Bun.file(HTML_PATH).text();

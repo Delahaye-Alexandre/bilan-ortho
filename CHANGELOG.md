@@ -7,6 +7,23 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+Lot C du plan « mise en forme » (`docs/plan-mise-en-forme-2026-09-03.md`) :
+
+- **Reprendre la trame d'un de mes bilans** : dans ⚙️ Paramètres → Trame des
+  bilans, un bouton lit un de vos comptes-rendus (Word, LibreOffice, PDF,
+  texte) et en reprend les intitulés de rubriques, dans l'ordre, dans la liste
+  en édition — à vérifier, puis « Enregistrer la trame ». Le document n'est ni
+  conservé ni indexé (`POST /api/config/trame/analyse`). Les intitulés
+  reconnus du tronc commun gardent leur clé (« Bilan analytique » →
+  `epreuves`), les autres reçoivent une clé déduite du titre.
+- Après l'import d'un bilan de référence, le compte rendu propose un lien
+  « Reprendre sa trame (n rubriques) » qui ouvre l'éditeur avec la même
+  proposition ; rien n'est appliqué sans ce clic.
+- Les titres stylés (Word, LibreOffice) découpent désormais les extraits de
+  référence, même sans mot-clé ; un extrait est retrouvé pour la rubrique de sa
+  clé et pour celle qui porte son intitulé, de sorte qu'une trame reprise d'un
+  bilan retrouve les extraits de ce bilan.
+
 Lot B du plan « mise en forme » (`docs/plan-mise-en-forme-2026-09-03.md`) :
 
 - **Mise en page de mes documents** : nouvelle section de ⚙️ Paramètres qui

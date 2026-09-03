@@ -78,7 +78,9 @@ globalThis.fetch = async (p, o = {}) => {
       const recu = {};
       for (const [k, v] of o.body.entries()) recu[k] = typeof v === "string" ? v : "(fichier)";
       refPosts.push(recu);
-      return rep({ n: 3, elements_caviardes: 2, extraits_ecartes: 1 });
+      return rep({ n: 3, elements_caviardes: 2, extraits_ecartes: 1,
+                   trame_proposee: { sections: [{ cle: "anamnese", titre: "Anamnèse" },
+                                                { cle: "projet", titre: "Projet" }], detection: "styles" } });
     }
     return rep([]);
   }
@@ -317,6 +319,9 @@ check("import : le compte rendu du caviardage est affiché",
   document.getElementById("refStatus").textContent.includes("masqué"));
 check("import : « Patient d'origine » est remis à zéro pour l'import suivant",
   refSel.value === "");
+check("import : le lien « Reprendre sa trame » suit le compte rendu, sans rien appliquer",
+  [...document.querySelectorAll("#refStatus a")].some((a) => a.textContent === "Reprendre sa trame (2 rubriques)")
+  && document.getElementById("settingsOverlay").hidden === true);
 
 // === 7. L'identité du dossier ouvert n'est jamais remplacée par une erreur ===
 // Remplacer « #b7 · DURAND Léa · … » par « Erreur : … » fait perdre de vue dans

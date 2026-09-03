@@ -10,6 +10,7 @@ import httpx
 import sqlite_vec
 
 from .db import dicts as _dicts
+from .importer import cle_de_rubrique
 from .systeme import nom_modele_cloud
 
 
@@ -132,7 +133,11 @@ def retrieve(
         ref = refs.get(rid)
         if not ref:
             continue
-        if section_cle and ref["section_cle"] not in (section_cle, "global"):
+        # Un extrait vaut pour la rubrique de sa clé, et pour celle qui porte
+        # son intitulé (trame reprise du document : « Contexte scolaire » →
+        # contexte_scolaire, extrait rangé sous anamnese à l'import).
+        if section_cle and ref["section_cle"] not in (section_cle, "global") \
+                and cle_de_rubrique(ref.get("titre") or "") != section_cle:
             continue
         if domaine and ref.get("domaine") and ref["domaine"] != domaine:
             continue

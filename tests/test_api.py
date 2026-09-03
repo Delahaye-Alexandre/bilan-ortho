@@ -1202,7 +1202,7 @@ def test_import_reference_trop_volumineux_refuse(client, monkeypatch, mock_embed
 
     monkeypatch.setattr(main_mod, "TAILLE_MAX_DOCUMENT", 1024)
     appels = []
-    monkeypatch.setattr(importer, "decouper", lambda *a: appels.append(a) or [])
+    monkeypatch.setattr(importer, "extraire_lignes", lambda *a: appels.append(a) or [])
     r = client.post(
         "/api/references",
         files={"file": ("bilan.txt", b"x" * 4096, "text/plain")},

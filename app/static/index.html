@@ -358,7 +358,13 @@
         <div class="soustitre" id="trameLib">Trame des bilans</div>
         <div class="muted">Rubriques créées pour chaque nouveau bilan, dans l'ordre (les bilans existants ne changent pas). <span id="trameProv"></span></div>
         <div id="trameListe" style="margin-top:8px"></div>
-        <div class="row" style="margin-top:6px"><button id="trameAdd" class="ghost">+ Ajouter une rubrique</button></div>
+        <div class="row" style="margin-top:6px;flex-wrap:wrap">
+          <button id="trameAdd" class="ghost">+ Ajouter une rubrique</button>
+          <button id="trameDepuisBtn" class="ghost">📄 Reprendre la trame d'un de mes bilans…</button>
+          <input type="file" id="trameFichier" accept=".pdf,.docx,.odt,.txt,.md" hidden aria-label="Bilan dont reprendre la trame">
+          <span class="status" id="trameDepuisSt" role="status"></span>
+        </div>
+        <div class="muted">« Reprendre la trame » lit les intitulés d'un de vos bilans (titres Word ou LibreOffice, lignes en gras, sinon lignes courtes seules sur leur ligne) et remplace la liste ci-dessus, dans l'ordre, à vérifier avant d'enregistrer. Le document est lu, jamais conservé ni indexé.</div>
         <div id="trameAvert" class="muted" style="color:var(--warn)"></div>
         <div class="row" style="margin-top:8px">
           <button id="trameSave" class="ghost">Enregistrer la trame</button>
@@ -1210,6 +1216,17 @@ document.getElementById('refImport').addEventListener('click', e => avecBouton(e
     if (s.extraits_ecartes) details.push(`${s.extraits_ecartes} bloc(s) d'en-tête écarté(s)`);
     st.textContent = `✓ ${s.n} extrait(s) indexé(s)`
       + (details.length ? ' — ' + details.join(', ') : '');
+    const trame = s.trame_proposee;
+    if (trame && (trame.sections || []).length >= 2) {
+      // Les intitulés du document peuvent devenir la trame des prochains
+      // bilans : proposé par un lien, jamais appliqué de lui-même.
+      const lien = document.createElement('a');
+      lien.href = '#'; lien.textContent = `Reprendre sa trame (${trame.sections.length} rubriques)`;
+      lien.addEventListener('click', ev => {
+        ev.preventDefault(); TRAME_A_CHARGER = trame; document.getElementById('settingsBtn').click();
+      });
+      st.append(' — ', lien);
+    }
     // Remis à zéro comme le fichier : conservé, il rattachait silencieusement
     // l'import SUIVANT (souvent un document externe) au patient précédent, qui
     // l'emporterait alors dans son effacement RGPD.
@@ -2560,7 +2577,7 @@ const CHAMPS = {
   cfgMepLogoPos: { chemin: 'mise_en_page.logo_position', aide: "Où placer le logo sur la ligne : à gauche, centré ou à droite. Sans logo, ce réglage est sans effet." },
   cfgMepLogoHaut: { chemin: 'mise_en_page.logo_hauteur_mm', aide: "Hauteur imprimée du logo ; la largeur suit. 20 mm correspond à un logo de papier à en-tête." },
   mepApercuLib: { aide: "Un compte-rendu fictif (patient et résultats inventés) mis en page avec les réglages de cet écran, même non enregistrés, et votre identité. Il se met à jour à chaque changement." },
-  trameLib: { aide: "Rubriques créées pour chaque nouveau bilan, dans cet ordre. La trame intégrée suit l'arrêté du 25 juillet 2023 et les mises à jour de l'application ; une trame personnalisée ne bouge plus tant que vous n'y revenez pas." },
+  trameLib: { aide: "Rubriques créées pour chaque nouveau bilan, dans cet ordre. La trame intégrée suit l'arrêté du 25 juillet 2023 et les mises à jour de l'application ; une trame personnalisée ne bouge plus tant que vous n'y revenez pas. « Reprendre la trame d'un de mes bilans » reprend les intitulés d'un de vos documents." },
   cfgSttHotwords: { chemin: 'stt.hotwords',
     aide: "Termes que la reconnaissance vocale écorche : noms de tests, termes techniques, prénoms fréquents. Un par ligne. Elle les privilégie quand elle hésite. Quelques dizaines suffisent.",
     format: v => `la liste intégrée (${v.length} termes)` },
@@ -3194,6 +3211,12 @@ async function fillEditeurs(eff) {
       .map(s => ({ cle: String(s.cle || ''), titre: String(s.titre || '') }));
     TRAME_CHARGEE = JSON.stringify(TRAME_EDIT);
     renderTrame();
+    if (TRAME_A_CHARGER) {
+      // Venu du lien « Reprendre sa trame » après un import de référence.
+      chargerTrameProposee(TRAME_A_CHARGER, 'du bilan importé');
+      TRAME_A_CHARGER = null;
+      setTimeout(() => { const t = $('trameLib'); if (t.scrollIntoView) t.scrollIntoView({ block: 'start' }); }, 150);
+    }
     PROMPT_CHARGE = (ov.prompts && ov.prompts.structure_system) || '';
     $('promptTexte').value = PROMPT_CHARGE;
     majPromptProv();
@@ -3307,6 +3330,35 @@ document.getElementById('trameReset').addEventListener('click', e => avecBouton(
     st.textContent = '✓ trame réglementaire rétablie';
   } catch (err) { st.textContent = 'Erreur : ' + err.message; }
 }));
+
+// (a bis) Reprendre la trame d'un bilan (lot C du plan « mise en forme ») :
+// le document est analysé par le serveur (POST /api/config/trame/analyse),
+// jamais conservé ni indexé ; ses intitulés remplacent la liste EN ÉDITION —
+// rien n'est enregistré avant « Enregistrer la trame ». Même chemin depuis
+// l'import d'un bilan de référence (lien dans le statut), via TRAME_A_CHARGER
+// consommé à l'ouverture des Paramètres.
+let TRAME_A_CHARGER = null;
+const DETECTION_TRAME = { styles: 'titres du document', gras: 'lignes en gras', lignes: 'lignes courtes isolées' };
+function chargerTrameProposee(p, origine) {
+  TRAME_EDIT = (p.sections || []).map(s => ({ cle: String(s.cle || ''), titre: String(s.titre || '') }));
+  renderTrame();
+  $('trameDepuisSt').textContent = `${TRAME_EDIT.length} rubriques reprises ${origine} `
+    + `(${DETECTION_TRAME[p.detection] || 'intitulés repérés'}) : vérifiez, puis « Enregistrer la trame ».`;
+  $('trameStatus').textContent = '';
+}
+$('trameDepuisBtn').addEventListener('click', () => $('trameFichier').click());
+$('trameFichier').addEventListener('change', async () => {
+  const entree = $('trameFichier'), st = $('trameDepuisSt');
+  const f = entree.files && entree.files[0];
+  if (!f) return;
+  statutOccupe(st, 'Lecture du document…');
+  try {
+    const fd = new FormData(); fd.append('fichier', f, f.name);
+    const p = await (await api('/api/config/trame/analyse', { method: 'POST', body: fd })).json();
+    chargerTrameProposee(p, 'de ce document');
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+  entree.value = '';
+});
 
 // (b) Catalogues — l'éditeur affiche l'état EFFECTIF du domaine ; enregistrer
 // un domaine le rend « personnalisé » en bloc (guidance + tests), réversible

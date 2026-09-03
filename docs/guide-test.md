@@ -85,7 +85,10 @@ irrécupérable** (personne, pas même Alexandre, ne peut la retrouver).
 8. **€ Coter**, **⬇ Word**, puis « Marquer validé ».
 9. Optionnel : importez un de vos bilans **anonymisé** dans « Mes bilans de
    référence » — les prochaines rédactions imiteront votre style, y compris
-   ce que vous mettez en gras ou en liste (fichiers Word).
+   ce que vous mettez en gras ou en liste (fichiers Word). Le compte rendu de
+   l'import propose « Reprendre sa trame » : vos propres rubriques, dans
+   votre ordre, deviennent la trame des prochains bilans après vérification
+   (aussi depuis ⚙️ Paramètres → Trame des bilans, sans importer).
 
 ## Mettre à jour
 

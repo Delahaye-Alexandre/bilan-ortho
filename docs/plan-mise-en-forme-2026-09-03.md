@@ -112,3 +112,33 @@ implémentation serveur (analyse, sérialisation canonique, version en clair).
 repli et TrueType, bilan d'exemple, routes) ; `tests/ui/test_parametres_ui.mjs`
 (section, listes, pastilles, logo, aperçu, enregistrement, retour aux valeurs
 recommandées) ; pytest, ruff et les six suites UI verts.
+
+## Lot C — reprendre la trame d'un bilan importé (fait le 2026-09-04)
+
+### Décisions
+
+1. L'extraction rend des lignes structurées (`importer.Ligne` : niveau de
+   titre stylé Word/LibreOffice, paragraphe entièrement en gras) ; le texte
+   brut (`extract_text`) ne change pas.
+2. `importer.proposer_trame_lignes` : toujours les mots-clés du tronc commun,
+   plus le signal le plus sûr que le document offre — titres stylés (au
+   niveau de plan qui en compte au moins deux), sinon gras, sinon lignes
+   courtes isolées (sept mots au plus, majuscule initiale, sans chiffre ni
+   ponctuation finale, suivies d'un vrai paragraphe). Titre du document et
+   doublons écartés ; numérotation en tête retirée ; clé = mot-clé si
+   reconnu et libre, sinon `cle_de_rubrique(titre)` (unique). Moins de deux
+   rubriques ou plus de vingt-cinq : pas de proposition.
+3. Deux entrées : `POST /api/config/trame/analyse` (fichier, jamais conservé,
+   nom non journalisé) depuis l'éditeur de trame ; et `trame_proposee` dans la
+   réponse de `POST /api/references`, exploité par un lien « Reprendre sa
+   trame » qui ouvre l'éditeur. La proposition remplace la liste EN ÉDITION ;
+   seul « Enregistrer la trame » écrit.
+4. À l'import, un titre stylé sans mot-clé ouvre son propre extrait avec la
+   clé de la rubrique en cours (héritée) ; `rag.retrieve` accepte aussi un
+   extrait dont l'intitulé (`cle_de_rubrique`) est la clé demandée. Le gras
+   ne découpe pas à l'import (extraits moins morcelés).
+
+### Vérification
+
+`tests/test_trame_import.py` ; sections 22 bis et 26 bis de
+`tests/ui/test_robustesse_ui.mjs`, scénario 6 de `tests/ui/test_relecture_ui.mjs`.
