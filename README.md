@@ -56,6 +56,10 @@ ci-dessous.
 - **Cotation NGAP** paramétrable, **cycle de vie** du bilan (brouillon →
   validé → envoyé au prescripteur, tracé) et **export** PDF, Word (.docx),
   Markdown, texte.
+- **Mise en forme dans les rubriques** : gras, italique, souligné, listes,
+  reportés fidèlement dans le Word et le PDF ; un passage collé depuis Word,
+  LibreOffice ou Google Docs garde sa mise en forme, et l'IA calque la sienne
+  sur celle de vos bilans de référence (réglable dans ⚙️ Paramètres).
 - **Un document envoyable tel quel** : renseignez une fois votre identité
   professionnelle (nom, titre, ADELI/RPPS, adresse, coordonnées) dans
   ⚙️ Paramètres, et chaque export porte votre en-tête, la date du bilan, le

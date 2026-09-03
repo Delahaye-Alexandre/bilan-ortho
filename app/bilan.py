@@ -292,7 +292,7 @@ def _cle_comparaison(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", _sans_accents(s).lower())
 
 
-_PREFIXE_TITRE = re.compile(r"^\**\s*([^\n:]{1,60}?)\s*\**\s*:\s*")
+_PREFIXE_TITRE = re.compile(r"^(?:\*+|<u>)?\s*([^\n:]{1,60}?)\s*(?:\*+|</u>)?\s*:\s*(?:\*+\s*)?")
 
 
 def nettoyer_prefixe_titre(texte: str, titre: str, cle: str = "") -> str:

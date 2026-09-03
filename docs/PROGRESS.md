@@ -172,5 +172,14 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Vérifié** : 191 tests pytest (44 ajoutés), `ruff check .` propre, deux suites UI happy-dom vertes, syntaxe JS validée et aucun id DOM manquant. Complétude en réel remontée de **1 passage sur 3** à **5 sur 5** sur la même dictée ; exports PDF et .docx contrôlés sur leur signature de fichier.
   - **Limite restante, assumée** : la qualité reste bornée par un modèle local de 4 milliards de paramètres. Les garde-fous rendent ses défaillances **visibles** au praticien plutôt que silencieuses — ils ne les suppriment pas. qwen3.5:9b n'a pas pu être évalué (dépassement de 10 min sur cette machine, 19 Go dont 6 libres).
 
+- [x] **Lot A « mise en forme » — texte riche dans les rubriques** *(fait, testé 2026-09-03 — plan validé : `docs/plan-mise-en-forme-2026-09-03.md`)*
+  - `app/texte_riche.py` : Markdown restreint (gras, italique, souligné, listes), analyse tolérante (un marqueur mal placé reste du texte), forme canonique partagée avec l'éditeur JS (mêmes échantillons testés des deux côtés), version en clair pour les vérificateurs. Colonne `section.contenu` inchangée : pas de migration.
+  - `export.py` : bloc `riche` rendu dans les quatre formats (runs et styles de liste Word avec numérotation qui repart à 1, balisage et `ListFlowable` reportlab, Markdown canonique, texte en clair).
+  - `importer.py` : l'extraction .docx conserve la mise en forme du praticien (titres laissés en clair pour le découpage) ; les extraits de style montrent donc au modèle ce que ce praticien met en relief.
+  - `prompts.py` / `config.py` / `main.py` : consigne de mise en forme sobre et calquée sur les extraits, réglage `style.mise_en_forme_ia` (actif par défaut ; désactivé, le texte du modèle est remis en clair) ; vérificateurs nourris en clair, sans numéros de liste.
+  - UI : zone éditable par rubrique + barre (G, I, S, listes) + raccourcis ; conversions pures Markdown ↔ DOM, contenu construit nœud par nœud (jamais d'HTML injecté) ; collage Word / LibreOffice / Google Docs nettoyé ; copie texte + HTML ; référence « modifié ? » = forme canonique du contenu du coffre (pas de faux brouillon sur un contenu ancien).
+  - **Vérifié** : 332 tests pytest (12 ajoutés), `ruff check .` propre, quatre suites UI happy-dom vertes (nouvelle `tests/ui/test_texte_riche_ui.mjs`).
+  - **Restent** : lots B (mise en forme du document + aperçu), C (trame reprise à l'import), D (gabarit .docx personnel). Les tableaux des .docx importés ne sont toujours pas lus (limite connue, à traiter au lot C).
+
 ## Lancer
 `./run.sh` → http://localhost:8000 (bind 127.0.0.1). Données : `~/.local/share/bilan-ortho/` (surchargeable via `BILAN_ORTHO_DATA_DIR`).

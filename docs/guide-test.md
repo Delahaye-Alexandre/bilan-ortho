@@ -71,10 +71,14 @@ irrécupérable** (personne, pas même Alexandre, ne peut la retrouver).
 5. Saisissez une épreuve dans **🧪 Épreuves & scores** (le drapeau
    norme/pathologique se calcule seul).
 6. **Relisez, corrigez, validez** chaque rubrique — c'est vous qui décidez,
-   l'IA ne fait que proposer.
+   l'IA ne fait que proposer. Mettez en forme si besoin (gras, souligné,
+   listes : barre au-dessus de chaque rubrique, ou Ctrl+B / Ctrl+I / Ctrl+U) ;
+   vous pouvez aussi coller un passage depuis Word, sa mise en forme est
+   conservée.
 7. **€ Coter**, **⬇ Word**, puis « Marquer validé ».
 8. Optionnel : importez un de vos bilans **anonymisé** dans « Mes bilans de
-   référence » — les prochaines rédactions imiteront votre style.
+   référence » — les prochaines rédactions imiteront votre style, y compris
+   ce que vous mettez en gras ou en liste (fichiers Word).
 
 ## En cas de problème
 

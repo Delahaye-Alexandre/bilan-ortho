@@ -5,6 +5,32 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
+## Non publié
+
+Lot A du plan « mise en forme » (`docs/plan-mise-en-forme-2026-09-03.md`) :
+
+- **Texte riche dans les rubriques** : gras, italique, souligné, listes à puces
+  et numérotées, avec une barre de mise en forme par rubrique et les raccourcis
+  Ctrl+B / Ctrl+I / Ctrl+U (Entrée = nouveau paragraphe, Maj+Entrée = retour à
+  la ligne). Le contenu reste stocké en texte (Markdown restreint,
+  `app/texte_riche.py`) : aucune migration, les bilans existants sont inchangés.
+- **Exports fidèles** : le Word porte de vrais passages en gras/italique/souligné
+  et des listes (chaque liste numérotée repart à 1), le PDF aussi ; Markdown et
+  texte brut suivent.
+- **Coller depuis Word, LibreOffice ou Google Docs** conserve gras, italique,
+  souligné et listes ; tout le reste (polices, couleurs, scripts) est retiré.
+  **Copier** place dans le presse-papiers le texte brut et une version HTML,
+  pour que la mise en forme survive au collage dans un traitement de texte.
+- **La mise en forme du praticien entre dans son style** : l'import Word des
+  bilans de référence conserve désormais gras, souligné et listes, et le modèle
+  est invité à calquer sa mise en relief sur ces extraits. Réglage
+  « L'IA peut mettre en forme » dans ⚙️ Paramètres → Style, actif par défaut ;
+  désactivé, les propositions du modèle sont remises en clair avant d'entrer
+  dans les rubriques.
+- Les vérificateurs de chiffres, de tests cités et d'adossement lisent la
+  version en clair : un score en gras reste retrouvé dans la dictée, un numéro
+  de liste n'est pas pris pour une valeur clinique.
+
 ## 1.9.0 — 2026-09-03
 
 Corrections de la revue complète du 2026-08-11 (v1.8.0 en conditions réelles) :

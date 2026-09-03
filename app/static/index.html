@@ -45,6 +45,15 @@
   .sec > .head h3 { margin: 0; font-size: 15px; display:flex; align-items:center; gap:8px; }
   .sec .body { padding: 12px 14px; }
   .out { white-space: pre-wrap; min-height: 60px; }
+  /* Zone éditable des rubriques (texte riche) : même allure qu'un textarea. */
+  .rt-bar { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+  .rt-bar button { padding: 2px 9px; font-size: 13px; min-width: 34px; }
+  .rt-edit { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+             background: #fff; color: var(--text); overflow-wrap: anywhere; }
+  .rt-edit:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .rt-edit:empty::before { content: attr(data-placeholder); color: var(--muted); }
+  .rt-edit > div + div, .rt-edit > ul + div, .rt-edit > ol + div { margin-top: 8px; }
+  .rt-edit ul, .rt-edit ol { margin: 4px 0; padding-left: 24px; }
   .muted { color: var(--muted); font-size: 12px; }
   .status { font-size: 12px; color: var(--muted); }
   .grow { flex: 1; }
@@ -300,6 +309,8 @@
             <select id="cfgStyleDetail"><option value="concis">concis</option><option value="standard">standard</option><option value="detaille">détaillé</option></select></div>
           <div><label class="check" style="margin-top:30px"><input type="checkbox" id="cfgStyleVouv"> Vouvoiement</label></div>
         </div>
+        <div><label class="check"><input type="checkbox" id="cfgStyleForme"> L'IA peut mettre en forme ses propositions (gras, souligné, listes), en imitant mes bilans de référence</label>
+          <div class="muted">Décochée : l'IA rend du texte brut, la mise en forme reste entièrement à votre main.</div></div>
         <div><label for="cfgEmbModel">Modèle d'embeddings (indexation de mes bilans)</label>
           <input id="cfgEmbModel" list="embModels">
           <datalist id="embModels"><option value="nomic-embed-text"><option value="bge-m3"></datalist>
@@ -516,7 +527,7 @@
       <h3>4. Saisissez les épreuves</h3>
       <p>Dans « Épreuves &amp; scores », saisissez chaque test avec son étalonnage : le drapeau (norme / fragilité / pathologique / sévère) est déduit automatiquement de vos seuils, et une phrase-type est ajoutée à la rubrique.</p>
       <h3>5. Relisez, validez, exportez</h3>
-      <p>Chaque rubrique proposée par l'IA est marquée « à valider » : <b>vous relisez, corrigez et validez</b> — la responsabilité du contenu vous revient entièrement. Puis cotez (NGAP), exportez en Word ou Markdown, et marquez le bilan « validé » puis « envoyé » (le destinataire est tracé).</p>
+      <p>Chaque rubrique proposée par l'IA est marquée « à valider » : <b>vous relisez, corrigez, mettez en forme (gras, souligné, listes — ou collez depuis Word) et validez</b> — la responsabilité du contenu vous revient entièrement. Puis cotez (NGAP), exportez en Word ou Markdown, et marquez le bilan « validé » puis « envoyé » (le destinataire est tracé).</p>
       <h3>Vos bilans de référence (votre style)</h3>
       <p>Importez vos propres bilans (PDF, Word .docx, LibreOffice .odt, texte) dans « Mes bilans de référence » : l'IA s'inspire de <b>votre</b> style de rédaction. Pour démarrer sans bilans sous la main, « Charger les bilans d'exemple » indexe des bilans <b>entièrement fictifs</b> livrés avec l'application (marqués « exemple ») — retirez-les une fois vos propres bilans importés, votre style prendra toute la place. Les PDF scannés nécessitent Tesseract : sous Windows, utilisez l'installeur UB-Mannheim (<code>github.com/UB-Mannheim/tesseract</code>) puis relancez l'import ; sous Linux : <code>apt install tesseract-ocr tesseract-ocr-fra ocrmypdf</code>.</p>
       <h3>Confidentialité & sauvegardes</h3>
@@ -1364,6 +1375,287 @@ async function saveEntete() {
     st.textContent = '✓';
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }
+// ---------- Texte riche des rubriques ----------
+// Miroir de app/texte_riche.py : Markdown restreint (**gras**, *italique*,
+// <u>souligné</u>, listes « - » et « 1. ») <-> DOM de la zone éditable. Le
+// contenu est toujours construit nœud par nœud, jamais injecté en HTML brut :
+// un texte du modèle qui contiendrait une balise reste du texte. Les
+// conversions sont pures (testables hors navigateur) ; seule rtColler touche
+// à la sélection.
+const RT_MOTIFS = [
+  [/\*\*\*(?=\S)([\s\S]+?)(?<=\S)\*\*\*/g, { g: true, i: true }],
+  [/\*\*(?=\S)([\s\S]+?)(?<=\S)\*\*/g, { g: true }],
+  [/(?<!\*)\*(?=[^\s*])([\s\S]+?)(?<=[^\s*])\*(?!\*)/g, { i: true }],
+  [/<u>([\s\S]+?)<\/u>/g, { s: true }],
+];
+const RT_PUCE = /^[-*•]\s+(.*)$/, RT_NUMERO = /^\d{1,3}[.)]\s+(.*)$/, RT_SUITE = /^\s{2,}(\S.*)$/;
+function rtFusionner(segs) {
+  const out = [];
+  for (const s of segs) {
+    if (!s.t) continue;
+    const d = out[out.length - 1];
+    if (d && d.g === !!s.g && d.i === !!s.i && d.s === !!s.s) d.t += s.t;
+    else out.push({ t: s.t, g: !!s.g, i: !!s.i, s: !!s.s });
+  }
+  return out;
+}
+function rtInline(texte, etat = {}) {
+  const out = []; let pos = 0;
+  while (pos < texte.length) {
+    let meilleur = null;
+    for (const [rx, dr] of RT_MOTIFS) {
+      rx.lastIndex = pos; const m = rx.exec(texte);
+      if (m && (!meilleur || m.index < meilleur.m.index)) meilleur = { m, dr };
+    }
+    if (!meilleur) { out.push({ t: texte.slice(pos), ...etat }); break; }
+    const { m, dr } = meilleur;
+    if (m.index > pos) out.push({ t: texte.slice(pos, m.index), ...etat });
+    out.push(...rtInline(m[1], { ...etat, ...dr }));
+    pos = m.index + m[0].length;
+  }
+  return rtFusionner(out);
+}
+// Une ligne de paragraphe qui ressemble à un élément de liste (« - 2 ET »)
+// est protégée par une barre oblique inverse, que l'analyse retire.
+const rtItemApparent = (l) => RT_PUCE.test(l) || RT_NUMERO.test(l);
+function rtAnalyser(md) {
+  const blocs = []; let para = []; let liste = null;
+  const clorePara = () => { if (para.length) { blocs.push({ type: 'p', segs: rtInline(para.join('\n')) }); para = []; } };
+  const cloreListe = () => { if (liste) { blocs.push({ type: 'liste', ord: liste.ord, items: liste.items.map(i => rtInline(i)) }); liste = null; } };
+  for (const ligne of String(md || '').replace(/\r\n?/g, '\n').split('\n')) {
+    if (!ligne.trim()) { clorePara(); cloreListe(); continue; }
+    if (liste) {
+      const suite = RT_SUITE.exec(ligne);
+      if (suite) { liste.items[liste.items.length - 1] += '\n' + suite[1].trimEnd(); continue; }
+    }
+    const propre = ligne.trim();
+    if (propre.startsWith('\\') && rtItemApparent(propre.slice(1))) { cloreListe(); para.push(propre.slice(1)); continue; }
+    let item = RT_PUCE.exec(propre), ord = false;
+    if (!item) { item = RT_NUMERO.exec(propre); ord = !!item; }
+    if (item) {
+      clorePara();
+      if (!liste || liste.ord !== ord) { cloreListe(); liste = { ord, items: [] }; }
+      liste.items.push(item[1].trim());
+    } else { cloreListe(); para.push(propre); }
+  }
+  clorePara(); cloreListe();
+  return blocs;
+}
+function rtSegMd(s) {
+  if (!s.g && !s.i && !s.s) return s.t;
+  const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(s.t); let c = m[2];
+  if (!c) return s.t;
+  if (s.s) c = `<u>${c}</u>`;
+  if (s.g && s.i) c = `***${c}***`; else if (s.g) c = `**${c}**`; else if (s.i) c = `*${c}*`;
+  return m[1] + c + m[3];
+}
+const rtSegsMd = (segs) => rtFusionner(segs).map(rtSegMd).join('');
+function rtSerialiser(blocs) {
+  const out = [];
+  for (const b of blocs) {
+    if (b.type === 'p') {
+      out.push(rtSegsMd(b.segs).split('\n').map(l => l.trim()).map(l => (rtItemApparent(l) ? '\\' + l : l)).join('\n'));
+    } else {
+      out.push(b.items.map((it, k) => (b.ord ? `${k + 1}. ` : '- ')
+        + rtSegsMd(it).split('\n').map(l => l.trim()).filter(Boolean).join('\n  ')).join('\n'));
+    }
+  }
+  return out.filter(x => x.trim()).join('\n\n');
+}
+function rtEnClair(md) {
+  return rtAnalyser(md).map(b => (b.type === 'p'
+    ? b.segs.map(s => s.t).join('')
+    : b.items.map((it, k) => (b.ord ? `${k + 1}. ` : '- ') + it.map(s => s.t).join('').replace(/\n/g, '\n  ')).join('\n')
+  )).join('\n\n');
+}
+// --- Markdown -> DOM (nœud par nœud) ---
+function rtNoeudsInline(segs) {
+  const frag = document.createDocumentFragment();
+  for (const s of rtFusionner(segs)) {
+    s.t.split('\n').forEach((p, k) => {
+      if (k) frag.appendChild(document.createElement('br'));
+      if (!p) return;
+      let n = document.createTextNode(p);
+      if (s.s) { const u = document.createElement('u'); u.appendChild(n); n = u; }
+      if (s.i) { const i = document.createElement('i'); i.appendChild(n); n = i; }
+      if (s.g) { const b = document.createElement('b'); b.appendChild(n); n = b; }
+      frag.appendChild(n);
+    });
+  }
+  return frag;
+}
+function rtVersDom(blocs) {
+  const frag = document.createDocumentFragment();
+  for (const b of blocs) {
+    if (b.type === 'p') { const d = document.createElement('div'); d.appendChild(rtNoeudsInline(b.segs)); frag.appendChild(d); continue; }
+    const l = document.createElement(b.ord ? 'ol' : 'ul');
+    for (const it of b.items) { const li = document.createElement('li'); li.appendChild(rtNoeudsInline(it)); l.appendChild(li); }
+    frag.appendChild(l);
+  }
+  return frag;
+}
+function remplirEditeur(ed, md) { ed.textContent = ''; ed.appendChild(rtVersDom(rtAnalyser(md))); }
+// --- DOM -> Markdown (zone éditable, ou HTML collé depuis Word / LibreOffice / Google Docs) ---
+const RT_BLOCS = new Set(['DIV', 'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'SECTION', 'ARTICLE', 'PRE',
+  'TABLE', 'TBODY', 'THEAD', 'TFOOT', 'TR', 'TD', 'TH', 'HEADER', 'FOOTER', 'ASIDE', 'NAV', 'MAIN', 'FORM',
+  'FIELDSET', 'ADDRESS', 'DL', 'DT', 'DD', 'FIGURE', 'FIGCAPTION', 'HR', 'CENTER']);
+const RT_IGNORES = new Set(['SCRIPT', 'STYLE', 'HEAD', 'TITLE', 'META', 'LINK', 'TEMPLATE', 'NOSCRIPT', 'IMG', 'SVG',
+  'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'IFRAME', 'OBJECT', 'XML']);
+function rtRetirerDebut(segs, n) {
+  while (n > 0 && segs.length) {
+    if (segs[0].t.length <= n) { n -= segs[0].t.length; segs.shift(); } else { segs[0].t = segs[0].t.slice(n); n = 0; }
+  }
+}
+// Paragraphe de liste Word (classe MsoListParagraph) : la puce ou le numéro
+// est en tête du texte, suivi d'espaces insécables.
+function rtPuceWord(l) {
+  const texte = l.segs.map(s => s.t).join('');
+  let m = /^\s*[·•o§▪■\-–]\s+/.exec(texte); l.kind = 'puce';
+  if (!m) { m = /^\s*\d{1,3}[.)]\s+/.exec(texte); if (m) l.kind = 'num'; }
+  if (m) rtRetirerDebut(l.segs, m[0].length);
+}
+function rtLignesDepuisDom(racine, pre) {
+  const lignes = []; let cur = null;
+  const ouvrir = (kind) => { cur = { kind, segs: [] }; lignes.push(cur); return cur; };
+  const fermer = () => { cur = null; };
+  const push = (seg) => { if (!cur) ouvrir('p'); cur.segs.push(seg); };
+  function marcher(node, etat, ctx) {
+    if (node.nodeType === 3) {
+      let t = node.nodeValue; if (!pre) t = t.replace(/[ \t\r\n\f]+/g, ' ');
+      if (t) push({ t, ...etat }); return;
+    }
+    if (node.nodeType !== 1) return;
+    const tag = node.tagName.toUpperCase();
+    if (RT_IGNORES.has(tag)) return;
+    if (tag === 'BR') { push({ t: '\n', ...etat }); return; }
+    const style = node.getAttribute('style') || '';
+    const e = { ...etat };
+    if (tag === 'B' || tag === 'STRONG') e.g = true;
+    if (tag === 'I' || tag === 'EM') e.i = true;
+    if (tag === 'U') e.s = true;
+    const fw = /font-weight\s*:\s*([^;]+)/i.exec(style);
+    if (fw) { const v = fw[1].trim().toLowerCase(); e.g = v === 'bold' || v === 'bolder' || parseInt(v, 10) >= 600; }
+    const fs = /font-style\s*:\s*([^;]+)/i.exec(style);
+    if (fs) e.i = /italic|oblique/i.test(fs[1]);
+    const td = /text-decoration(?:-line)?\s*:\s*([^;]+)/i.exec(style);
+    if (td) e.s = /underline/i.test(td[1]);
+    if (tag === 'UL' || tag === 'OL') {
+      fermer();
+      for (const c of node.childNodes) marcher(c, e, { liste: tag === 'OL' ? 'num' : 'puce', dansItem: false });
+      fermer(); return;
+    }
+    if (tag === 'LI') {
+      fermer(); ouvrir(ctx.liste || 'puce');
+      for (const c of node.childNodes) marcher(c, e, { ...ctx, dansItem: true });
+      fermer(); return;
+    }
+    if (RT_BLOCS.has(tag)) {
+      if (ctx.dansItem) {
+        // Bloc imbriqué dans un élément de liste : un retour à la ligne, pas un nouvel élément.
+        if (cur && cur.segs.length) push({ t: '\n' });
+        for (const c of node.childNodes) marcher(c, e, ctx);
+        return;
+      }
+      fermer();
+      const mso = /MsoListParagraph/i.test(node.getAttribute('class') || '');
+      const l = mso ? ouvrir('p') : null;
+      for (const c of node.childNodes) marcher(c, e, ctx);
+      if (l) rtPuceWord(l);
+      fermer(); return;
+    }
+    for (const c of node.childNodes) marcher(c, e, ctx);
+  }
+  marcher(racine, {}, { liste: null, dansItem: false });
+  return lignes;
+}
+function rtNettoyerSegs(segs) {
+  const out = rtFusionner(segs);
+  for (const s of out) s.t = s.t.replace(/[ \t ]*\n[ \t ]*/g, '\n');
+  if (out.length) { out[0].t = out[0].t.replace(/^\s+/, ''); out[out.length - 1].t = out[out.length - 1].t.replace(/\s+$/, ''); }
+  return rtFusionner(out);
+}
+function rtGrouper(lignes) {
+  const blocs = [];
+  for (const l of lignes) {
+    const segs = rtNettoyerSegs(l.segs);
+    if (!segs.length) continue;
+    if (l.kind === 'p') { blocs.push({ type: 'p', segs }); continue; }
+    const ord = l.kind === 'num', d = blocs[blocs.length - 1];
+    if (d && d.type === 'liste' && d.ord === ord) d.items.push(segs); else blocs.push({ type: 'liste', ord, items: [segs] });
+  }
+  return blocs;
+}
+const rtVersMd = (ed) => rtSerialiser(rtGrouper(rtLignesDepuisDom(ed, true)));
+const rtHtmlVersBlocs = (html) => rtGrouper(rtLignesDepuisDom(new DOMParser().parseFromString(html, 'text/html').body, false));
+// --- Blocs -> HTML (presse-papiers, insertion au collage) : texte échappé, seules nos balises ---
+function rtSegsHtml(segs) {
+  return rtFusionner(segs).map(s => {
+    let h = escapeHtml(s.t).replace(/\n/g, '<br>');
+    if (s.s) h = `<u>${h}</u>`; if (s.i) h = `<i>${h}</i>`; if (s.g) h = `<b>${h}</b>`;
+    return h;
+  }).join('');
+}
+function rtBlocsVersHtml(blocs, para = 'p') {
+  return blocs.map(b => (b.type === 'p'
+    ? `<${para}>${rtSegsHtml(b.segs)}</${para}>`
+    : `<${b.ord ? 'ol' : 'ul'}>${b.items.map(it => `<li>${rtSegsHtml(it)}</li>`).join('')}</${b.ord ? 'ol' : 'ul'}>`
+  )).join('');
+}
+const RT_BARRE = [
+  ['bold', 'Gras (Ctrl+B)', '<b>G</b>'], ['italic', 'Italique (Ctrl+I)', '<i>I</i>'],
+  ['underline', 'Souligné (Ctrl+U)', '<u>S</u>'],
+  ['insertUnorderedList', 'Liste à puces', '• Liste'], ['insertOrderedList', 'Liste numérotée', '1. Liste'],
+];
+function rtBarreHtml() {
+  return `<div class="rt-bar" role="toolbar" aria-label="Mise en forme">` + RT_BARRE.map(([cmd, titre, lbl]) =>
+    `<button type="button" class="ghost" data-cmd="${cmd}" title="${titre}" aria-label="${titre}">${lbl}</button>`).join('') + `</div>`;
+}
+const RT_RACCOURCIS = { b: 'bold', i: 'italic', u: 'underline' };
+function rtColler(ed, e) {
+  const dt = e.clipboardData; if (!dt) return;
+  const html = dt.getData('text/html'), txt = dt.getData('text/plain');
+  if (!html && !txt) return;
+  e.preventDefault();
+  const blocs = html ? rtHtmlVersBlocs(html) : rtAnalyser(txt);
+  if (!blocs.length) return;
+  // Un seul paragraphe se fond dans la ligne courante ; plusieurs blocs gardent leur structure.
+  const simple = blocs.length === 1 && blocs[0].type === 'p';
+  ed.focus();
+  if (document.execCommand && document.execCommand('insertHTML', false,
+      simple ? rtSegsHtml(blocs[0].segs) : rtBlocsVersHtml(blocs, 'div'))) return;
+  // Repli sans execCommand : insertion à la sélection, nœud par nœud.
+  const frag = simple ? rtNoeudsInline(blocs[0].segs) : rtVersDom(blocs);
+  const sel = window.getSelection && window.getSelection();
+  if (sel && sel.rangeCount && ed.contains(sel.anchorNode)) {
+    const r = sel.getRangeAt(0); r.deleteContents(); r.insertNode(frag); r.collapse(false);
+  } else ed.appendChild(frag);
+}
+function activerEditeur(sec, ed) {
+  sec.querySelectorAll('.rt-bar button').forEach(b => {
+    b.addEventListener('mousedown', e => e.preventDefault()); // garde la sélection dans l'éditeur
+    b.addEventListener('click', () => { ed.focus(); if (document.execCommand) document.execCommand(b.dataset.cmd, false, null); });
+  });
+  ed.addEventListener('keydown', e => {
+    const cmd = (e.ctrlKey || e.metaKey) && !e.altKey && RT_RACCOURCIS[e.key.toLowerCase()];
+    if (cmd) { e.preventDefault(); if (document.execCommand) document.execCommand(cmd, false, null); }
+  });
+  ed.addEventListener('paste', e => rtColler(ed, e));
+}
+// Copie en deux versions à la fois : texte brut (champ simple) et HTML (Word,
+// LibreOffice, messagerie), pour que gras et listes survivent au collage.
+async function copierRiche(txt, html) {
+  if (navigator.clipboard.write && typeof ClipboardItem !== 'undefined') {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/plain': new Blob([txt], { type: 'text/plain' }),
+        'text/html': new Blob([html], { type: 'text/html' }),
+      })]);
+      return;
+    } catch { /* repli texte seul */ }
+  }
+  await navigator.clipboard.writeText(txt);
+}
+
 function renderBilan() {
   curLabel();
   renderEntete();
@@ -1377,7 +1669,8 @@ function renderBilan() {
     root.querySelectorAll('.sec[data-cle]').forEach(sec => {
       const ta = sec.querySelector('.secText');
       const ref = SEC_RENDERED[sec.dataset.cle];
-      if (ta && ref !== undefined && ta.value !== ref) drafts[sec.dataset.cle] = ta.value;
+      const val = ta ? rtVersMd(ta) : '';
+      if (ta && ref !== undefined && val !== ref) drafts[sec.dataset.cle] = val;
     });
   }
   // Même précaution pour la ligne de saisie d'une épreuve : elle est régénérée
@@ -1394,7 +1687,9 @@ function renderBilan() {
       </div>
       <div class="body">
         ${verifHtml(s.cle, s.signalements)}
-        <textarea class="secText out" rows="4" placeholder="—">${escapeHtml(s.contenu || '')}</textarea>
+        ${rtBarreHtml()}
+        <div class="secText out rt-edit" contenteditable="true" role="textbox" aria-multiline="true"
+             aria-label="${escapeHtml(s.titre)}" data-placeholder="—"></div>
         <div class="row" style="margin-top:8px"><button class="ghost save">Enregistrer</button><span class="status savest"></span></div>
       </div>
     </div>`).join('');
@@ -1403,13 +1698,18 @@ function renderBilan() {
     const cle = sec.dataset.cle;
     const ta = sec.querySelector('.secText');
     const s = CUR.sections.find(x => x.cle === cle);
-    SEC_RENDERED[cle] = (s && s.contenu) || '';
+    // La référence est la forme canonique de ce que le coffre contient : un
+    // contenu ancien (texte brut, puces « * ») n'est pas signalé « modifié »
+    // pour la seule raison qu'il se réécrit autrement.
+    remplirEditeur(ta, (s && s.contenu) || '');
+    SEC_RENDERED[cle] = rtVersMd(ta);
     if (drafts[cle] !== undefined && drafts[cle] !== SEC_RENDERED[cle]) {
-      ta.value = drafts[cle];
+      remplirEditeur(ta, drafts[cle]);
       sec.querySelector('.savest').textContent = '⚠️ modifications non enregistrées';
     }
-    sec.querySelector('.save').addEventListener('click', e => avecBouton(e.target, () => saveSection(cle, ta.value, null, sec)));
-    sec.querySelector('.valider').addEventListener('click', e => avecBouton(e.target, () => saveSection(cle, ta.value, 'valide', sec)));
+    activerEditeur(sec, ta);
+    sec.querySelector('.save').addEventListener('click', e => avecBouton(e.target, () => saveSection(cle, rtVersMd(ta), null, sec)));
+    sec.querySelector('.valider').addEventListener('click', e => avecBouton(e.target, () => saveSection(cle, rtVersMd(ta), 'valide', sec)));
   });
   document.getElementById('epAdd').addEventListener('click', e => avecBouton(e.target, addEpreuve));
   root.querySelectorAll('[data-ep-del]').forEach(b =>
@@ -1576,7 +1876,7 @@ function sectionsNonEnregistrees() {
   document.querySelectorAll('#bilanView .sec[data-cle]').forEach(sec => {
     const ta = sec.querySelector('.secText');
     const ref = SEC_RENDERED[sec.dataset.cle];
-    if (ta && ref !== undefined && ta.value !== ref) out.push({ cle: sec.dataset.cle, sec, ta });
+    if (ta && ref !== undefined && rtVersMd(ta) !== ref) out.push({ cle: sec.dataset.cle, sec, ta });
   });
   return out;
 }
@@ -1602,7 +1902,7 @@ async function enregistrerAvant(geste) {
     + `OK : enregistrer, puis continuer.\n`
     + `Annuler : revenir au compte-rendu.`);
   if (!ok) return false;
-  for (const b of brouillons) await saveSection(b.cle, b.ta.value, null, b.sec);
+  for (const b of brouillons) await saveSection(b.cle, rtVersMd(b.ta), null, b.sec);
   if (entete) await saveEntete();
   return sectionsNonEnregistrees().length === 0 && !enteteModifie();
 }
@@ -1614,10 +1914,11 @@ document.getElementById('copyBilan').addEventListener('click', async () => {
     st.textContent = 'Copie interrompue — vos corrections ne sont pas enregistrées.';
     return;
   }
-  const txt = CUR.sections.filter(s => (s.contenu || '').trim())
-    .map(s => s.titre.toUpperCase() + '\n\n' + s.contenu.trim()).join('\n\n');
+  const secs = CUR.sections.filter(s => (s.contenu || '').trim());
+  const txt = secs.map(s => s.titre.toUpperCase() + '\n\n' + rtEnClair(s.contenu)).join('\n\n');
+  const html = secs.map(s => `<h3>${escapeHtml(s.titre)}</h3>` + rtBlocsVersHtml(rtAnalyser(s.contenu))).join('');
   try {
-    await navigator.clipboard.writeText(txt);
+    await copierRiche(txt, html);
     st.textContent = '✓ Copié dans le presse-papiers';
   } catch {
     st.textContent = 'Copie impossible — sélectionnez le texte à la main.';
@@ -2107,6 +2408,7 @@ function fillSettings(c) {
   $('cfgSttCorr').value = Object.entries(c.stt.corrections || {}).map(([k, v]) => `${k} => ${v}`).join('\n');
   $('cfgStyleK').value = c.style.few_shot_k; $('cfgStyleDetail').value = c.style.niveau_detail;
   $('cfgStyleVouv').checked = !!c.style.vouvoiement; $('cfgEmbModel').value = c.embeddings.model;
+  $('cfgStyleForme').checked = c.style.mise_en_forme_ia !== false;
   $('cfgSeuilFrag').value = c.seuils.fragilite_et; $('cfgSeuilPatho').value = c.seuils.pathologique_et;
   $('cfgSeuilSev').value = c.seuils.severe_et;
   $('cfgSeuilFragP').value = c.seuils.fragilite_percentile; $('cfgSeuilPathoP').value = c.seuils.pathologique_percentile;
@@ -2593,7 +2895,7 @@ function collectSettings() {
     },
     style: {
       few_shot_k: num($('cfgStyleK').value), niveau_detail: $('cfgStyleDetail').value,
-      vouvoiement: $('cfgStyleVouv').checked,
+      vouvoiement: $('cfgStyleVouv').checked, mise_en_forme_ia: $('cfgStyleForme').checked,
     },
     embeddings: { model: $('cfgEmbModel').value.trim() || 'nomic-embed-text' },
     seuils: {
@@ -2650,7 +2952,7 @@ function saisieEnCours() {
   for (const sec of document.querySelectorAll('#bilanView .sec[data-cle]')) {
     const ta = sec.querySelector('.secText');
     const ref = SEC_RENDERED[sec.dataset.cle];
-    if (ta && ref !== undefined && ta.value !== ref) return true;
+    if (ta && ref !== undefined && rtVersMd(ta) !== ref) return true;
   }
   for (const el of document.querySelectorAll('#questions .ans')) {
     if (el.value.trim()) return true;

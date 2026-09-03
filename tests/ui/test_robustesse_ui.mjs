@@ -224,6 +224,7 @@ const body = scriptBody.replace(/gate\(\);\s*$/, "") + `
   get QUITTER_SANS_GARDE() { return QUITTER_SANS_GARDE; }, set QUITTER_SANS_GARDE(v) { QUITTER_SANS_GARDE = v; },
   renderQuestions, renderBilan, structure, saisieEnCours, loadRecents, loadRefs,
   loadBilan, sectionsNonEnregistrees, gate, loadLLM, loadDomaines,
+  rtVersMd, remplirEditeur,
   get INST_POLL_MS() { return INST_POLL_MS; }, set INST_POLL_MS(v) { INST_POLL_MS = v; },
 };`;
 new Function(body)();
@@ -243,6 +244,10 @@ const check = (label, cond) => {
   if (!cond) failures++;
 };
 const secTa = (cle) => document.querySelector(`#bilanView .sec[data-cle="${cle}"] .secText`);
+// Zone éditable (texte riche) : lecture et écriture en Markdown restreint,
+// comme l'application elle-même.
+const lire = (cle) => __t.rtVersMd(secTa(cle));
+const ecrire = (cle, v) => __t.remplirEditeur(secTa(cle), v);
 const savest = (cle) => document.querySelector(`#bilanView .sec[data-cle="${cle}"] .savest`);
 const status = () => document.getElementById("structStatus").textContent;
 const overlay = () => document.getElementById("lockOverlay");
@@ -250,9 +255,9 @@ const overlay = () => document.getElementById("lockOverlay");
 // === 1. C2 : une rubrique modifiée non enregistrée survit au re-rendu ========
 __t.CUR = structuredClone(CUR0);
 __t.renderBilan();
-check("rendu initial : contenu serveur affiché", secTa("anamnese").value === "Texte initial.");
+check("rendu initial : contenu serveur affiché", lire("anamnese") === "Texte initial.");
 
-secTa("anamnese").value = "Texte initial. CORRIGÉ À LA MAIN";
+ecrire("anamnese", "Texte initial. CORRIGÉ À LA MAIN");
 structureResponder = () => {
   const b = structuredClone(CUR0);
   b.sections[0].contenu = "Texte initial.\n\nAjout proposé par l'IA.";
@@ -262,11 +267,11 @@ document.getElementById("dicteeText").value = "une dictée";
 document.getElementById("structBtn").click();
 await settle();
 check("C2 : la correction manuelle non enregistrée est préservée après structuration",
-  secTa("anamnese").value === "Texte initial. CORRIGÉ À LA MAIN");
+  lire("anamnese") === "Texte initial. CORRIGÉ À LA MAIN");
 check("C2 : l'utilisateur est prévenu (« non enregistrées »)",
   savest("anamnese").textContent.includes("non enregistrées"));
 check("C2 : les rubriques non modifiées suivent le serveur",
-  secTa("diagnostic").value === "");
+  lire("diagnostic") === "");
 
 // Après « Enregistrer », le brouillon devient la référence : plus d'alerte.
 document.querySelector('#bilanView .sec[data-cle="anamnese"] .save').click();
@@ -276,16 +281,16 @@ check("C2 : enregistrement du brouillon → PUT envoyé + statut ✓",
 __t.renderBilan();
 await settle();
 check("C2 : après enregistrement, re-rendu sans alerte ni perte",
-  secTa("anamnese").value === "Texte initial. CORRIGÉ À LA MAIN"
+  lire("anamnese") === "Texte initial. CORRIGÉ À LA MAIN"
   && !savest("anamnese").textContent.includes("non enregistrées"));
 
 // === 2. Les brouillons ne fuient pas vers un autre bilan =====================
-secTa("anamnese").value = "BROUILLON DU BILAN 1";
+ecrire("anamnese", "BROUILLON DU BILAN 1");
 const b2 = structuredClone(CUR0); b2.id = "b2"; b2.sections[0].contenu = "Contenu du bilan 2.";
 __t.CUR = b2;
 __t.renderBilan();
 check("changement de bilan : aucun brouillon de l'ancien bilan n'apparaît",
-  secTa("anamnese").value === "Contenu du bilan 2.");
+  lire("anamnese") === "Contenu du bilan 2.");
 
 // === 3. C4 : 423 (auto-verrouillage) → overlay ré-affiché, pas de crash ======
 overlay().hidden = true;
@@ -353,7 +358,7 @@ __t.renderBilan();
 holdNext = null;
 await new Promise((r) => setTimeout(r, 80));
 check("réponse tardive : l'écran du nouveau bilan n'est pas écrasé",
-  __t.CUR.id === "b9" && secTa("anamnese").value === "Bilan 9.");
+  __t.CUR.id === "b9" && lire("anamnese") === "Bilan 9.");
 check("réponse tardive : aucune question orpheline affichée",
   document.querySelectorAll("#questions .q").length === 0);
 check("réponse tardive : l'utilisateur est informé du bilan de destination",
@@ -368,7 +373,7 @@ check("saisieEnCours : rien en cours → false", __t.saisieEnCours() === false);
 document.getElementById("dicteeText").value = "dictée non structurée";
 check("saisieEnCours : dictée transcrite non structurée → true", __t.saisieEnCours() === true);
 document.getElementById("dicteeText").value = "";
-secTa("anamnese").value = "modif non enregistrée";
+ecrire("anamnese", "modif non enregistrée");
 check("saisieEnCours : rubrique modifiée non enregistrée → true", __t.saisieEnCours() === true);
 
 // === 9. Éditeurs dédiés : surcharges affichées, défauts jamais figés =========
@@ -473,7 +478,7 @@ check("échappement : le titre est affiché tel quel",
   document.querySelector('#bilanView .sec[data-cle="anamnese"] h3')
     .textContent.includes('Anamnèse"<b>piège</b>'));
 check("échappement : data-cle reste exploitable (rubrique retrouvée)",
-  secTa("anamnese") !== null && secTa("anamnese").value === "Texte initial.");
+  secTa("anamnese") !== null && lire("anamnese") === "Texte initial.");
 
 // === 16. Export : un 423 ré-affiche l'écran de verrouillage ==================
 overlay().hidden = true;
@@ -749,7 +754,7 @@ globalThis.URL.revokeObjectURL = () => {};
 __t.CUR = structuredClone(CUR0);
 __t.renderBilan();
 await settle();
-secTa("anamnese").value = "Texte initial. CORRECTION CLINIQUE";
+ecrire("anamnese", "Texte initial. CORRECTION CLINIQUE");
 check("détection : la rubrique modifiée est repérée comme non enregistrée",
   __t.sectionsNonEnregistrees().length === 1);
 confirmCalls = []; confirmReponse = false;
@@ -774,14 +779,14 @@ check("export accepté : la correction est enregistrée puis exportée",
 Object.defineProperty(navigator, "clipboard", {
   value: { writeText: async (t) => { copie = t; } }, configurable: true,
 });
-secTa("anamnese").value = "Texte initial. AUTRE CORRECTION";
+ecrire("anamnese", "Texte initial. AUTRE CORRECTION");
 sectionPuts = []; copie = null;
 document.getElementById("copyBilan").click();
 await settle();
 check("copie : la correction est enregistrée et présente dans le presse-papiers",
   sectionPuts.length === 1 && copie !== null && copie.includes("AUTRE CORRECTION"));
 
-secTa("diagnostic").value = "Diagnostic corrigé à la main";
+ecrire("diagnostic", "Diagnostic corrigé à la main");
 confirmReponse = false; statutPuts = []; sectionPuts = [];
 document.getElementById("valideBtn").click();
 await settle();

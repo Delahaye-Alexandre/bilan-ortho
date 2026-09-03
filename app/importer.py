@@ -14,6 +14,8 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
+from . import texte_riche
+
 # Mots-clés d'en-tête -> clé de rubrique (tronc commun).
 _HEADINGS: list[tuple[str, str]] = [
     ("administratif", r"donn[ée]es administratives|identit[ée]|objet du bilan"),
@@ -107,15 +109,64 @@ def _pdf_text(data: bytes) -> str:
         raise ValueError(_PDF_ILLISIBLE) from exc
 
 
+def _docx_format_liste(doc, paragraphe) -> bool | None:
+    """None si le paragraphe n'est pas un élément de liste, sinon True pour
+    une liste numérotée et False pour une liste à puces."""
+    nom_style = ((paragraphe.style.name if paragraphe.style is not None else "") or "").lower()
+    ppr = paragraphe._p.pPr
+    num_pr = ppr.numPr if ppr is not None else None
+    if num_pr is None and "list" not in nom_style and "liste" not in nom_style:
+        return None
+    # Le format réel (puce ou décimal) vit dans les définitions de numérotation ;
+    # à défaut, le nom du style tranche (« List Number », « Liste à numéros »).
+    try:
+        from docx.oxml.ns import qn
+
+        num_id = num_pr.numId.val if num_pr is not None else (
+            paragraphe.style.element.pPr.numPr.numId.val
+        )
+        numbering = doc.part.numbering_part.element
+        abstract_id = numbering.num_having_numId(num_id).abstractNumId.val
+        for abstrait in numbering.findall(qn("w:abstractNum")):
+            if abstrait.get(qn("w:abstractNumId")) == str(abstract_id):
+                fmt = abstrait.find(f"{qn('w:lvl')}[@{qn('w:ilvl')}='0']/{qn('w:numFmt')}")
+                if fmt is not None:
+                    return fmt.get(qn("w:val")) != "bullet"
+    except Exception:
+        pass
+    return "number" in nom_style or "numéro" in nom_style
+
+
 def _docx_text(data: bytes) -> str:
-    """Texte d'un .docx (format que l'app exporte elle-même)."""
+    """Texte d'un .docx, mise en forme conservée en Markdown restreint.
+
+    Le gras, l'italique, le souligné et les listes des bilans du praticien
+    font partie de son style : conservés dans les extraits de référence, ils
+    montrent au modèle ce que ce praticien met en relief. Les titres restent
+    en clair, seuls sur leur ligne, condition pour que sectionize() les repère.
+    Les tableaux du document ne sont pas lus (limite connue)."""
     from docx import Document
 
     try:
         doc = Document(io.BytesIO(data))
     except Exception as exc:
         raise ValueError("Fichier .docx illisible (corrompu ?).") from exc
-    return "\n".join(p.text for p in doc.paragraphs)
+    lignes: list[str] = []
+    for p in doc.paragraphs:
+        nom_style = ((p.style.name if p.style is not None else "") or "").lower()
+        if nom_style.startswith(("heading", "titre", "title")):
+            lignes.append(p.text)
+            continue
+        segments = [
+            texte_riche.Segment(r.text, bool(r.bold), bool(r.italic), bool(r.underline))
+            for r in p.runs if r.text
+        ]
+        ligne = texte_riche.serialiser_segments(segments)
+        liste = _docx_format_liste(doc, p)
+        if liste is not None and ligne.strip():
+            ligne = ("1. " if liste else "- ") + ligne.strip()
+        lignes.append(ligne)
+    return "\n".join(lignes)
 
 
 def _odt_text(data: bytes) -> str:
@@ -198,7 +249,9 @@ def sectionize(text: str) -> list[tuple[str, str, str]]:
             out.append((cur_cle, cur_titre, contenu))
 
     for line in text.splitlines():
-        s = line.strip()
+        # Un praticien met souvent ses intertitres en gras : l'en-tête est
+        # repéré sur la version en clair, et le titre retenu est en clair.
+        s = texte_riche.en_clair(line.strip()) if "*" in line or "<u>" in line else line.strip()
         cle = _is_heading(s)
         if cle:
             flush()

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import io
 
-from . import cotation
+from . import cotation, texte_riche
 from .bilan import DRAPEAU_LIBELLE, etalonnage_texte
 from .patient import age_texte, date_fr
 
@@ -195,7 +195,8 @@ def _content(b: dict, cfg: dict | None = None) -> list[tuple[str, object]]:
     for s in b.get("sections", []):
         if (s.get("contenu") or "").strip():
             blocks.append(("h2", s["titre"]))
-            blocks.append(("p", s["contenu"].strip()))
+            # Contenu de rubrique : texte riche (gras, listes…) — voir texte_riche.
+            blocks.append(("riche", s["contenu"].strip()))
     table = _table_epreuves(b)
     if table:
         blocks.append(("h2", "Résultats des épreuves"))
@@ -254,6 +255,8 @@ def to_markdown(b: dict, cfg: dict | None = None) -> str:
             out.append(f"\n## {t}")
         elif k == "p":
             out.append(f"\n{t}")
+        elif k == "riche":
+            out.append("\n" + texte_riche.canonique(t))
         elif k == "table":
             out.append("\n| " + " | ".join(_COLONNES) + " |")
             out.append("| " + " | ".join("---" for _ in _COLONNES) + " |")
@@ -283,6 +286,8 @@ def to_txt(b: dict, cfg: dict | None = None) -> str:
             out.append("\n" + t.upper())
         elif k == "p":
             out.append(t)
+        elif k == "riche":
+            out.append(texte_riche.en_clair(t))
         elif k == "table":
             cellules = [[_cellule_txt(c) for c in ligne] for ligne in t]
             larg = [
@@ -301,6 +306,71 @@ def to_txt(b: dict, cfg: dict | None = None) -> str:
         elif k == "i":
             out.append(t)
     return "\n".join(out).strip() + "\n"
+
+
+def _docx_runs(paragraphe, segments: list[texte_riche.Segment]) -> None:
+    """Segments -> runs Word (gras, italique, souligné, retours à la ligne)."""
+    for s in segments:
+        for i, morceau in enumerate(s.texte.split("\n")):
+            if i:
+                paragraphe.add_run().add_break()
+            if not morceau:
+                continue
+            run = paragraphe.add_run(morceau)
+            if s.gras:
+                run.bold = True
+            if s.italique:
+                run.italic = True
+            if s.souligne:
+                run.underline = True
+
+
+def _docx_numerotation_neuve(doc, nom_style: str):
+    """Nouvelle instance de numérotation repartant à 1, calquée sur le style.
+
+    python-docx fait partager à tous les paragraphes « List Number » une même
+    numérotation : la deuxième liste du document continuait à 4. Retourne
+    l'identifiant à poser sur les paragraphes, ou None si le document (un
+    gabarit du praticien, par exemple) ne s'y prête pas — la liste continue
+    alors, plutôt que d'échouer."""
+    try:
+        from docx.oxml.ns import qn
+
+        style = doc.styles[nom_style]
+        num_id = style.element.pPr.numPr.numId.val
+        numbering = doc.part.numbering_part.element
+        origine = numbering.num_having_numId(num_id)
+        neuf = numbering.add_num(origine.abstractNumId.val)
+        neuf.add_lvlOverride(ilvl=0).add_startOverride(1)
+        qn("w:numId")  # import utilisé : garde le linter tranquille
+        return neuf.numId
+    except Exception:
+        return None
+
+
+def _docx_liste(doc, bloc: texte_riche.Liste) -> None:
+    nom_style = "List Number" if bloc.ordonnee else "List Bullet"
+    num_id = _docx_numerotation_neuve(doc, nom_style) if bloc.ordonnee else None
+    for i, item in enumerate(bloc.items, 1):
+        try:
+            p = doc.add_paragraph(style=nom_style)
+        except KeyError:
+            # Style absent (gabarit personnalisé) : le marqueur devient du texte.
+            p = doc.add_paragraph(f"{i}. " if bloc.ordonnee else "- ")
+        else:
+            if num_id is not None:
+                num_pr = p._p.get_or_add_pPr().get_or_add_numPr()
+                num_pr.get_or_add_numId().val = num_id
+                num_pr.get_or_add_ilvl().val = 0
+        _docx_runs(p, item)
+
+
+def _docx_riche(doc, texte: str) -> None:
+    for bloc in texte_riche.analyser(texte):
+        if isinstance(bloc, texte_riche.Liste):
+            _docx_liste(doc, bloc)
+        else:
+            _docx_runs(doc.add_paragraph(), bloc.segments)
 
 
 def to_docx(b: dict, cfg: dict | None = None) -> bytes:
@@ -328,6 +398,8 @@ def to_docx(b: dict, cfg: dict | None = None) -> bytes:
             doc.add_heading(t, level=1)
         elif k == "p":
             doc.add_paragraph(t)
+        elif k == "riche":
+            _docx_riche(doc, t)
         elif k == "table":
             table = doc.add_table(rows=1, cols=len(_COLONNES))
             table.style = "Table Grid"
@@ -368,6 +440,8 @@ def to_pdf(b: dict, cfg: dict | None = None) -> bytes:
     from reportlab.lib.units import mm
     from reportlab.platypus import (
         HRFlowable,
+        ListFlowable,
+        ListItem,
         Paragraph,
         SimpleDocTemplate,
         Spacer,
@@ -385,6 +459,35 @@ def to_pdf(b: dict, cfg: dict | None = None) -> bytes:
 
     def esc(txt: str) -> str:
         return (txt.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+    def balise(segments: list[texte_riche.Segment]) -> str:
+        """Segments -> balisage de paragraphe reportlab (texte échappé d'abord :
+        seules NOS balises passent)."""
+        parts = []
+        for s in segments:
+            t = esc(s.texte).replace("\n", "<br/>")
+            if s.souligne:
+                t = f"<u>{t}</u>"
+            if s.italique:
+                t = f"<i>{t}</i>"
+            if s.gras:
+                t = f"<b>{t}</b>"
+            parts.append(t)
+        return "".join(parts)
+
+    def riche(texte: str) -> list:
+        flow: list = []
+        for bloc in texte_riche.analyser(texte):
+            if isinstance(bloc, texte_riche.Paragraphe):
+                flow.append(Paragraph(balise(bloc.segments), corps))
+                continue
+            items = [ListItem(Paragraph(balise(i), corps), leftIndent=14) for i in bloc.items]
+            flow.append(ListFlowable(
+                items, bulletType="1" if bloc.ordonnee else "bullet",
+                start=1 if bloc.ordonnee else "•", leftIndent=14,
+                bulletFontSize=9, spaceBefore=2, spaceAfter=2,
+            ))
+        return flow
 
     def construire(tableau_en_lignes: bool) -> list:
         """Blocs du document. `tableau_en_lignes` rend les résultats sous forme
@@ -411,8 +514,10 @@ def to_pdf(b: dict, cfg: dict | None = None) -> bytes:
             elif k == "h2":
                 flow.append(Paragraph(esc(t), titre2))
             elif k == "p":
-                # Les rubriques dictées contiennent des sauts de ligne signifiants.
                 flow.append(Paragraph(esc(t).replace("\n", "<br/>"), corps))
+            elif k == "riche":
+                # Les rubriques portent gras, listes et sauts de ligne signifiants.
+                flow.extend(riche(t))
             elif k == "table" and tableau_en_lignes:
                 for ligne in t:
                     parts = [f"<b>{esc(ligne[0])}</b>"] + [

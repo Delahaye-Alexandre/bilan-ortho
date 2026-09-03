@@ -136,6 +136,25 @@ AIDE_RUBRIQUES: dict[str, str] = {
 }
 
 
+# Mise en forme des textes proposés. Le praticien la contrôle (réglage
+# style.mise_en_forme_ia) ; quand elle est permise, elle se calque sur les
+# extraits de référence, qui conservent désormais gras, souligné et listes.
+MISE_EN_FORME_AUTORISEE = (
+    "MISE EN FORME : tu peux utiliser du gras (**texte**), de l'italique "
+    "(*texte*), du souligné (<u>texte</u>) et des listes (un élément par ligne, "
+    "commençant par « - » ou « 1. »). Jamais de titres, de tableaux ni d'autre "
+    "balisage. Reste sobre et calque ta mise en forme sur celle des extraits du "
+    "praticien s'il y en a : mets en relief ce qu'il met en relief, ni plus ni "
+    "moins. Sans extrait : gras réservé aux noms de tests et aux résultats "
+    "saillants, listes réservées aux énumérations (axes de rééducation, "
+    "aménagements)."
+)
+MISE_EN_FORME_INTERDITE = (
+    "N'utilise AUCUNE mise en forme : ni astérisques, ni balises, ni listes à "
+    "puces — du texte brut uniquement."
+)
+
+
 def aide_rubrique(cle: str, aides: dict[str, str] | None = None) -> str:
     """Repère de contenu d'une rubrique : trame du praticien, sinon défaut."""
     perso = (aides or {}).get(cle)
@@ -230,6 +249,10 @@ def build_structure_user(
             reperes += f"\n{detail}"
         pronom = "vouvoyant" if style_prefs.get("vouvoiement", True) else "tutoyant"
         reperes += f"\nFormule tes questions au praticien en le {pronom}."
+        reperes += "\n" + (
+            MISE_EN_FORME_AUTORISEE if style_prefs.get("mise_en_forme_ia", True)
+            else MISE_EN_FORME_INTERDITE
+        )
     if style_examples:
         ex = "\n---\n".join(style_examples)
         reperes += (

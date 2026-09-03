@@ -211,6 +211,10 @@ DEFAULTS: dict[str, Any] = {
         "few_shot_k": 4,           # nb d'extraits du praticien réinjectés (RAG)
         "vouvoiement": True,
         "niveau_detail": "standard",  # concis | standard | detaille
+        # Le modèle peut mettre en forme (gras, italique, souligné, listes),
+        # sobrement et en calquant les bilans de référence. Désactivé : ses
+        # textes sont remis en clair avant d'entrer dans les rubriques.
+        "mise_en_forme_ia": True,
     },
     "seuils": {
         # Écarts-types (recherche : -1,5 ET = zone patho standard).

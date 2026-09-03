@@ -48,6 +48,7 @@ from . import (
     security,
     stt,
     systeme,
+    texte_riche,
     verif_chiffres,
     verif_tests,
     verif_texte,
@@ -885,15 +886,25 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
     noms_tests = catalogues.tous_les_noms(cfg)
     titres = {s["cle"]: s["titre"] for s in b["sections"]}
     rubriques_a_verifier = []
+    # Le praticien a désactivé la mise en forme par l'IA : ce qu'elle a balisé
+    # malgré la consigne est remis en clair ici, de façon déterministe.
+    if not (cfg.get("style") or {}).get("mise_en_forme_ia", True):
+        for u in result["updates"]:
+            u["texte"] = texte_riche.en_clair(u["texte"])
     for u in result["updates"]:
+        # Les vérificateurs lisent le texte sans marqueurs (« **-2,1 ET** »
+        # reste un chiffre) et sans numéros de liste (qui ne sont pas des
+        # valeurs cliniques à retrouver dans la dictée).
+        clair = texte_riche.en_clair(u["texte"], numeroter=False)
+        sources_claires = [texte_riche.en_clair(s, numeroter=False) for s in sources]
         msgs = (
-            verif_chiffres.signalements(u["texte"], sources)
+            verif_chiffres.signalements(clair, sources_claires)
             # Un nom de test substitué ne portait jusqu'ici aucun signalement
             # exploitable : « chiffres absents : 6, -15 » pour « EVALEO 6-15 ».
-            + verif_tests.signalements(u["texte"], sources, noms_tests)
+            + verif_tests.signalements(clair, sources_claires, noms_tests)
             # Une prose entièrement inventée ne contient aucun chiffre : elle
             # passait sans un mot.
-            + verif_texte.signalements(u["texte"], sources)
+            + verif_texte.signalements(clair, sources_claires)
         )
         if msgs:
             rubriques_a_verifier.append({
