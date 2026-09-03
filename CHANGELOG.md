@@ -5,7 +5,7 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
-## Non publié
+## 1.11.0 — 2026-09-03
 
 Plan « Paramètres compréhensibles » (`docs/plan-parametres-2026-09-03.md`) :
 
