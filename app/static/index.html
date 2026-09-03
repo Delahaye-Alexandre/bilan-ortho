@@ -457,6 +457,14 @@
           <div class="muted">Si le nom proposé a changé dans la bibliothèque Ollama, ou si le modèle est trop lourd pour votre disque, un modèle plus compact suffit pour commencer.</div>
         </div>
       </fieldset>
+      <fieldset>
+        <legend>3. Modèle de dictée (Whisper)</legend>
+        <div id="instWhisper" class="muted">—</div>
+        <div class="row" style="margin-top:8px">
+          <button id="instWhisperBtn">⬇ Télécharger le modèle de dictée</button>
+          <span class="status" id="instWhisperStatus" role="status"></span>
+        </div>
+      </fieldset>
       <div class="row" style="margin-top:14px">
         <span class="muted grow" id="instResume"></span>
         <button id="instPasser" class="ghost" hidden title="Vous pourrez consulter et exporter vos bilans ; la dictée et l'analyse attendront les modèles">Passer cette étape</button>
@@ -682,6 +690,15 @@ function showInstall(inst) {
       `<div style="color:var(--warn)">⚠️ Espace disque : ${libre} Gio libres pour environ ${besoin} Gio à télécharger. Libérez de la place ou choisissez un modèle plus compact.</div>`);
   }
   document.getElementById('instPull').disabled = !inst.ollama || !manquants.length;
+  // Le modèle de dictée se téléchargeait au premier « Arrêter », après que la
+  // personne avait parlé : il a sa place ici, avant toute dictée.
+  const wEtat = inst.whisper_telechargement || 'inactif';
+  document.getElementById('instWhisper').innerHTML = inst.whisper_present
+    ? `✅ Modèle de dictée « ${escapeHtml(inst.whisper_modele || '')} » présent.`
+    : `À télécharger : <b>${escapeHtml(inst.whisper_modele || 'medium')}</b> (~${escapeHtml(String(inst.whisper_taille_go || 1.5))} Go, une seule fois). Sans lui, la première dictée attendrait ce téléchargement après que vous ayez parlé.`;
+  document.getElementById('instWhisperBtn').disabled = !!inst.whisper_present || wEtat === 'en_cours';
+  if (inst.whisper_present) document.getElementById('instWhisperStatus').textContent = '';
+  else if (wEtat === 'erreur') document.getElementById('instWhisperStatus').textContent = '❌ ' + messageErreurPull(inst.whisper_erreur || '');
   const pret = inst.pret;
   document.getElementById('instContinuer').disabled = !pret;
   // Jamais un cul-de-sac : sans Ollama ou sans modèle, on peut quand même
@@ -698,7 +715,7 @@ function messageErreurPull(brut) {
     return 'Ce modèle n\'existe pas (ou plus) sous ce nom dans la bibliothèque Ollama — essayez un autre modèle ci-dessous.';
   if (/no space left|not enough space|insufficient/i.test(m))
     return 'Espace disque insuffisant pour ce modèle — libérez de la place ou choisissez un modèle plus compact ci-dessous.';
-  if (/injoignable|connection refused|dial tcp|no such host|EOF|timeout|reset by peer/i.test(m))
+  if (/injoignable|connection refused|connection error|max retries|could not resolve|offline|dial tcp|no such host|EOF|timeout|reset by peer/i.test(m))
     return 'Connexion interrompue pendant le téléchargement — vérifiez votre accès Internet, puis réessayez (Ollama reprend là où il s\'était arrêté).';
   return 'Le téléchargement a échoué : ' + m;
 }
@@ -825,6 +842,34 @@ document.getElementById('instAutreBtn').addEventListener('click', e => avecBouto
     st.textContent = modelesManquants(INST || {}).length ? '⚠️ Téléchargement incomplet — réessayez.' : '✅ Téléchargement terminé.';
   } catch (err) { st.textContent = '❌ ' + messageErreurPull(err.message); }
 }));
+let INST_POLL_MS = 3000;
+async function suivreWhisper() {
+  const st = document.getElementById('instWhisperStatus');
+  const t0 = Date.now();
+  while (true) {
+    await new Promise(r => setTimeout(r, INST_POLL_MS));
+    await recheckInstall();
+    const inst = INST || {};
+    if (inst.whisper_present) { st.textContent = '✅ Modèle de dictée installé.'; return; }
+    if (inst.whisper_telechargement === 'erreur') {
+      st.textContent = '❌ ' + messageErreurPull(inst.whisper_erreur || '');
+      document.getElementById('instWhisperBtn').disabled = false;
+      return;
+    }
+    const s = Math.round((Date.now() - t0) / 1000);
+    statutOccupe(st, `Téléchargement en cours… ${s} s (comptez 5 à 15 min selon la connexion ; pas de progression détaillée pour ce modèle)`);
+  }
+}
+document.getElementById('instWhisperBtn').addEventListener('click', async e => {
+  const btn = e.target, st = document.getElementById('instWhisperStatus');
+  btn.disabled = true;
+  try {
+    const s = await (await api('/api/installation/whisper', { method: 'POST' })).json();
+    if (s.etat === 'erreur') { st.textContent = '❌ ' + messageErreurPull(s.message); btn.disabled = false; return; }
+    statutOccupe(st, 'Téléchargement en cours…');
+    await suivreWhisper();
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; btn.disabled = false; }
+});
 document.getElementById('instPasser').addEventListener('click', () => {
   document.getElementById('installOverlay').hidden = true;
   gateApresInstall();
@@ -1896,6 +1941,29 @@ async function initDictee() {
   try { const i = await (await api('/api/stt/info')).json(); document.getElementById('sttInfo').textContent = `Dictée : ${i.model} · ${i.device}`; } catch {}
 }
 let keepAlive = null, dicteeTimer = null;
+// Dernier enregistrement dont la transcription a échoué : conservé en mémoire
+// seulement (jamais sur le disque), jusqu'au prochain essai ou à la prochaine
+// dictée. Sans cela, un échec (modèle pas encore téléchargé, disque plein)
+// obligeait à tout redicter (revue du 2026-08-11, 6.3).
+let DERNIER_AUDIO = null;
+async function transcrire(blob) {
+  recBtn.disabled = true;
+  try {
+    const fd = new FormData(); fd.append('audio', blob, 'dictee.webm');
+    const r = await api('/api/transcribe', { method: 'POST', body: fd });
+    const res = await r.json();
+    dicteeText.value += (dicteeText.value ? ' ' : '') + res.text;
+    DERNIER_AUDIO = null;
+    recStatus.textContent = '✓ transcrit';
+  } catch (e) {
+    DERNIER_AUDIO = blob;
+    recStatus.textContent = `Erreur : ${e.message} — votre enregistrement est conservé en mémoire, rien à redicter. `;
+    const b = document.createElement('button');
+    b.className = 'ghost'; b.id = 'recRetry'; b.textContent = '↻ Réessayer la transcription';
+    b.addEventListener('click', () => { statutOccupe(recStatus, 'Transcription locale…'); transcrire(DERNIER_AUDIO); });
+    recStatus.appendChild(b);
+  } finally { recBtn.disabled = false; }
+}
 async function toggleRec() {
   if (recording) {
     // Double-clic sur « Arrêter » : stop() sur un enregistreur déjà arrêté
@@ -1914,6 +1982,7 @@ async function toggleRec() {
     if (!isNaN(v)) maxMin = v;
   } catch {}
   let autoArret = false;
+  DERNIER_AUDIO = null;  // une nouvelle dictée remplace l'enregistrement en attente
   chunks = []; mediaRecorder = new MediaRecorder(stream);
   mediaRecorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   mediaRecorder.onstop = async () => {
@@ -1926,15 +1995,7 @@ async function toggleRec() {
     statutOccupe(recStatus, autoArret
       ? `Dictée arrêtée automatiquement après ${maxMin} min — la transcription démarre.`
       : 'Transcription locale… (1er lancement : téléchargement du modèle)');
-    recBtn.disabled = true;
-    try {
-      const fd = new FormData(); fd.append('audio', blob, 'dictee.webm');
-      const r = await api('/api/transcribe', { method: 'POST', body: fd });
-      const res = await r.json();
-      dicteeText.value += (dicteeText.value ? ' ' : '') + res.text;
-      recStatus.textContent = '✓ transcrit';
-    } catch (e) { recStatus.textContent = 'Erreur : ' + e.message; }
-    finally { recBtn.disabled = false; }
+    await transcrire(blob);
   };
   mediaRecorder.start();
   // Ping périodique : garde le coffre déverrouillé tant que la dictée tourne (évite un 423 au moment de transcrire).

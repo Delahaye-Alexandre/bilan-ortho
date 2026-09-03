@@ -1498,3 +1498,22 @@ def test_epreuve_par_percentile_seul_drapeau_alerte_et_export(client):
     assert any("-300" in a for a in r.json()["avertissements"])
     md = client.get(f"/api/bilans/{b['id']}/export?format=md").text
     assert "2e percentile" in md and "déficit sévère" in md
+
+
+# --- revue 2026-08-11, 6.3 : téléchargement du modèle de dictée ---------------
+
+def test_installation_expose_et_lance_le_modele_de_dictee(client, monkeypatch):
+    from app import stt, systeme
+
+    monkeypatch.setattr(systeme, "ollama_etat", lambda cfg: {"ok": True, "modeles": []})
+    monkeypatch.setattr(systeme, "_whisper_present", lambda cfg: False)
+    etat = client.get("/api/installation").json()
+    assert etat["whisper_present"] is False and etat["pret"] is False
+    assert {"whisper_modele", "whisper_taille_go", "whisper_telechargement"} <= set(etat)
+    lances = []
+    monkeypatch.setattr(
+        stt, "telecharger_en_arriere_plan",
+        lambda cfg: lances.append(cfg["stt"]["model"]) or {"etat": "en_cours", "message": "", "modele": "medium"},
+    )
+    r = client.post("/api/installation/whisper")
+    assert r.status_code == 200 and r.json()["etat"] == "en_cours" and lances

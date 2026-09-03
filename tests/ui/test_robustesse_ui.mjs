@@ -64,6 +64,8 @@ let installResponder = () => ({ ollama: true, pret: true, config_lisible: true, 
 let lockCalls = 0;
 let passphrasePosts = [];
 let pullPosts = [];
+let whisperPosts = 0;
+let transcribeKo = false;
 let pullLignes = () => ['{"error":"pull model manifest: file does not exist"}'];
 const fluxNdjson = (lignes) => new ReadableStream({
   start(ctrl) { ctrl.enqueue(new TextEncoder().encode(lignes.join("\n") + "\n")); ctrl.close(); },
@@ -177,7 +179,9 @@ globalThis.fetch = async (p, o = {}) => {
     }
     return rep(refsList.map((r) => ({ ...r })));
   }
-  if (url.includes("/api/transcribe")) return rep({ text: "texte transcrit" });
+  if (url.includes("/api/transcribe"))
+    return rep(transcribeKo ? { __status: 500, detail: "La transcription a échoué." } : { text: "texte transcrit" });
+  if (url.includes("/api/installation/whisper")) { whisperPosts++; return rep({ etat: "en_cours", message: "", modele: "medium" }); }
   if (url.includes("/api/models")) return rep({ models: ["qwen3.5:4b", "qwen3.5:9b"], default: "qwen3.5:4b" });
   if (url.includes("/api/status")) return rep(statusResponder());
   if (url.includes("/api/installation")) return rep(installResponder());
@@ -220,6 +224,7 @@ const body = scriptBody.replace(/gate\(\);\s*$/, "") + `
   get QUITTER_SANS_GARDE() { return QUITTER_SANS_GARDE; }, set QUITTER_SANS_GARDE(v) { QUITTER_SANS_GARDE = v; },
   renderQuestions, renderBilan, structure, saisieEnCours, loadRecents, loadRefs,
   loadBilan, sectionsNonEnregistrees, gate, loadLLM, loadDomaines,
+  get INST_POLL_MS() { return INST_POLL_MS; }, set INST_POLL_MS(v) { INST_POLL_MS = v; },
 };`;
 new Function(body)();
 
@@ -1178,6 +1183,53 @@ await settle();
 check("« Passer cette étape » : écran d'installation fermé, création du coffre proposée",
   document.getElementById("installOverlay").hidden === true && overlay().hidden === false);
 overlay().hidden = true;
+
+// === 6.3 (revue 2026-08-11) : le modèle de dictée dans l'écran d'installation
+let whisperPresent = false, whisperEtat = "inactif";
+installResponder = () => ({ ollama: true, pret: false, config_lisible: false,
+                            modeles: ["qwen3.5:4b", "nomic-embed-text"], llm_present: true, embeddings_present: true,
+                            embeddings_configure: "nomic-embed-text",
+                            whisper_modele: "medium", whisper_taille_go: 1.5, whisper_present: whisperPresent,
+                            whisper_telechargement: whisperPresent ? "termine" : whisperEtat, whisper_erreur: "",
+                            disque_libre_gio: 40, taille_a_telecharger_gio: whisperPresent ? 0 : 1.5,
+                            proposition: { modele: "qwen3.5:4b", raison: "" } });
+document.getElementById("installOverlay").hidden = false;
+await __t.gate();
+await settle();
+check("installation : le modèle de dictée a son étape, à télécharger AVANT toute dictée",
+  document.getElementById("instWhisper").textContent.includes("medium")
+  && document.getElementById("instWhisperBtn").disabled === false
+  && document.getElementById("instContinuer").disabled === true);
+__t.INST_POLL_MS = 5;
+whisperEtat = "en_cours";  // ce que le serveur répondra une fois le téléchargement lancé
+document.getElementById("instWhisperBtn").click();
+await settle();
+check("modèle de dictée : téléchargement lancé en arrière-plan, suivi en cours",
+  whisperPosts === 1 && document.getElementById("instWhisperStatus").textContent.includes("en cours"));
+whisperPresent = true;
+await settle(); await settle();
+check("modèle de dictée installé : statut ✅, étape marquée présente",
+  document.getElementById("instWhisperStatus").textContent.includes("✅")
+  && document.getElementById("instWhisper").textContent.includes("présent"));
+document.getElementById("installOverlay").hidden = true;
+
+// === 6.3 : un audio dont la transcription échoue n'est pas perdu =============
+document.getElementById("dicteeText").value = "";
+document.getElementById("recBtn").click();   // démarre
+await settle();
+transcribeKo = true;
+document.getElementById("recBtn").click();   // arrête → transcription en échec
+await settle();
+const recStatusEl = document.getElementById("recStatus");
+check("transcription en échec : l'enregistrement est conservé, un bouton « Réessayer » apparaît",
+  recStatusEl.textContent.includes("conservé") && document.getElementById("recRetry") !== null
+  && document.getElementById("dicteeText").value === "");
+transcribeKo = false;
+document.getElementById("recRetry").click();
+await settle();
+check("réessai : le même enregistrement est transcrit, rien à redicter",
+  document.getElementById("dicteeText").value.includes("texte transcrit")
+  && document.getElementById("recRetry") === null);
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

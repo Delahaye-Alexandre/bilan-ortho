@@ -147,6 +147,25 @@ def _present(nom: str, modeles: list[str]) -> bool:
     )
 
 
+def _whisper_present(cfg: dict) -> bool:
+    from . import stt  # import tardif : faster-whisper est lourd à charger
+
+    return stt.modele_present(cfg)
+
+
+def _whisper_infos(cfg: dict) -> dict:
+    from . import stt
+
+    spec = stt.resolved(cfg)
+    tl = stt.etat_telechargement()
+    return {
+        "whisper_modele": spec["model"],
+        "whisper_taille_go": stt.taille_estimee_go(spec["model"]),
+        "whisper_telechargement": tl["etat"],
+        "whisper_erreur": tl["message"],
+    }
+
+
 def etat_installation(cfg: dict, modele_choisi: str = "") -> dict:
     """Bilan complet pour l'écran de premier lancement.
 
@@ -167,10 +186,16 @@ def etat_installation(cfg: dict, modele_choisi: str = "") -> dict:
     # l'UI la bascule en configuration après le déverrouillage).
     llm_pret = llm_present or _present(prop["modele"], ollama["modeles"])
     emb_present = _present(emb, ollama["modeles"])
-    a_telecharger = (0.0 if llm_pret else taille_estimee_go(prop["modele"])) + (
-        0.0 if emb_present else taille_estimee_go(emb)
+    whisper = _whisper_infos(cfg)
+    whisper_present = _whisper_present(cfg)
+    a_telecharger = (
+        (0.0 if llm_pret else taille_estimee_go(prop["modele"]))
+        + (0.0 if emb_present else taille_estimee_go(emb))
+        + (0.0 if whisper_present else whisper["whisper_taille_go"])
     )
     return {
+        **whisper,
+        "whisper_present": whisper_present,
         "ollama": ollama["ok"],
         "modeles": ollama["modeles"],
         "ram_gio": ram,
@@ -179,7 +204,7 @@ def etat_installation(cfg: dict, modele_choisi: str = "") -> dict:
         "llm_present": llm_present,
         "embeddings_configure": emb,
         "embeddings_present": emb_present,
-        "pret": ollama["ok"] and llm_pret and emb_present,
+        "pret": ollama["ok"] and llm_pret and emb_present and whisper_present,
         "disque_libre_gio": disque_libre_gio(),
         "taille_a_telecharger_gio": round(a_telecharger, 1),
     }

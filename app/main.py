@@ -294,6 +294,13 @@ async def pull_modele(req: dict) -> StreamingResponse:
     return StreamingResponse(relais(), media_type="application/x-ndjson")
 
 
+@app.post("/api/installation/whisper")
+async def telecharger_whisper() -> dict:
+    """Lance le téléchargement du modèle de dictée en arrière-plan ; l'état
+    se suit via GET /api/installation (whisper_telechargement)."""
+    return await run_in_threadpool(stt.telecharger_en_arriere_plan, _cfg_courante())
+
+
 # --- Configuration -----------------------------------------------------------
 
 @app.get("/api/config", dependencies=[Depends(require_unlock)])

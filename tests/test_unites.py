@@ -365,6 +365,7 @@ def test_etat_installation_sans_ollama(monkeypatch):
     from app import config, systeme
 
     monkeypatch.setattr(systeme, "ollama_etat", lambda cfg: {"ok": False, "modeles": []})
+    monkeypatch.setattr(systeme, "_whisper_present", lambda cfg: True)
     etat = systeme.etat_installation(config.DEFAULTS)
     assert etat["ollama"] is False and etat["pret"] is False
     assert etat["proposition"]["modele"]
@@ -380,6 +381,7 @@ def test_etat_installation_pret_via_proposition(monkeypatch):
         systeme, "ollama_etat",
         lambda cfg: {"ok": True, "modeles": [prop, "nomic-embed-text:latest"]},
     )
+    monkeypatch.setattr(systeme, "_whisper_present", lambda cfg: True)
     etat = systeme.etat_installation(config.DEFAULTS)
     assert etat["llm_present"] is False
     assert etat["pret"] is True
@@ -1165,6 +1167,7 @@ def test_etat_installation_modele_de_remplacement_et_disque(monkeypatch):
         lambda cfg: {"ok": True, "modeles": ["autre-llm:1b", "nomic-embed-text:latest"]},
     )
     monkeypatch.setattr(systeme, "disque_libre_gio", lambda: 42.0)
+    monkeypatch.setattr(systeme, "_whisper_present", lambda cfg: True)
     # La proposition n'est pas installée : pas prêt, et il reste à télécharger.
     etat = systeme.etat_installation(config.DEFAULTS)
     assert etat["pret"] is False
@@ -1184,3 +1187,69 @@ def test_taille_estimee_des_modeles():
     assert systeme.taille_estimee_go(systeme.MODELE_16GO) == 5.5
     assert systeme.taille_estimee_go("nomic-embed-text:latest") == 0.3
     assert systeme.taille_estimee_go("modele-inconnu:7b") == 4.0
+
+
+# --- revue 2026-08-11, 6.3 : le modèle de dictée dans l'écran d'installation --
+
+def test_etat_installation_exige_le_modele_de_dictee(monkeypatch):
+    from app import config, systeme
+
+    prop = systeme.proposition_modele(systeme.ram_totale_gio())["modele"]
+    monkeypatch.setattr(
+        systeme, "ollama_etat",
+        lambda cfg: {"ok": True, "modeles": [prop, "nomic-embed-text:latest"]},
+    )
+    monkeypatch.setattr(systeme, "_whisper_present", lambda cfg: False)
+    etat = systeme.etat_installation(config.DEFAULTS)
+    assert etat["pret"] is False and etat["whisper_present"] is False
+    assert etat["whisper_modele"] and etat["whisper_taille_go"] > 0
+    # Il compte dans ce qui reste à télécharger.
+    assert etat["taille_a_telecharger_gio"] == etat["whisper_taille_go"]
+    assert etat["whisper_telechargement"] in ("inactif", "termine", "erreur", "en_cours")
+
+
+def test_modele_de_dictee_present_sans_reseau(monkeypatch):
+    """La présence se teste dans le cache local uniquement (local_files_only)."""
+    from app import config, stt
+
+    vus = {}
+
+    def faux_download_model(nom, local_files_only=False, **kw):
+        vus["nom"], vus["local"] = nom, local_files_only
+        raise FileNotFoundError("pas dans le cache")
+
+    import faster_whisper.utils as fwu
+
+    monkeypatch.setattr(fwu, "download_model", faux_download_model)
+    assert stt.modele_present(config.DEFAULTS) is False
+    assert vus["local"] is True and vus["nom"] == stt.resolved(config.DEFAULTS)["model"]
+    monkeypatch.setattr(fwu, "download_model", lambda nom, **kw: "/cache/modele")
+    assert stt.modele_present(config.DEFAULTS) is True
+
+
+def test_telechargement_du_modele_de_dictee_en_arriere_plan(monkeypatch):
+    import threading
+    import time
+
+    from app import config, stt
+
+    barriere = threading.Event()
+    monkeypatch.setattr(stt, "_get_model", lambda spec: barriere.wait(2) or object())
+    monkeypatch.setattr(stt, "_telechargement", {"etat": "inactif", "message": "", "modele": ""})
+    etat = stt.telecharger_en_arriere_plan(config.DEFAULTS)
+    assert etat["etat"] == "en_cours" and etat["modele"]
+    # Relancer pendant le téléchargement ne démarre rien de plus.
+    assert stt.telecharger_en_arriere_plan(config.DEFAULTS)["etat"] == "en_cours"
+    barriere.set()
+    limite = time.monotonic() + 3
+    while stt.etat_telechargement()["etat"] == "en_cours" and time.monotonic() < limite:
+        time.sleep(0.01)
+    assert stt.etat_telechargement()["etat"] == "termine"
+    # Échec : l'état le dit, avec le message, et on peut relancer.
+    monkeypatch.setattr(stt, "_get_model", lambda spec: (_ for _ in ()).throw(RuntimeError("Connection error")))
+    stt.telecharger_en_arriere_plan(config.DEFAULTS)
+    limite = time.monotonic() + 3
+    while stt.etat_telechargement()["etat"] == "en_cours" and time.monotonic() < limite:
+        time.sleep(0.01)
+    assert stt.etat_telechargement() == {"etat": "erreur", "message": "Connection error",
+                                         "modele": stt.resolved(config.DEFAULTS)["model"]}

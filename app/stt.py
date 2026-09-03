@@ -73,6 +73,63 @@ def resolved(cfg: dict) -> dict:
     return {"device": device, "compute_type": compute, "model": model}
 
 
+# Tailles approximatives des modèles CTranslate2 int8/float16 distribués par
+# Systran, pour l'écran d'installation.
+TAILLES_GO = {"tiny": 0.08, "base": 0.15, "small": 0.5, "medium": 1.5, "large-v3": 3.1, "large": 3.1}
+
+
+def taille_estimee_go(modele: str) -> float:
+    return TAILLES_GO.get((modele or "").split("/")[-1].replace("faster-whisper-", ""), 1.5)
+
+
+def modele_present(cfg: dict) -> bool:
+    """Le modèle de dictée résolu est-il déjà dans le cache local ? Sans réseau.
+
+    Jusqu'ici, Whisper (~1,5 Go) se téléchargeait au premier « Arrêter » —
+    après que la personne avait parlé — hors de tout écran d'installation
+    (revue du 2026-08-11, 6.3)."""
+    spec = resolved(cfg)
+    try:
+        from faster_whisper.utils import download_model
+
+        download_model(spec["model"], local_files_only=True)
+        return True
+    except Exception:
+        return False
+
+
+_telechargement: dict = {"etat": "inactif", "message": "", "modele": ""}
+_tl_lock = threading.Lock()
+
+
+def etat_telechargement() -> dict:
+    with _tl_lock:
+        return dict(_telechargement)
+
+
+def telecharger_en_arriere_plan(cfg: dict) -> dict:
+    """Télécharge (et charge) le modèle de dictée dans un thread démon, une
+    seule fois à la fois. Hugging Face ne donne pas de progression exploitable
+    ici : l'écran d'installation suit l'état (en_cours / termine / erreur)."""
+    spec = resolved(cfg)
+    with _tl_lock:
+        if _telechargement["etat"] == "en_cours":
+            return dict(_telechargement)
+        _telechargement.update(etat="en_cours", message="", modele=spec["model"])
+
+    def travail():
+        try:
+            _get_model(spec)
+            with _tl_lock:
+                _telechargement.update(etat="termine", message="")
+        except Exception as exc:
+            with _tl_lock:
+                _telechargement.update(etat="erreur", message=str(exc)[:300])
+
+    threading.Thread(target=travail, daemon=True, name="whisper-telechargement").start()
+    return dict(_telechargement)
+
+
 def _get_model(spec: dict):
     try:
         from faster_whisper import WhisperModel

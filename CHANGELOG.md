@@ -42,8 +42,11 @@ Corrections de la revue complète du 2026-08-11 (v1.8.0 en conditions réelles) 
   installé (bandeau non bloquant et geste qui répare) ; un téléchargement de
   modèle qui échoue n'est plus un cul-de-sac (message en français, autre
   modèle, « passer cette étape »), espace disque vérifié avant, progression en
-  mégaoctets ; le domaine du bilan se choisit explicitement ; l'aide s'ouvre à
-  la première visite ; le sélecteur de modèle ne ment plus.
+  mégaoctets ; le modèle de dictée (Whisper) se télécharge depuis l'écran
+  d'installation, avant toute dictée ; un enregistrement dont la transcription
+  échoue est conservé en mémoire et se réessaie sans redicter ; le domaine du
+  bilan se choisit explicitement ; l'aide s'ouvre à la première visite ; le
+  sélecteur de modèle ne ment plus.
 - **Épreuves** : percentile, note standard et âge de développement saisis à
   part sont enfin pris en compte (drapeau, alerte de plausibilité, export).
 - **Coffre** : schéma v2 avec migration transactionnelle et copie de sécurité
