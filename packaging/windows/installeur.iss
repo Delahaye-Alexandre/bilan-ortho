@@ -52,6 +52,11 @@ Filename: "{tmp}\OllamaSetup.exe"; Parameters: "/VERYSILENT /SUPPRESSMSGBOXES /N
 Filename: "{localappdata}\Programs\Ollama\ollama app.exe"; \
   Flags: nowait skipifdoesntexist
 Filename: "{app}\BilanOrtho.exe"; Description: "Lancer Bilan Ortho"; Flags: postinstall nowait skipifsilent
+; Mise à jour en un clic depuis l'application (app/maj.py) : installeur lancé
+; en /SILENT avec /RELANCER=<port> — on relance l'app sur ce port, sans
+; nouvelle fenêtre, la page ouverte se reconnecte seule (lanceur.py).
+Filename: "{app}\BilanOrtho.exe"; Parameters: "--port={param:RELANCER|0} --sans-fenetre"; \
+  Flags: nowait; Check: RelanceDemandee
 
 ; À la désinstallation, les données patient ({localappdata}\bilan-ortho :
 ; coffre chiffré + sauvegardes) sont volontairement PRÉSERVÉES.
@@ -78,6 +83,12 @@ end;
 function OllamaTelecharge(): Boolean;
 begin
   Result := OllamaOk and FileExists(ExpandConstant('{tmp}\OllamaSetup.exe'));
+end;
+
+function RelanceDemandee(): Boolean;
+begin
+  { /RELANCER=<port> n'est passé que par l'application elle-même. }
+  Result := ExpandConstant('{param:RELANCER|0}') <> '0';
 end;
 
 procedure InitializeWizard;

@@ -152,11 +152,39 @@
   <button class="close" data-close="iaBanner" aria-label="Masquer cet avertissement" style="float:right">✕</button>
 </div>
 <div class="banner" id="majBanner" hidden>
-  ⬆️ Nouvelle version disponible : <b>v<span id="majVersion"></span></b>
-  (installée : v<span id="majActuelle"></span>).
-  L'installation est un geste manuel : téléchargez puis lancez l'installeur — vos données sont préservées.
-  <button class="ghost" id="majOuvrir" style="margin-left:8px">⬇ Télécharger</button>
-  <button class="close" data-close="majBanner" aria-label="Masquer la notification de mise à jour" style="float:right">✕</button>
+  <div class="row" style="align-items:flex-start;gap:10px;flex-wrap:wrap">
+    <div class="grow">
+      ⬆️ Nouvelle version disponible : <b>v<span id="majVersion"></span></b>
+      (installée : v<span id="majActuelle"></span>)<span id="majDate"></span>.
+      <span id="majIgnoree" hidden>Vous aviez choisi d'ignorer cette version.</span>
+      <details id="majNotesBloc" hidden style="margin-top:4px"><summary>Ce qui change</summary>
+        <pre id="majNotes" style="white-space:pre-wrap;font:inherit;margin:4px 0 0"></pre></details>
+      <div id="majManuel" class="muted" hidden>Sur ce poste, l'installation passe par le téléchargement de l'installeur — vos données sont préservées.</div>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:6px">
+      <button id="majInstaller" hidden title="Sauvegarde du coffre, téléchargement vérifié, puis redémarrage automatique">⬆ Installer maintenant</button>
+      <button class="ghost" id="majOuvrir">⬇ Télécharger</button>
+      <button class="ghost" id="majPlusTard">Plus tard</button>
+      <button class="ghost" id="majIgnorer" title="Ne plus proposer cette version au démarrage">Ignorer cette version</button>
+      <button class="close" data-close="majBanner" aria-label="Masquer la notification de mise à jour">✕</button>
+    </div>
+  </div>
+  <div id="majProgression" hidden style="margin-top:8px">
+    <div id="majEtape" class="muted" role="status"></div>
+    <div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-top:4px" aria-hidden="true"><div id="majBarre" style="background:var(--accent);height:100%;width:0%"></div></div>
+  </div>
+</div>
+<div class="banner" id="majInfoBanner" hidden>
+  ℹ️ Bilan Ortho vérifie désormais, au plus une fois par jour, si une nouvelle version existe :
+  une simple requête vers la page des versions du projet (GitHub), sans aucune donnée transmise.
+  <button class="ghost" id="majInfoOk" style="margin-left:8px">Compris</button>
+  <button class="ghost" id="majInfoDesactiver" title="Vous pourrez toujours vérifier à la main dans ⚙️ Paramètres">Désactiver</button>
+</div>
+<div class="lock-overlay" id="majOverlay" hidden style="z-index:70">
+  <div class="lock-card" role="dialog" aria-modal="true" aria-labelledby="majOverlayTitre">
+    <h2 id="majOverlayTitre">⬆️ Mise à jour en cours</h2>
+    <p class="muted" id="majOverlayTexte" role="status"></p>
+  </div>
 </div>
 
 <main>
@@ -368,7 +396,7 @@
           <button id="majCheck" class="ghost">↻ Vérifier maintenant</button>
           <span class="status" id="majStatus"></span>
         </div>
-        <div class="muted">Seul échange réseau de l'application : une simple interrogation de la page des versions du projet (GitHub), sans aucune donnée transmise. Vos données de patients ne quittent jamais cette machine. L'installation d'une mise à jour reste toujours un geste manuel.</div>
+        <div class="muted">Seuls échanges réseau de l'application, toujours vers GitHub et sans aucune donnée transmise : la vérification (au plus une fois par jour si la case est cochée, ou à la demande), puis le téléchargement de l'installeur quand vous cliquez « Installer maintenant » — signature de l'éditeur et empreinte vérifiées avant toute installation. Vos données de patients ne quittent jamais cette machine.</div>
       </fieldset>
       <fieldset>
         <legend>Sauvegarde du coffre (chiffrée)</legend>
@@ -2504,26 +2532,67 @@ document.getElementById('ppBtn').addEventListener('click', e => avecBouton(e.tar
 // déclenché par le bouton des Paramètres, ou au démarrage si l'option opt-in
 // est activée. L'URL de téléchargement est construite par le serveur (jamais
 // reprise de la réponse GitHub) — on n'ouvre pas une URL venue d'un tiers.
-let MAJ_URL = '';
-async function verifierMaj() {
-  const m = await (await api('/api/maj')).json();
-  if (m.maj_disponible) {
-    MAJ_URL = m.url;
-    $('majVersion').textContent = m.version_disponible;
-    $('majActuelle').textContent = m.version_actuelle;
-    $('majBanner').hidden = false;
-  }
+let MAJ_URL = '', MAJ = null;  // dernière réponse de /api/maj affichée
+function majAfficher(m) {
+  MAJ = m; MAJ_URL = m.url;
+  const g = id => document.getElementById(id);
+  g('majVersion').textContent = m.version_disponible;
+  g('majActuelle').textContent = m.version_actuelle;
+  const d = (m.publiee_le || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  g('majDate').textContent = d ? `, publiée le ${d[3]}/${d[2]}/${d[1]}` : '';
+  g('majIgnoree').hidden = !m.ignoree;
+  g('majNotes').textContent = m.notes || '';   // texte, jamais interprété
+  g('majNotesBloc').hidden = !m.notes;
+  g('majInstaller').hidden = !m.installation_possible;
+  g('majManuel').hidden = !!m.installation_possible;
+  g('majProgression').hidden = true;
+  g('majBanner').hidden = false;
+}
+async function verifierMaj(auto = false) {
+  const m = await (await api('/api/maj' + (auto ? '?auto=1' : ''))).json();
+  // Au démarrage, une version ignorée ne fait pas de bandeau ; à la demande, si.
+  if (m.maj_disponible && !(auto && m.ignoree)) majAfficher(m);
   return m;
 }
 async function verifierMajAuto() {
-  // Vérification opt-in du démarrage : jamais bloquante, jamais d'erreur visible.
+  // Vérification du démarrage (au plus une par jour, côté serveur) : jamais
+  // bloquante, jamais d'erreur visible. Activée par défaut : l'app le dit une
+  // fois, avec le moyen de la désactiver.
   try {
     const c = await (await api('/api/config')).json();
-    if ((c.maj || {}).verification_auto) await verifierMaj();
+    if (!(c.maj || {}).verification_auto) return;
+    try {
+      const e = await (await api('/api/maj/etat')).json();
+      if (!e.info_vue) document.getElementById('majInfoBanner').hidden = false;
+    } catch {}
+    await verifierMaj(true);
   } catch {}
 }
+async function majEtat(champs) {
+  return api('/api/maj/etat', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(champs) });
+}
+async function majInfoRepondue(garder) {
+  document.getElementById('majInfoBanner').hidden = true;
+  try {
+    await majEtat({ info_vue: true });
+    if (!garder) {
+      await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ overrides: { maj: { verification_auto: false } } }) });
+    }
+  } catch {}
+}
+document.getElementById('majInfoOk').addEventListener('click', () => majInfoRepondue(true));
+document.getElementById('majInfoDesactiver').addEventListener('click', () => majInfoRepondue(false));
 document.getElementById('majOuvrir').addEventListener('click', () => {
   if (MAJ_URL) window.open(MAJ_URL, '_blank');
+});
+document.getElementById('majPlusTard').addEventListener('click', () => {
+  document.getElementById('majBanner').hidden = true;
+});
+document.getElementById('majIgnorer').addEventListener('click', async () => {
+  if (!MAJ) return;
+  try { await majEtat({ ignoree: MAJ.version_disponible }); } catch {}
+  document.getElementById('majBanner').hidden = true;
 });
 document.getElementById('majCheck').addEventListener('click', e => avecBouton(e.target, async () => {
   const st = $('majStatus'); statutOccupe(st, 'Vérification…');
@@ -2534,6 +2603,92 @@ document.getElementById('majCheck').addEventListener('click', e => avecBouton(e.
       : `✓ Vous êtes à jour (v${m.version_actuelle}).`;
   } catch (err) { st.textContent = 'Erreur : ' + err.message; }
 }));
+// Lecture d'un flux NDJSON (POST JSON) : une ligne = un événement, passé à `sur`.
+async function lireNdjson(url, corps, sur) {
+  const r = await api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) });
+  const lecteur = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await lecteur.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lignes = buf.split('\n'); buf = lignes.pop();
+    for (const l of lignes) {
+      if (!l.trim()) continue;
+      let j; try { j = JSON.parse(l); } catch { continue; }
+      sur(j);
+    }
+  }
+  if (buf.trim()) { try { sur(JSON.parse(buf)); } catch {} }
+}
+// Installation en un clic : sauvegarde du coffre, téléchargement vérifié
+// (signature de l'éditeur + empreinte), installeur silencieux, redémarrage.
+async function installerMaj() {
+  if (!MAJ) return;
+  const g = id => document.getElementById(id);
+  if (saisieEnCours()) {
+    alert('Enregistrez d\'abord votre travail en cours (dictée, rubriques, réponses) : '
+      + 'la mise à jour ferme puis relance l\'application.');
+    return;
+  }
+  if (!confirm(`Installer la version ${MAJ.version_disponible} ?\n\n`
+      + '1. Une sauvegarde du coffre est créée.\n'
+      + '2. L\'installeur est téléchargé et vérifié (signature de l\'éditeur, empreinte).\n'
+      + '3. L\'application se ferme, s\'installe et redémarre seule (environ une minute).\n\n'
+      + 'Vos données sont préservées.')) return;
+  const prog = g('majProgression'), etape = g('majEtape'), barre = g('majBarre');
+  prog.hidden = false; barre.style.width = '0%'; etape.textContent = 'Préparation…';
+  const mo = n => Math.round(n / 1048576);
+  try {
+    await lireNdjson('/api/maj/telecharger', { version: MAJ.version_disponible }, j => {
+      if (j.erreur) throw new Error(j.erreur);
+      if (j.etape === 'sommes') etape.textContent = 'Vérification des empreintes publiées…';
+      if (j.etape === 'telechargement') {
+        barre.style.width = (j.total ? Math.round(100 * j.recu / j.total) : 0) + '%';
+        etape.textContent = `Téléchargement de l'installeur… ${mo(j.recu)} Mo${j.total ? ' / ' + mo(j.total) + ' Mo' : ''}`;
+      }
+      if (j.etape === 'verification') etape.textContent = 'Vérification de l\'installeur…';
+      if (j.fini) { barre.style.width = '100%'; etape.textContent = 'Installeur vérifié. Sauvegarde du coffre, puis installation…'; }
+    });
+    const r = await api('/api/maj/installer', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version: MAJ.version_disponible, port: Number(location.port) || 8000 }) });
+    const res = await r.json();
+    attendreRedemarrage(res.sauvegarde || '');
+  } catch (err) {
+    barre.style.width = '0%';
+    etape.textContent = 'Mise à jour interrompue : ' + err.message
+      + ' Vous pouvez aussi télécharger l\'installeur depuis GitHub (bouton « Télécharger »).';
+  }
+}
+// L'ancienne instance est fermée par l'installeur, la nouvelle relancée sur le
+// même port (lanceur.py --port) : on attend qu'elle réponde, puis on recharge.
+function attendreRedemarrage(sauvegarde) {
+  QUITTER_SANS_GARDE = true;  // tout est enregistré (vérifié avant) : pas de garde au rechargement
+  const ov = document.getElementById('majOverlay'), txt = document.getElementById('majOverlayTexte');
+  const nom = sauvegarde ? sauvegarde.split(/[\\/]/).pop() : '';
+  txt.textContent = (nom ? `Sauvegarde créée (${nom}). ` : '')
+    + 'L\'application se ferme, s\'installe et redémarre : cette page se reconnectera d\'elle-même.';
+  ov.hidden = false;
+  const debut = Date.now(), actuelle = MAJ ? MAJ.version_actuelle : '';
+  const sonder = async () => {
+    try {
+      const r = await fetch('/api/status', { cache: 'no-store' });
+      if (r.ok) {
+        const st = await r.json();
+        if (st.version && st.version !== actuelle) { location.reload(); return; }
+      }
+    } catch {}
+    if (Date.now() - debut > 5 * 60 * 1000) {
+      txt.textContent = 'L\'application n\'a pas redémarré après cinq minutes. Ouvrez Bilan Ortho depuis le Bureau ; '
+        + 'si le problème persiste, le journal de l\'installeur est dans le dossier des données (maj\\installeur.log).';
+      return;
+    }
+    setTimeout(sonder, 2000);
+  };
+  setTimeout(sonder, 4000);
+}
+document.getElementById('majInstaller').addEventListener('click', e => avecBouton(e.target, installerMaj));
 // --- Éditeurs dédiés : trame, catalogues, consigne de structuration -----------
 // Règle produit (héritée de l'ancien éditeur JSON) : ne JAMAIS figer les
 // défauts en surcharges — sans modification, rien n'est enregistré, et les

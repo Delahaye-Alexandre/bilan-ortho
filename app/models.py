@@ -71,6 +71,34 @@ class MajResponse(BaseModel):
     version_disponible: str
     maj_disponible: bool
     url: str
+    # Nouveautés de la version (texte simple tiré des notes de release), date
+    # de publication, et ce que le poste peut en faire : installation en un
+    # clic (app compilée sous Windows) ou simple lien.
+    notes: str = ""
+    publiee_le: str = ""
+    installation_possible: bool = False
+    # La version disponible est celle que le praticien a demandé d'ignorer.
+    ignoree: bool = False
+    verifiee_le: str = ""
+
+
+class MajEtatPatch(BaseModel):
+    """État local des mises à jour : information vue, version ignorée
+    (chaîne vide = ne plus rien ignorer)."""
+
+    info_vue: bool | None = None
+    ignoree: str | None = Field(None, max_length=20)
+
+
+class MajTelechargement(BaseModel):
+    version: str = Field(..., max_length=20)
+
+
+class MajInstallation(BaseModel):
+    version: str = Field(..., max_length=20)
+    # Port de cette instance : l'installeur relance l'app dessus, et la page
+    # ouverte se reconnecte seule (voir lanceur.py --port).
+    port: int = Field(..., ge=1, le=65535)
 
 
 # --- Configuration -----------------------------------------------------------

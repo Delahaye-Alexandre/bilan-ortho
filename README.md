@@ -56,6 +56,9 @@ ci-dessous.
 - **Cotation NGAP** paramétrable, **cycle de vie** du bilan (brouillon →
   validé → envoyé au prescripteur, tracé) et **export** PDF, Word (.docx),
   Markdown, texte.
+- **Mises à jour en un clic**, vérifiées : signature Ed25519 des empreintes
+  publiées, sauvegarde du coffre avant, redémarrage automatique. Seul échange
+  réseau de l'application, toujours vers GitHub, jamais de données.
 - **Mise en forme dans les rubriques** : gras, italique, souligné, listes,
   reportés fidèlement dans le Word et le PDF ; un passage collé depuis Word,
   LibreOffice ou Google Docs garde sa mise en forme, et l'IA calque la sienne

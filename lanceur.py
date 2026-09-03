@@ -101,16 +101,52 @@ def _ouvrir_quand_pret(url: str) -> None:
     )
 
 
-def main() -> None:
+def _port_demande(argv: list[str]) -> int | None:
+    """Port passé par l'installeur après une mise à jour (--port=N)."""
+    for arg in argv:
+        if arg.startswith("--port="):
+            try:
+                return int(arg.split("=", 1)[1])
+            except ValueError:
+                return None
+    return None
+
+
+def _attendre_port(port: int, essais: int = 40) -> bool:
+    """Le port de l'instance qui vient d'être fermée peut rester occupé
+    quelques secondes (connexions en cours de clôture) : on patiente."""
+    for _ in range(essais):
+        with socket.socket() as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return True
+            except OSError:
+                time.sleep(0.5)
+    return False
+
+
+def main(argv: list[str] | None = None) -> None:
+    argv = sys.argv[1:] if argv is None else argv
     url = _instance_existante()
     if url:
         _ouvrir_fenetre(url)
         return
 
-    port = _port_libre()
-    threading.Thread(
-        target=_ouvrir_quand_pret, args=(f"http://127.0.0.1:{port}",), daemon=True
-    ).start()
+    # Relance par l'installeur après une mise à jour en un clic : on reprend
+    # le port de l'instance remplacée pour que la page restée ouverte se
+    # reconnecte d'elle-même, sans ouvrir une seconde fenêtre. Si le port ne
+    # se libère pas, retour au comportement normal (port libre + fenêtre).
+    port_voulu = _port_demande(argv)
+    if port_voulu and port_voulu in PORTS and _attendre_port(port_voulu):
+        port = port_voulu
+        ouvrir_fenetre = "--sans-fenetre" not in argv
+    else:
+        port = _port_libre()
+        ouvrir_fenetre = True
+    if ouvrir_fenetre:
+        threading.Thread(
+            target=_ouvrir_quand_pret, args=(f"http://127.0.0.1:{port}",), daemon=True
+        ).start()
 
     if getattr(sys, "frozen", False):
         # Mode fenêtré : pas de console -> journal dans le dossier de données.

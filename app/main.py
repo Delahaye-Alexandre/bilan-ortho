@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
 import sqlite3
 import threading
@@ -59,7 +60,10 @@ from .models import (
     CatalogueDomaine,
     ConfigPatch,
     EpreuveCreate,
+    MajEtatPatch,
+    MajInstallation,
     MajResponse,
+    MajTelechargement,
     OkResponse,
     PassphraseChange,
     PatientIn,
@@ -342,16 +346,112 @@ async def get_domaines() -> list[dict]:
 # --- Mise à jour de l'application ---------------------------------------------
 
 @app.get("/api/maj")
-async def verifier_maj() -> MajResponse:
+async def verifier_maj(auto: bool = False) -> MajResponse:
     """Compare la version en cours à la dernière release GitHub publiée.
 
     Pas de dépendance au coffre (aucune donnée patient) : comme /api/status,
-    la route répond même verrouillée. Elle n'est appelée que sur action de
-    l'utilisateur, ou au démarrage si l'option opt-in est activée."""
+    la route répond même verrouillée. ``auto=1`` (vérification du démarrage)
+    respecte la cadence d'une fois par jour et la version ignorée, en
+    s'appuyant sur l'état local — donc seulement coffre déverrouillé ; le
+    bouton « Vérifier maintenant » interroge toujours GitHub."""
+    etat: dict = {}
+    if security.is_unlocked():
+        with security.transaction() as con:
+            etat = maj.etat_lire(con)
+    if auto and etat and not maj.doit_verifier(etat) and isinstance(etat.get("resultat"), dict):
+        return MajResponse(**maj.appliquer_etat(etat["resultat"], etat))
     try:
-        return MajResponse(**await maj.verifier())
+        resultat = await maj.verifier()
     except maj.MajIndisponible as e:
         raise HTTPException(503, str(e))
+    if security.is_unlocked():
+        with security.transaction() as con:
+            etat = maj.etat_ecrire(con, derniere=resultat["verifiee_le"], resultat=resultat)
+    return MajResponse(**maj.appliquer_etat(resultat, etat))
+
+
+@app.get("/api/maj/etat", dependencies=[Depends(require_unlock)])
+async def lire_etat_maj() -> dict:
+    """État local des mises à jour : information affichée, version ignorée,
+    date de la dernière vérification."""
+    with security.transaction() as con:
+        etat = maj.etat_lire(con)
+    return {
+        "info_vue": bool(etat.get("info_vue")),
+        "ignoree": etat.get("ignoree") or "",
+        "derniere": etat.get("derniere") or "",
+    }
+
+
+@app.put("/api/maj/etat", dependencies=[Depends(require_unlock)])
+async def modifier_etat_maj(corps: MajEtatPatch) -> dict:
+    champs: dict = {}
+    if corps.info_vue is not None:
+        champs["info_vue"] = corps.info_vue
+    if corps.ignoree is not None:
+        champs["ignoree"] = corps.ignoree.strip() or None
+    with security.transaction() as con:
+        etat = maj.etat_ecrire(con, **champs)
+    return {
+        "info_vue": bool(etat.get("info_vue")),
+        "ignoree": etat.get("ignoree") or "",
+        "derniere": etat.get("derniere") or "",
+    }
+
+
+@app.post("/api/maj/telecharger", dependencies=[Depends(require_unlock)])
+async def telecharger_maj(corps: MajTelechargement) -> StreamingResponse:
+    """Télécharge l'installeur d'une version et le vérifie (signature des
+    empreintes, puis empreinte du fichier) en relayant la progression (NDJSON).
+    Réservé à l'application Windows installée : ailleurs, le fichier ne
+    servirait à rien."""
+    if not maj.installation_possible():
+        raise HTTPException(400, maj.MSG_INSTALLATION_IMPOSSIBLE)
+    try:
+        maj.url_asset(corps.version, maj.NOM_SOMMES)
+    except maj.MajRefusee as e:
+        raise HTTPException(400, str(e))
+
+    async def relais():
+        async for evt in maj.telecharger(corps.version):
+            yield json.dumps(evt, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(relais(), media_type="application/x-ndjson")
+
+
+@app.post("/api/maj/installer", dependencies=[Depends(require_unlock)])
+async def installer_maj(corps: MajInstallation) -> dict:
+    """Sauvegarde le coffre puis lance l'installeur vérifié, qui ferme et
+    relance l'application. La réponse part avant la fermeture."""
+    if not maj.installation_possible():
+        raise HTTPException(400, maj.MSG_INSTALLATION_IMPOSSIBLE)
+    try:
+        chemin = await run_in_threadpool(maj.fichier_verifie, corps.version)
+    except maj.MajRefusee as e:
+        raise HTTPException(409, str(e))
+
+    def _sauvegarder() -> dict:
+        with security.transaction() as con:
+            cfg = config.ConfigStore(con).effective()
+            res = sauvegarde.creer(con, cfg)
+            security.audit("maj_installation", "app", None, f"v{corps.version}")
+            return res
+
+    try:
+        sauv = await run_in_threadpool(_sauvegarder)
+    except Exception:
+        logger.exception("Sauvegarde avant mise à jour impossible")
+        raise HTTPException(
+            500,
+            "La sauvegarde du coffre a échoué : la mise à jour n'a pas été lancée. "
+            "Vérifiez le dossier de sauvegarde (⚙️ Paramètres) puis réessayez.",
+        )
+    try:
+        maj.lancer_installeur(chemin, corps.port)
+    except OSError as e:
+        logger.exception("Lancement de l'installeur impossible")
+        raise HTTPException(500, f"Impossible de lancer l'installeur : {e}")
+    return {"lance": True, "sauvegarde": sauv.get("fichier", ""), "version": corps.version}
 
 
 # Routes des éditeurs dédiés (Paramètres) : remplacement EN BLOC d'une section.

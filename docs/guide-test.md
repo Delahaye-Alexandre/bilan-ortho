@@ -80,6 +80,22 @@ irrécupérable** (personne, pas même Alexandre, ne peut la retrouver).
    référence » — les prochaines rédactions imiteront votre style, y compris
    ce que vous mettez en gras ou en liste (fichiers Word).
 
+## Mettre à jour
+
+L'application vérifie d'elle-même, au plus une fois par jour, si une nouvelle
+version existe (elle vous le dit la première fois, et vous pouvez désactiver ce
+comportement dans ⚙️ Paramètres → Mises à jour). Quand un bandeau annonce une
+version, dépliez « Ce qui change » puis cliquez **« Installer maintenant »** :
+une sauvegarde de votre coffre est créée, l'installeur est téléchargé et
+vérifié (signature de l'éditeur, empreinte), l'application se ferme, s'installe
+et redémarre seule — environ une minute, vos données sont préservées. Enregistrez
+votre travail avant. « Plus tard » remet ça à une prochaine fois, « Ignorer cette
+version » n'en parle plus au démarrage.
+
+Sur une version antérieure à la 1.10.0, ou depuis un dépôt cloné, la mise à
+jour reste manuelle : téléchargez l'installeur depuis la page des versions et
+lancez-le par-dessus l'existant.
+
 ## En cas de problème
 
 Envoyez à Alexandre (**alexandre-delahaye@outlook.fr**) :

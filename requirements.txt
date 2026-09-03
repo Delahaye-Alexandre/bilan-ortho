@@ -14,6 +14,9 @@ sqlite-vec>=0.1.9
 # --- Phase 1 : dictée vocale locale ---
 faster-whisper>=1.0          # STT (CTranslate2)
 
+# --- Mises à jour : vérification Ed25519 des releases avant installation ---
+cryptography>=42
+
 # --- Phase 3 : export ---
 python-docx>=1.1             # export Word (.docx)
 reportlab>=4.1               # export PDF (Python pur : compatible app compilée)

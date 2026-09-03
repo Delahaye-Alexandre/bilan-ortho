@@ -31,6 +31,25 @@ Lot A du plan « mise en forme » (`docs/plan-mise-en-forme-2026-09-03.md`) :
   version en clair : un score en gras reste retrouvé dans la dictée, un numéro
   de liste n'est pas pris pour une valeur clinique.
 
+Mises à jour (`app/maj.py`, plan « mise à jour » validé le 2026-09-03) :
+
+- **Mise à jour en un clic** depuis le bandeau : sauvegarde du coffre,
+  téléchargement de l'installeur avec progression, vérification de la
+  signature Ed25519 des empreintes publiées (clé publique embarquée) puis de
+  l'empreinte du fichier, installation silencieuse, redémarrage sur le même
+  port et page qui se reconnecte seule. Un fichier qui échoue à la vérification
+  n'est jamais exécuté.
+- **Le bandeau dit ce qui change** (nouveautés de la version, date), avec
+  « Plus tard » et « Ignorer cette version ».
+- **Vérification automatique activée par défaut**, au plus une fois par jour,
+  annoncée une fois après le déverrouillage avec le moyen de la désactiver ;
+  le bouton « Vérifier maintenant » interroge toujours GitHub.
+- **CI** : `SHA256SUMS` et `SHA256SUMS.sig` publiés avec chaque release ;
+  test de mise à niveau (version publiée précédente puis celle-ci par-dessus,
+  coffre existant rouvert, relance sur le port demandé) ; signature de code
+  Windows (Azure Artifact Signing) prête, activée par la seule présence des
+  secrets — voir `docs/signature-code.md`.
+
 ## 1.9.0 — 2026-09-03
 
 Corrections de la revue complète du 2026-08-11 (v1.8.0 en conditions réelles) :

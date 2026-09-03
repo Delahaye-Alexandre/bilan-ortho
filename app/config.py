@@ -201,11 +201,13 @@ DEFAULTS: dict[str, Any] = {
         "auto_jours": 7,           # auto au déverrouillage si plus ancienne ; 0 = off
     },
     "maj": {
-        # Vérification des mises à jour au démarrage (opt-in — désactivée par
-        # défaut) : un simple GET vers GitHub Releases, aucune donnée transmise
-        # (voir app/maj.py). Le bouton « Vérifier maintenant » des Paramètres
-        # reste disponible quel que soit ce réglage.
-        "verification_auto": False,
+        # Vérification des mises à jour au démarrage : au plus une fois par
+        # jour, un simple GET vers GitHub Releases, aucune donnée transmise
+        # (voir app/maj.py). Activée par défaut depuis la 1.10.0 (décision du
+        # 2026-09-03 : personne ne se mettait à jour) ; l'app le dit une fois
+        # après le déverrouillage et le réglage reste désactivable. Le bouton
+        # « Vérifier maintenant » des Paramètres ignore ce réglage.
+        "verification_auto": True,
     },
     "style": {
         "few_shot_k": 4,           # nb d'extraits du praticien réinjectés (RAG)

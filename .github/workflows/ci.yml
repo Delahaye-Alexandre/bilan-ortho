@@ -61,14 +61,21 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Tests UI (happy-dom — seule couverture du frontend)
         run: |
-          bun tests/ui/test_questions_ui.mjs
-          bun tests/ui/test_robustesse_ui.mjs
+          # Toutes les suites, sans liste à tenir à jour : une suite ajoutée
+          # mais oubliée ici restait verte… parce qu'elle ne tournait pas.
+          for f in tests/ui/test_*_ui.mjs; do echo "== $f"; bun "$f"; done
 
   build-windows:
     needs: [tests, tests-ui, lint]
     runs-on: windows-latest
     permissions:
       contents: write  # `gh release create` sur tag (étape « Release publiée »)
+    env:
+      # Signature de code Windows (Azure Artifact Signing, ex-Trusted Signing) :
+      # facultative, activée dès que les secrets existent — voir
+      # docs/signature-code.md. Sans elle, l'installeur reste non signé, comme
+      # avant (avertissements SmartScreen au téléchargement manuel).
+      SIGNATURE_AZURE: ${{ secrets.AZURE_CLIENT_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -92,6 +99,21 @@ jobs:
         run: python packaging/windows/genere_icone.py packaging/windows/icone.ico
       - name: Build PyInstaller (onedir)
         run: pyinstaller packaging/pyinstaller/BilanOrtho.spec --noconfirm
+      - name: Signature Authenticode du binaire (si configurée)
+        if: env.SIGNATURE_AZURE == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist\BilanOrtho
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
       - name: Données embarquées — le VAD Silero est dans le build
         shell: pwsh
         run: |
@@ -206,6 +228,93 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
             /DAppVersion=${{ steps.version.outputs.version }} `
             packaging\windows\installeur.iss
+      - name: Signature Authenticode de l'installeur (si configurée)
+        if: env.SIGNATURE_AZURE == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\packaging\windows\Output
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Empreintes SHA-256 et signature Ed25519 des fichiers de release
+        shell: pwsh
+        env:
+          BILAN_ORTHO_CLE_PRIVEE: ${{ secrets.BILAN_ORTHO_CLE_PRIVEE }}
+        run: |
+          # Chaîne de confiance de la mise à jour en un clic (app/maj.py) :
+          # SHA256SUMS liste l'empreinte de l'installeur, SHA256SUMS.sig la
+          # signe avec la clé Ed25519 dont la clé publique est embarquée dans
+          # l'app. Sans clé sur un tag, on refuse de publier : une release non
+          # signée serait inutilisable par l'installation automatique.
+          $out = "packaging\windows\Output"
+          $exe = Get-Item "$out\BilanOrtho-Setup-*.exe"
+          $h = (Get-FileHash -Algorithm SHA256 $exe.FullName).Hash.ToLower()
+          [IO.File]::WriteAllText("$out\SHA256SUMS", "$h  $($exe.Name)`n", (New-Object Text.UTF8Encoding $false))
+          Get-Content "$out\SHA256SUMS"
+          if (-not $env:BILAN_ORTHO_CLE_PRIVEE) {
+            if ("${{ github.ref }}".StartsWith("refs/tags/v")) { throw "Secret BILAN_ORTHO_CLE_PRIVEE absent : impossible de signer la release (docs/signature-code.md)." }
+            Write-Host "Pas de clé de signature (build hors tag) : SHA256SUMS non signé."
+          } else {
+            python -c "import base64,os,sys; from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey; k=Ed25519PrivateKey.from_private_bytes(base64.b64decode(os.environ['BILAN_ORTHO_CLE_PRIVEE'].strip())); d=open(sys.argv[1],'rb').read(); open(sys.argv[1]+'.sig','wb').write(base64.b64encode(k.sign(d))+b'\n')" "$out\SHA256SUMS"
+            # Contrôle croisé avec la clé publique embarquée dans l'app : une
+            # clé privée qui ne correspond pas serait détectée ici, pas chez
+            # les praticiens.
+            python -c "import sys; sys.path.insert(0,'.'); from app import maj; maj.verifier_signature(open(sys.argv[1],'rb').read(), open(sys.argv[1]+'.sig').read())" "$out\SHA256SUMS"
+            Write-Host "SHA256SUMS signé et vérifié avec la clé publique de l'application."
+          }
+      - name: Mise à niveau — la version publiée précédente puis celle-ci par-dessus
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Le bug des DLL résiduelles (audit) ne se voyait qu'en installant
+          # PAR-DESSUS une version antérieure : on rejoue exactement ce chemin,
+          # coffre existant compris, et la relance sur le même port qu'utilise
+          # la mise à jour en un clic (/RELANCER, lanceur.py --port).
+          $prev = "$env:TEMP\maj-precedente"
+          New-Item -ItemType Directory -Force $prev | Out-Null
+          try {
+            gh release download --pattern "BilanOrtho-Setup-*.exe" --dir $prev --repo "${{ github.repository }}"
+          } catch { Write-Host "Aucune release précédente : test de mise à niveau ignoré." ; exit 0 }
+          $ancien = Get-ChildItem "$prev\BilanOrtho-Setup-*.exe" | Select-Object -First 1
+          if (-not $ancien) { Write-Host "Aucun installeur précédent : test ignoré." ; exit 0 }
+          $env:BILAN_ORTHO_DATA_DIR = "$env:TEMP\bilan-ortho-maj"
+          $app = "$env:LOCALAPPDATA\Programs\BilanOrtho\BilanOrtho.exe"
+          function Attendre-Status($port) {
+            foreach ($i in 1..120) {
+              try { $r = Invoke-RestMethod -Uri "http://127.0.0.1:$port/api/status" -TimeoutSec 2; return $r } catch { Start-Sleep -Milliseconds 500 }
+            }
+            throw "Le serveur n'a pas répondu sur le port $port"
+          }
+          Write-Host "1. Installation de $($ancien.Name)"
+          Start-Process -Wait -FilePath $ancien.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART"
+          $p = Start-Process -FilePath $app -PassThru
+          $s = Attendre-Status 8000
+          Write-Host "   version installée : $($s.version)"
+          Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/unlock" -ContentType "application/json" -Body '{"passphrase":"passphrase-de-mise-a-niveau-ci"}' | Out-Null
+          $b = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/bilans" -ContentType "application/json" -Body '{"domaines":[]}'
+          Stop-Process -Name BilanOrtho -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          Write-Host "2. Installation de la version construite par-dessus, avec relance sur le port 8000"
+          $neuf = Get-Item "packaging\windows\Output\BilanOrtho-Setup-*.exe"
+          Start-Process -Wait -FilePath $neuf.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/RELANCER=8000"
+          $s2 = Attendre-Status 8000
+          Write-Host "   version après mise à niveau : $($s2.version) (relancée par l'installeur)"
+          if ($s2.version -eq $s.version) { throw "La version n'a pas changé après la mise à niveau." }
+          if (-not $s2.db_exists) { throw "Le coffre existant n'est plus vu après la mise à niveau." }
+          $u = Invoke-WebRequest -Method Post -Uri "http://127.0.0.1:8000/api/unlock" -ContentType "application/json" -Body '{"passphrase":"passphrase-de-mise-a-niveau-ci"}' -UseBasicParsing
+          if ($u.StatusCode -ne 200) { throw "Le coffre créé par l'ancienne version ne s'ouvre plus (HTTP $($u.StatusCode))." }
+          $bilans = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/bilans"
+          if (-not ($bilans | Where-Object { $_.id -eq $b.id })) { throw "Le bilan créé avant la mise à niveau a disparu." }
+          Write-Host "Mise à niveau OK : coffre ouvert, bilan #$($b.id) retrouvé."
+          Stop-Process -Name BilanOrtho -Force -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         with:
           name: BilanOrtho-Setup
@@ -257,6 +366,9 @@ jobs:
             $notes = $notes + "`n`n## ✨ Nouveautés de la version $version`n`n" + ($changements -join "`n")
           }
           Set-Content -Path notes-release.md -Value $notes -Encoding utf8
+          # L'installeur, ses empreintes et leur signature : les trois fichiers
+          # que l'app télécharge pour la mise à jour en un clic.
           gh release create "${{ github.ref_name }}" (Get-Item packaging/windows/Output/*.exe).FullName `
+            packaging/windows/Output/SHA256SUMS packaging/windows/Output/SHA256SUMS.sig `
             --title "Bilan Ortho ${{ github.ref_name }}" `
             --notes-file notes-release.md

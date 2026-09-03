@@ -48,10 +48,15 @@
   compris sans aucune requête.
 - **Journalisation** : table `audit_log` (déverrouillages, actions).
 - **Réseau** : service lié à `127.0.0.1` ; aucun appel réseau sortant dans le
-  traitement des données. Seule exception, hors traitement : la vérification de
-  mise à jour (`app/maj.py`) — un GET vers l'API GitHub Releases, déclenché
-  manuellement ou via une option opt-in (désactivée par défaut), sans aucune
-  donnée personnelle transmise.
+  traitement des données. Seules exceptions, hors traitement et toujours vers
+  GitHub (`app/maj.py`) : la vérification de mise à jour — un GET vers l'API
+  GitHub Releases, au plus une fois par jour au démarrage (réglage activé par
+  défaut, annoncé une fois à l'utilisateur, désactivable) ou à la demande — et,
+  uniquement quand l'utilisateur clique « Installer maintenant », le
+  téléchargement de l'installeur et de ses empreintes signées. Aucune donnée
+  personnelle n'est transmise ; comme pour toute connexion, l'adresse IP du
+  poste est visible de GitHub. Avant l'installation, une sauvegarde chiffrée du
+  coffre est créée et la signature de l'éditeur est vérifiée.
 - À la charge de l'orthophoniste : chiffrement du disque (LUKS/BitLocker), sauvegardes
   chiffrées conservées hors du cabinet, antivirus/pare-feu à jour.
 

@@ -181,5 +181,13 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Vérifié** : 332 tests pytest (12 ajoutés), `ruff check .` propre, quatre suites UI happy-dom vertes (nouvelle `tests/ui/test_texte_riche_ui.mjs`).
   - **Restent** : lots B (mise en forme du document + aperçu), C (trame reprise à l'import), D (gabarit .docx personnel). Les tableaux des .docx importés ne sont toujours pas lus (limite connue, à traiter au lot C).
 
+- [x] **Système de mise à jour (paliers M1 à M4 + signature)** *(fait, testé 2026-09-03)*
+  - `app/maj.py` : notes de release en texte simple, cadence d'une vérification par jour et version ignorée (état local `maj_etat` dans la table config, distinct des surcharges), téléchargement vérifié (URL construites localement, signature Ed25519 de `SHA256SUMS` avec clé publique embarquée, empreinte SHA-256 en flux, taille bornée, fichier refusé effacé), installeur lancé détaché en silencieux avec `/RELANCER=<port>`.
+  - `main.py` : `/api/maj?auto=1`, `/api/maj/etat` (GET/PUT), `/api/maj/telecharger` (NDJSON), `/api/maj/installer` (sauvegarde du coffre + audit avant lancement) ; réservés à l'app Windows compilée, message git ailleurs.
+  - `lanceur.py` + `installeur.iss` : relance sur le port demandé (`--port`, `--sans-fenetre`, attente de libération du port) pour que la page ouverte se reconnecte seule.
+  - UI : bandeau enrichi (nouveautés, date, Installer maintenant, Plus tard, Ignorer), information affichée une fois pour la vérification automatique désormais active par défaut, progression, écran d'attente qui recharge la page dès que la nouvelle version répond.
+  - CI : `SHA256SUMS` + `.sig` (refus de publier sans clé), test de mise à niveau par-dessus la release précédente, signature Authenticode conditionnelle (`azure/artifact-signing-action@v2`). Docs : `docs/signature-code.md`, registre RGPD, guide de test.
+  - **Vérifié** : pytest, ruff, suites UI. Le chemin Windows réel (installeur silencieux, relance) est exercé par la CI à chaque build.
+
 ## Lancer
 `./run.sh` → http://localhost:8000 (bind 127.0.0.1). Données : `~/.local/share/bilan-ortho/` (surchargeable via `BILAN_ORTHO_DATA_DIR`).
