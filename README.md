@@ -22,10 +22,25 @@ moteur d'IA local Ollama est installé automatiquement). Sur la page, prenez le
 fichier `BilanOrtho-Setup-x.y.z.exe` de la section « Assets » — pas « Source
 code ». Les avertissements de Windows au téléchargement et au premier
 lancement sont normaux (application non signée) ; le guide pas à pas les
-détaille : [docs/guide-test.md](docs/guide-test.md).
+détaille : [docs/installation.md](docs/installation.md). Pour un parcours
+d'essai guidé : [docs/guide-test.md](docs/guide-test.md).
 
 Sous Linux/WSL : voir [Installation & lancement](#installation--lancement)
 ci-dessous.
+
+## Aperçu
+
+Un bilan fictif (patient et résultats inventés) dans l'application, puis le
+compte-rendu tel qu'il sort en PDF — [le document complet](docs/captures/compte-rendu-exemple.pdf).
+
+![L'écran principal : dictée, rubriques en texte riche, épreuves et scores](docs/captures/ecran-principal.png)
+
+![Le compte-rendu exporté : en-tête du cabinet, rubriques numérotées, tableau des résultats](docs/captures/compte-rendu-page1.png)
+
+![Paramètres → Mise en page : réglages et aperçu en direct](docs/captures/parametres-mise-en-page.png)
+
+Rien ne sort de l'ordinateur, et vous pouvez le vérifier vous-même :
+[docs/verifier-que-rien-ne-sort.md](docs/verifier-que-rien-ne-sort.md).
 
 ## Fonctionnalités
 
@@ -100,7 +115,7 @@ ci-dessous.
 ## Prérequis (installation depuis les sources)
 
 > Avec l'installeur Windows ci-dessus, tout ceci est automatique : passez
-> cette section, votre guide est [docs/guide-test.md](docs/guide-test.md).
+> cette section, votre guide est [docs/installation.md](docs/installation.md).
 
 - Python 3.11+, [Ollama](https://ollama.com) lancé (`ollama serve`)
 - Modèles Ollama :
@@ -250,7 +265,7 @@ Actions : tests sur Windows + Linux, binaire PyInstaller (`lanceur.py` →
 droits admin). Un tag `v*` **publie** la Release avec son installeur sur la
 [page des versions](https://github.com/Delahaye-Alexandre/bilan-ortho/releases) ;
 les notes de version, générées par la CI, guident le téléchargement
-(bon fichier, avertissements Windows) et pointent vers `docs/guide-test.md`. Les données vivent dans `%LOCALAPPDATA%\bilan-ortho` (préservées à
+(bon fichier, avertissements Windows) et pointent vers `docs/installation.md`. Les données vivent dans `%LOCALAPPDATA%\bilan-ortho` (préservées à
 la désinstallation).
 
 > **Publier la release, ne pas la laisser en brouillon.** L'API
@@ -278,7 +293,8 @@ pérenne — sont détaillés dans la
 [charte d'engagements](docs/charte-engagements.md). Voir aussi la
 [politique de sécurité](SECURITY.md) et les documents de conformité dans
 [docs/conformite/](docs/conformite/) (auto-évaluation AI Act et déclaration de
-finalité MDR).
+finalité MDR). La promesse « rien ne sort » se vérifie en dix minutes :
+[docs/verifier-que-rien-ne-sort.md](docs/verifier-que-rien-ne-sort.md).
 
 ## Avertissement médico-légal
 

@@ -27,7 +27,7 @@ Seule la **dernière release** publiée est supportée : celle que présente la 
 
 L'application fonctionne **100 % en local** : serveur lié à `127.0.0.1` uniquement, protégé par `TrustedHostMiddleware` (hôtes autorisés : `127.0.0.1`, `localhost`), données chiffrées dans une base SQLCipher unique dont la passphrase n'est jamais écrite sur disque.
 
-En trois points :
+Chacun peut vérifier la promesse en coupant la connexion : [docs/verifier-que-rien-ne-sort.md](docs/verifier-que-rien-ne-sort.md). En trois points :
 
 1. **Couvert** : un poste de travail individuel — pas d'exposition réseau (loopback seul, protection anti-DNS-rebinding, requêtes modifiantes refusées depuis une page tierce), aucune télémétrie, base et sauvegardes chiffrées, mémoire des pages déchiffrées effacée à la libération (`cipher_memory_security` — hors Windows, où la distribution SQLCipher utilisée ne le supporte pas), verrouillage automatique après inactivité y compris sans requête, passphrases prévisibles refusées à la création. Aucune donnée patient n'est transmise en ligne : les hôtes LLM et embeddings sont contraints à la boucle locale par validation de la configuration (`app/models.py`). Seul le téléchargement initial des modèles (Ollama, dictée) nécessite une connexion internet, sans qu'aucune donnée patient n'y transite.
 2. **Non couvert** : la compromission du poste lui-même (malware, accès physique, session ouverte) — si la machine est compromise pendant que le coffre est déverrouillé, le chiffrement ne protège plus.

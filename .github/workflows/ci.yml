@@ -379,7 +379,7 @@ jobs:
           1. **au téléchargement** (« fichier pas fréquemment téléchargé ») : « ⋯ » → « Conserver » → « Conserver quand même » ;
           2. **au premier lancement** (« Windows a protégé votre ordinateur ») : « Informations complémentaires » → « Exécuter quand même ».
 
-          📖 **Guide pas à pas : [docs/guide-test.md](https://github.com/Delahaye-Alexandre/bilan-ortho/blob/${{ github.ref_name }}/docs/guide-test.md)**
+          📖 **Guide pas à pas : [docs/installation.md](https://github.com/Delahaye-Alexandre/bilan-ortho/blob/${{ github.ref_name }}/docs/installation.md)**
 
           Premier lancement : connexion internet nécessaire (téléchargement d'Ollama et des modèles d'IA). Un problème ? Écrivez à alexandre-delahaye@outlook.fr.
           '@

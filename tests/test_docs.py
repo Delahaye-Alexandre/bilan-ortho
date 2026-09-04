@@ -21,6 +21,9 @@ DOCS = [
     RACINE / "docs/notice-medico-legale.md",
     RACINE / "docs/notice-usage-ia.md",
     RACINE / "docs/mention-information-patient.md",
+    RACINE / "docs/verifier-que-rien-ne-sort.md",
+    RACINE / "docs/installation.md",
+    RACINE / "docs/guide-test.md",
     RACINE / "README.md",
     RACINE / "SECURITY.md",
 ]

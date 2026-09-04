@@ -6,8 +6,8 @@ contact_links:
     url: https://github.com/Delahaye-Alexandre/bilan-ortho/blob/main/SECURITY.md
     about: Ne se signale jamais en issue publique — la marche à suivre (signalement privé) est dans SECURITY.md.
   - name: Prise en main et premier lancement
-    url: https://github.com/Delahaye-Alexandre/bilan-ortho/blob/main/docs/guide-test.md
-    about: Avertissement SmartScreen, téléchargement des modèles, parcours d'essai pas à pas.
+    url: https://github.com/Delahaye-Alexandre/bilan-ortho/blob/main/docs/installation.md
+    about: Avertissement SmartScreen, téléchargement des modèles, mises à jour, problèmes courants.
   - name: Ce que le logiciel fait et ne fait pas
     url: https://github.com/Delahaye-Alexandre/bilan-ortho/blob/main/docs/notice-medico-legale.md
     about: Aide à la rédaction, jamais outil de diagnostic — le cadre médico-légal, à lire avant tout usage réel.

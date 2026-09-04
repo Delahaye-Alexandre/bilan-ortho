@@ -7,6 +7,13 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Adoption** : guide d'installation pérenne (`docs/installation.md`),
+  distinct du protocole d'essai (`docs/guide-test.md`, données fictives,
+  trois questions en retour) ; page « Vérifiez vous-même que rien ne sort »
+  (`docs/verifier-que-rien-ne-sort.md` : mode avion, bilan complet, Moniteur
+  de ressources, ce que le code garantit) ; captures d'écran et compte-rendu
+  fictif complet en PDF dans `docs/captures/`, montrés dans le README ; sujets
+  GitHub du dépôt renseignés.
 - **Durée de dictée bornée côté serveur** : la limite `rgpd.dictee_max_minutes`
   n'arrêtait que le micro du navigateur ; un enregistrement plus long envoyé
   directement à l'API était transcrit. Le serveur la vérifie désormais avant
