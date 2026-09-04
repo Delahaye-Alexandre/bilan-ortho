@@ -57,6 +57,8 @@ class StatusResponse(BaseModel):
     unlocked: bool
     first_run: bool
     version: str = ""
+    # Secondes avant l'auto-verrouillage (None : verrouillé, ou délai « jamais »).
+    verrouillage_dans_s: float | None = None
 
 
 class OkResponse(BaseModel):

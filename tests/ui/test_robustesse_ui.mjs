@@ -58,6 +58,8 @@ let recentsRequests = [];
 let recentsResponder = () => [{ id: 7, statut: "brouillon", domaine_titres: "Générique" }];
 let exportResponder = null;
 let exportCalls = 0;
+let statusCalls = 0;
+let keepaliveCalls = 0;
 let statutPuts = [];
 let epreuvePosts = [], epreuveDeletes = [], bilanDeletes = 0;
 let epreuveResponder = () => ({});
@@ -198,7 +200,8 @@ globalThis.fetch = async (p, o = {}) => {
     return rep(transcribeKo ? { __status: 500, detail: "La transcription a échoué." } : { text: "texte transcrit" });
   if (url.includes("/api/installation/whisper")) { whisperPosts++; return rep({ etat: "en_cours", message: "", modele: "medium" }); }
   if (url.includes("/api/models")) return rep({ models: ["qwen3.5:4b", "qwen3.5:9b"], default: "qwen3.5:4b" });
-  if (url.includes("/api/status")) return rep(statusResponder());
+  if (url.includes("/api/status")) { statusCalls++; return rep(statusResponder()); }
+  if (url.includes("/api/keepalive")) { keepaliveCalls++; return rep({ ok: true }); }
   if (url.includes("/api/installation")) return rep(installResponder());
   if (url.includes("/epreuves")) {
     if (o.method === "DELETE") { epreuveDeletes.push(url); return rep(epreuveResponder(true)); }
@@ -239,7 +242,9 @@ const body = scriptBody.replace(/gate\(\);\s*$/, "") + `
   get QUITTER_SANS_GARDE() { return QUITTER_SANS_GARDE; }, set QUITTER_SANS_GARDE(v) { QUITTER_SANS_GARDE = v; },
   renderQuestions, renderBilan, structure, saisieEnCours, loadRecents, loadRefs,
   loadBilan, sectionsNonEnregistrees, gate, loadLLM, loadDomaines,
-  rtVersMd, remplirEditeur,
+  rtVersMd, remplirEditeur, verifierVerrou, signalerActivite, delaiProchaineVerifS,
+  get appStarted() { return appStarted; },
+  set dernierSignalActivite(v) { dernierSignalActivite = v; },
   get INST_POLL_MS() { return INST_POLL_MS; }, set INST_POLL_MS(v) { INST_POLL_MS = v; },
 };`;
 new Function(body)();
@@ -1293,6 +1298,65 @@ await settle();
 check("réessai : le même enregistrement est transcrit, rien à redicter",
   document.getElementById("dicteeText").value.includes("texte transcrit")
   && document.getElementById("recRetry") === null);
+
+// === 17. Verrouillage : la page s'ouvre sur le verrou et voit l'inactivité ==
+// (a) Premier rendu : l'écran de verrouillage est dans le HTML, visible avant
+// tout script, bouton inactif tant que l'état du coffre est inconnu — jamais
+// l'intérieur de l'application pendant l'initialisation.
+check("premier rendu : écran de verrouillage visible avant tout script, bouton inactif",
+  /id="lockOverlay"(?![^>]*\bhidden)/.test(markup) && /id="unlockBtn"[^>]*\bdisabled/.test(markup));
+
+// (b) Coffre existant : le déverrouillage n'attend pas la vérification de
+// l'installation (Ollama, GPU : plusieurs secondes) — ici elle ne répond jamais.
+const installAvant = installResponder;
+overlay().hidden = false; document.getElementById("unlockBtn").disabled = true;
+statusResponder = () => ({ db_exists: true, unlocked: false, first_run: false, version: "1.8.0" });
+installResponder = () => new Promise(() => {});
+await __t.gate(); await settle();
+check("coffre existant : déverrouillage proposé sans attendre la vérification de l'installation",
+  overlay().hidden === false && !document.getElementById("unlockBtn").disabled
+  && document.getElementById("lockMsg").textContent.includes("Déverrouillez"));
+installResponder = installAvant;
+
+// (c) Coffre ouvert (F5) : l'écran est caché et la surveillance armée.
+statusResponder = () => ({ db_exists: true, unlocked: true, first_run: false, version: "1.8.0", verrouillage_dans_s: 900 });
+await __t.gate(); await settle();
+check("coffre ouvert : l'écran de verrouillage est caché", overlay().hidden === true && __t.appStarted);
+
+// (d) Échéance : la page consulte l'état et affiche le verrou sans qu'on clique.
+statusResponder = () => ({ db_exists: true, unlocked: false, first_run: false, version: "1.8.0", verrouillage_dans_s: null });
+await __t.verifierVerrou(); await settle();
+check("verrouillage d'inactivité : le verrou s'affiche sans attendre un clic",
+  overlay().hidden === false && document.getElementById("lockMsg").textContent.includes("inactivité"));
+
+// (e) Écran affiché : plus de consultation ; retour de l'onglet : consultation.
+let avant = statusCalls;
+await __t.verifierVerrou(); await settle();
+check("verrou affiché : la surveillance s'arrête", statusCalls === avant);
+overlay().hidden = true;
+statusResponder = () => ({ db_exists: true, unlocked: true, first_run: false, version: "1.8.0", verrouillage_dans_s: 30 });
+avant = statusCalls;
+document.dispatchEvent(new Event("visibilitychange")); await settle();
+check("retour de l'onglet : l'état est consulté, coffre ouvert → rien ne change",
+  statusCalls === avant + 1 && overlay().hidden === true);
+check("prochaine vérification : juste après l'échéance, jamais plus de 60 s",
+  __t.delaiProchaineVerifS({ verrouillage_dans_s: 30 }) === 31
+  && __t.delaiProchaineVerifS({ verrouillage_dans_s: 900 }) === 60
+  && __t.delaiProchaineVerifS({ verrouillage_dans_s: null }) === 60
+  && __t.delaiProchaineVerifS({ verrouillage_dans_s: 0 }) === 1);
+
+// (f) Activité : une frappe signale l'activité au serveur, au plus une fois
+// par minute — et jamais depuis l'écran de verrouillage.
+__t.dernierSignalActivite = 0;
+let ka = keepaliveCalls;
+document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true })); await settle();
+document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "b", bubbles: true })); await settle();
+check("frappe au clavier : un seul keepalive par minute", keepaliveCalls === ka + 1);
+__t.dernierSignalActivite = 0; ka = keepaliveCalls;
+overlay().hidden = false;
+document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true })); await settle();
+check("depuis l'écran de verrouillage : aucune activité signalée", keepaliveCalls === ka);
+overlay().hidden = true;
 
 // === 18. Dossier patient : la remise de la mention d'information est tracée ==
 // (RGPD art. 13 ; table `consentement`, type « information »). La case envoie

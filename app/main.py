@@ -193,10 +193,22 @@ def require_unlock() -> None:
 
 @app.get("/api/status")
 async def status() -> StatusResponse:
+    """État du coffre, lisible sans déverrouillage. La page le consulte pour
+    afficher le verrou à l'échéance d'inactivité : un coffre en retard est
+    verrouillé ici même, sans attendre le tic du minuteur — et consulter l'état
+    n'est pas une activité (pas de ``touch()``). Dans le threadpool : le verrou
+    interne est tenu plusieurs secondes pendant un déverrouillage (dérivation
+    de clé, sauvegarde), l'event loop ne doit pas attendre derrière."""
+    return await run_in_threadpool(_statut)
+
+
+def _statut() -> StatusResponse:
+    security.enforce_inactivity()
     exists = security.db_exists()
     return StatusResponse(
         db_exists=exists, unlocked=security.is_unlocked(), first_run=not exists,
         version=__version__,
+        verrouillage_dans_s=security.secondes_avant_verrouillage(),
     )
 
 

@@ -7,6 +7,16 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Écran de verrouillage dès l'ouverture** : la page s'ouvre sur le coffre
+  chiffré, avant tout script — l'intérieur de l'application n'apparaît plus
+  pendant l'initialisation. Le déverrouillage n'attend plus la vérification
+  de l'installation (Ollama, GPU, modèles), qui tourne en arrière-plan.
+- **Verrouillage d'inactivité visible aussitôt** : la page apprenait le
+  verrouillage au clic suivant, et le dossier restait lisible à l'écran
+  entre-temps. Elle consulte désormais l'état à l'échéance annoncée par le
+  serveur et au retour de veille ou de l'onglet ; une frappe ou un clic
+  signale l'activité (au plus une fois par minute), pour que « inactif »
+  veuille dire inactif.
 - **Information des patients (RGPD art. 13)** : un modèle de mention prêt à
   remettre, avec une version courte pour la salle d'attente
   (`docs/mention-information-patient.md`), et dans le dossier patient une

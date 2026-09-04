@@ -384,29 +384,47 @@ def _tic_minuteur() -> None:
             _armer_minuteur()
 
 
+def _delai_inactivite_minutes(con) -> float:
+    """Délai configuré (0 = jamais), parsé avec tolérance : une vieille
+    surcharge mal typée (« "15" ») stockée avant la validation ne doit jamais
+    bloquer les routes protégées."""
+    try:
+        return float(
+            config.ConfigStore(con).effective()["rgpd"]["verrouillage_inactivite_minutes"]
+            or 0
+        )
+    except (KeyError, TypeError, ValueError):
+        return float(config.DEFAULTS["rgpd"]["verrouillage_inactivite_minutes"])
+
+
 def enforce_inactivity() -> bool:
     """Verrouille si le délai d'inactivité configuré est dépassé. True si verrouillé.
 
     Tout se fait sous ``_lock`` : la connexion ne peut pas être fermée par un
-    autre thread entre la vérification et la lecture (TOCTOU → 500). Le délai
-    est parsé avec tolérance : une vieille surcharge mal typée (« "15" »)
-    stockée avant la validation ne doit jamais bloquer les routes protégées."""
+    autre thread entre la vérification et la lecture (TOCTOU → 500)."""
     with _lock:
         con = _state["con"]
         if con is None:
             return True
-        try:
-            minutes = float(
-                config.ConfigStore(con).effective()["rgpd"][
-                    "verrouillage_inactivite_minutes"
-                ] or 0
-            )
-        except (KeyError, TypeError, ValueError):
-            minutes = float(config.DEFAULTS["rgpd"]["verrouillage_inactivite_minutes"])
+        minutes = _delai_inactivite_minutes(con)
         if minutes and (time.monotonic() - _state["last_activity"]) > minutes * 60:
             lock()  # RLock : réentrant depuis ce même thread
             return True
         return False
+
+
+def secondes_avant_verrouillage() -> float | None:
+    """Secondes restantes avant l'auto-verrouillage — ce que la page attend
+    pour afficher le verrou à l'échéance plutôt que de sonder à l'aveugle.
+    None si le coffre est verrouillé ou si le délai est désactivé (0)."""
+    with _lock:
+        con = _state["con"]
+        if con is None:
+            return None
+        minutes = _delai_inactivite_minutes(con)
+        if not minutes:
+            return None
+        return max(0.0, minutes * 60 - (time.monotonic() - _state["last_activity"]))
 
 
 def bilans_a_purger(con) -> list[int]:

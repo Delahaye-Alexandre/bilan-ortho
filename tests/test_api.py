@@ -19,11 +19,15 @@ def test_statut_et_verrouillage(client):
     from app import __version__
 
     s = client.get("/api/status").json()
+    # Délai restant avant l'auto-verrouillage (15 min par défaut) : la page
+    # s'en sert pour afficher le verrou à l'échéance.
+    assert 0 < s.pop("verrouillage_dans_s") <= 15 * 60
     assert s == {"db_exists": True, "unlocked": True, "first_run": False,
                  "version": __version__}
     assert s["version"].count(".") == 2
     assert client.post("/api/lock").status_code == 200
-    assert client.get("/api/status").json()["unlocked"] is False
+    s = client.get("/api/status").json()
+    assert s["unlocked"] is False and s["verrouillage_dans_s"] is None
     # endpoint protégé -> 423
     assert client.get("/api/bilans").status_code == 423
     # mauvaise passphrase -> 401 ; bonne -> 200
@@ -37,6 +41,30 @@ def test_auto_verrouillage_inactivite(client):
     security._state["last_activity"] = time.monotonic() - 120
     assert client.get("/api/bilans").status_code == 423
     assert client.get("/api/status").json()["unlocked"] is False
+
+
+def test_status_verrouille_un_coffre_en_retard_sans_le_toucher(client):
+    """La page consulte /api/status pour afficher le verrou à l'échéance : un
+    coffre en retard y est verrouillé aussitôt, sans attendre le minuteur ni
+    une route protégée — et consulter l'état n'est pas une activité : le délai
+    restant décroît, la consultation ne le remet jamais à zéro."""
+    client.put("/api/config", json={"overrides": {"rgpd": {"verrouillage_inactivite_minutes": 1}}})
+    security._state["last_activity"] = time.monotonic() - 40
+    s = client.get("/api/status").json()
+    assert s["unlocked"] is True and 0 < s["verrouillage_dans_s"] <= 20
+    assert security.seconds_idle() >= 40  # pas de touch()
+    security._state["last_activity"] = time.monotonic() - 61
+    s = client.get("/api/status").json()
+    assert s["unlocked"] is False and s["verrouillage_dans_s"] is None
+    assert client.get("/api/bilans").status_code == 423
+
+
+def test_status_delai_jamais(client):
+    """Délai « jamais » (0) : le coffre reste ouvert, aucune échéance annoncée."""
+    client.put("/api/config", json={"overrides": {"rgpd": {"verrouillage_inactivite_minutes": 0}}})
+    security._state["last_activity"] = time.monotonic() - 3600
+    s = client.get("/api/status").json()
+    assert s["unlocked"] is True and s["verrouillage_dans_s"] is None
 
 
 def test_keepalive_rafraichit(client):

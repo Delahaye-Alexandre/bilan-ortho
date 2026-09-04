@@ -153,17 +153,21 @@
 </style>
 </head>
 <body>
-<div class="lock-overlay" id="lockOverlay" hidden>
+<!-- Visible dès le premier rendu, avant tout script : l'application ne se
+     montre jamais avant que l'état du coffre soit connu (un F5 sur un coffre
+     ouvert la découvre en quelques millisecondes ; le reste du temps, c'est
+     l'écran de déverrouillage qui accueille). -->
+<div class="lock-overlay" id="lockOverlay">
   <div class="lock-card" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
     <h2 id="lockTitle">🔒 Bilan Ortho</h2>
-    <p class="muted" id="lockMsg">Déverrouillez votre coffre chiffré.</p>
+    <p class="muted" id="lockMsg">Vérification du coffre…</p>
     <div class="row" style="gap:6px">
       <input type="password" id="passphrase" class="grow" placeholder="Passphrase" autocomplete="current-password" aria-label="Passphrase" />
       <button id="passEye" type="button" class="ghost" style="margin-top:10px;width:auto" title="Afficher la passphrase" aria-label="Afficher la passphrase">👁</button>
     </div>
     <input type="password" id="passphrase2" placeholder="Confirmer la passphrase" autocomplete="new-password" aria-label="Confirmer la passphrase" hidden />
     <div class="lock-err" id="lockErr"></div>
-    <button id="unlockBtn">Déverrouiller</button>
+    <button id="unlockBtn" disabled>Déverrouiller</button>
     <p class="muted small">Données chiffrées localement (AES-256). Aucune donnée ne quitte votre machine.</p>
   </div>
 </div>
@@ -751,25 +755,42 @@ async function gate() {
     return;
   }
   if (s.version) document.getElementById('appVersion').textContent = 'v' + s.version;
-  try {
-    const inst = await (await api('/api/installation')).json();
-    // L'écran d'installation ne bloque qu'avant la création du coffre. Passé ce
-    // point, une personne qui veut simplement rouvrir ou exporter un bilan ne
-    // doit jamais être enfermée dehors parce qu'Ollama n'est pas (encore)
-    // remonté après un redémarrage : consultation et export n'en dépendent pas.
-    if (!inst.pret) {
-      if (!s.db_exists) { showInstall(inst); return; }
-      bandeauIA(inst);
-    }
-  } catch {}
-  if (s.unlocked) { startApp(); return; }
-  overlay.hidden = false;
-  if (s.first_run) {
-    lockMsg.textContent = "Premier lancement : créez la passphrase de votre coffre — 12 caractères minimum, "
-      + "de préférence une phrase de plusieurs mots. Une copie du coffre (clé USB perdue) peut être "
-      + "attaquée hors ligne sans limite d'essais : « motdepasse12 » ne tient pas. Notez-la : elle est irrécupérable.";
-    pass2.hidden = false; unlockBtn.textContent = 'Créer le coffre';
+  // L'écran d'installation ne bloque qu'avant la création du coffre : c'est le
+  // seul cas où l'on attend la vérification (Ollama, GPU, modèles : jusqu'à
+  // plusieurs secondes) avant d'afficher quoi que ce soit. Passé ce point, une
+  // personne qui veut simplement rouvrir ou exporter un bilan ne doit jamais
+  // être enfermée dehors parce qu'Ollama n'est pas (encore) remonté après un
+  // redémarrage : consultation et export n'en dépendent pas — la vérification
+  // tourne alors en arrière-plan, sans retarder l'écran de déverrouillage, et
+  // le bandeau nommera ce qui manque.
+  if (!s.db_exists) {
+    try {
+      const inst = await (await api('/api/installation')).json();
+      if (!inst.pret) { showInstall(inst); return; }
+    } catch {}
+  } else {
+    api('/api/installation').then(r => r.json())
+      .then(inst => { if (!inst.pret) bandeauIA(inst); }).catch(() => {});
   }
+  if (s.unlocked) { overlay.hidden = true; startApp(); return; }
+  afficherDeverrouillage(s.first_run
+    ? "Premier lancement : créez la passphrase de votre coffre — 12 caractères minimum, "
+      + "de préférence une phrase de plusieurs mots. Une copie du coffre (clé USB perdue) peut être "
+      + "attaquée hors ligne sans limite d'essais : « motdepasse12 » ne tient pas. Notez-la : elle est irrécupérable."
+    : null);
+}
+// L'écran de déverrouillage est déjà à l'écran (premier rendu) : on y pose le
+// bon message et on rend le bouton actif — il ne l'est pas tant que l'on ignore
+// s'il s'agit d'un premier lancement (création du coffre, confirmation exigée).
+function afficherDeverrouillage(messageCreation) {
+  overlay.hidden = false;
+  if (messageCreation) {
+    lockMsg.textContent = messageCreation;
+    pass2.hidden = false; unlockBtn.textContent = 'Créer le coffre';
+  } else {
+    lockMsg.textContent = 'Déverrouillez votre coffre chiffré.';
+  }
+  unlockBtn.disabled = false;
   pass.focus();
 }
 
@@ -898,13 +919,9 @@ document.getElementById('instContinuer').addEventListener('click', () => {
 });
 async function gateApresInstall() {
   const s = await (await api('/api/status')).json();
-  if (s.unlocked) { startApp(); return; }
-  overlay.hidden = false;
-  if (s.first_run) {
-    lockMsg.textContent = "Créez la passphrase de votre coffre. Notez-la : elle est irrécupérable.";
-    pass2.hidden = false; unlockBtn.textContent = 'Créer le coffre';
-  }
-  pass.focus();
+  if (s.unlocked) { overlay.hidden = true; startApp(); return; }
+  afficherDeverrouillage(s.first_run
+    ? "Créez la passphrase de votre coffre. Notez-la : elle est irrécupérable." : null);
 }
 async function pullUn(modele, base, part) {
   const barre = document.getElementById('instBarre');
@@ -1026,7 +1043,7 @@ async function doUnlock() {
   unlockBtn.textContent = 'Déverrouillage…';
   try {
     await api('/api/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: p }) });
-    pass.value = ''; pass2.value = ''; overlay.hidden = true; startApp();
+    pass.value = ''; pass2.value = ''; overlay.hidden = true; startApp(); verifierVerrou();
   } catch (e) { lockErr.textContent = e.message; }
   finally { unlockBtn.disabled = false; unlockBtn.textContent = libelle; }
 }
@@ -1056,9 +1073,60 @@ document.getElementById('lockBtn').addEventListener('click', async () => {
   try { await api('/api/lock', { method: 'POST' }); } finally { location.reload(); }
 });
 
+// ---------- Verrouillage d'inactivité : la page le voit sans attendre un clic ----------
+// Le serveur verrouille seul après inactivité, mais la page ne l'apprenait
+// qu'à la requête suivante (423) : entre-temps, nom du patient, dictée et
+// compte rendu restaient lisibles à l'écran — exactement ce que ce verrouillage
+// doit empêcher. La page consulte donc l'état juste après l'échéance annoncée
+// par le serveur (et au plus toutes les 60 s, un réglage pouvant changer
+// entre-temps), ainsi qu'au retour de veille ou de l'onglet : un minuteur JS
+// est gelé pendant la veille d'un portable. Consulter /api/status n'est pas
+// une activité : cela ne repousse jamais l'échéance.
+let verrouTimer = null;
+function delaiProchaineVerifS(s) {
+  const d = Number(s.verrouillage_dans_s);
+  if (s.verrouillage_dans_s == null || !isFinite(d)) return 60;
+  return Math.max(1, Math.min(60, d + 1));
+}
+function programmerVerifVerrou(secondes) {
+  clearTimeout(verrouTimer);
+  verrouTimer = setTimeout(verifierVerrou, secondes * 1000);
+}
+async function verifierVerrou() {
+  clearTimeout(verrouTimer); verrouTimer = null;
+  // Rien à surveiller tant que le coffre n'est pas ouvert, ni quand l'écran
+  // de verrouillage est déjà affiché (le déverrouillage relance).
+  if (!appStarted || !overlay.hidden) return;
+  let s;
+  try { s = await (await api('/api/status')).json(); }
+  catch { programmerVerifVerrou(15); return; }
+  if (!s.unlocked) { montrerVerrouillage(); return; }
+  programmerVerifVerrou(delaiProchaineVerifS(s));
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') verifierVerrou(); });
+window.addEventListener('focus', () => verifierVerrou());
+
+// Pour le serveur, « inactif » voulait dire « aucune requête » : quelqu'un
+// qui rédige une rubrique au clavier pendant vingt minutes sans enregistrer
+// aurait vu le verrou surgir en pleine frappe. Une frappe ou un clic dans la
+// page signale donc l'activité au serveur — au plus une fois par minute, et
+// seulement tant que le coffre est ouvert (jamais depuis l'écran de
+// déverrouillage : le champ passphrase ne maintient rien ouvert).
+let dernierSignalActivite = 0;
+function signalerActivite() {
+  if (!appStarted || !overlay.hidden) return;
+  const t = Date.now();
+  if (t - dernierSignalActivite < 60000) return;
+  dernierSignalActivite = t;
+  api('/api/keepalive', { method: 'POST' }).catch(() => {});
+}
+document.addEventListener('keydown', signalerActivite, true);
+document.addEventListener('pointerdown', signalerActivite, true);
+
 // ---------- Démarrage ----------
 async function startApp() {
   if (appStarted) return; appStarted = true;
+  verifierVerrou();
   // Modèle choisi à la première installation : appliqué à la config une fois
   // le coffre déverrouillé, puis oublié.
   const mChoisi = localStorage.getItem('bilan_ortho_modele');
