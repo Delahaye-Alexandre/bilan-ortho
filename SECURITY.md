@@ -36,7 +36,7 @@ En trois points :
 
 ## Mises à jour de dépendances
 
-- Les versions sont figées dans `requirements-lock.txt`, utilisé par la CI et le build (surveillé par Dependabot).
+- Les versions sont figées dans `requirements-lock.txt` — toutes les dépendances, directes et transitives, avec leurs marqueurs de plateforme — utilisé par la CI et le build (surveillé par Dependabot) ; l'outillage (tests, lint, PyInstaller, OCR) est épinglé dans `requirements-dev.txt`, `requirements-build.txt` et `requirements-ocr.txt`.
 - La **CI s'exécute sur chaque pull request** (lint, tests Python multi-versions et multi-OS, tests UI).
 - **Dependabot est activé** (`.github/dependabot.yml` pour les mises à jour, alertes de vulnérabilité au niveau du dépôt) : ses pull requests passent par la même CI. Le **secret scanning** de GitHub est activé sur le dépôt, avec blocage des pushes qui contiendraient un secret.
 

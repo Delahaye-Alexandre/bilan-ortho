@@ -1,0 +1,3 @@
+# Build de l'exécutable Windows (packaging/windows/build.sh, CI build-windows),
+# version épinglée : un PyInstaller qui change change le binaire produit.
+pyinstaller==6.22.2

@@ -1,0 +1,4 @@
+# OCR des PDF scannés (optionnel : demande aussi tesseract et ghostscript sur
+# la machine). Installé par la CI Linux pour que le test OCR ne soit pas sauté ;
+# jamais par le build Windows, qui n'embarque pas l'OCR.
+ocrmypdf==17.8.0

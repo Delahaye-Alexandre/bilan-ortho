@@ -29,5 +29,7 @@ pypdf>=4                     # extraction texte des PDF natifs
 #   pip install ocrmypdf
 #   sudo apt install tesseract-ocr tesseract-ocr-fra ghostscript
 
-# --- Développement (tests) ---
-# pytest>=8                  # `pip install pytest` puis `pytest tests/`
+# --- Développement, build, OCR : requirements-dev.txt, requirements-build.txt,
+# requirements-ocr.txt (versions épinglées). Versions figées de tout ce qui
+# précède, directes et transitives : requirements-lock.txt
+# (scripts/verrouiller-dependances.sh).

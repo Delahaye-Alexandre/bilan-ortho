@@ -200,12 +200,12 @@ vers un modèle CTranslate2 fine-tuné français
 ## Tests
 
 ```bash
-pip install pytest
+pip install -r requirements-dev.txt        # pytest et ruff, versions de la CI
 pytest tests/        # 100 % hors ligne (LLM/embeddings mockés ;
                      # le test OCR est sauté si Tesseract n'est pas installé)
 bun tests/ui/test_questions_ui.mjs    # tests UI (happy-dom) : panneau questions
 bun tests/ui/test_robustesse_ui.mjs   # tests UI : brouillons, 423, anti double-clic
-pip install ruff && ruff check .      # lint (config dans pyproject.toml)
+ruff check .                          # lint (config dans pyproject.toml)
 ```
 
 ## Structure

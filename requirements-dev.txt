@@ -1,0 +1,5 @@
+# Outillage de développement et de CI (lint, tests), versions épinglées :
+# la CI n'installait pas la même version d'un jour à l'autre. Dependabot
+# surveille ce fichier comme les autres requirements-*.txt.
+pytest==9.1.1
+ruff==0.15.22

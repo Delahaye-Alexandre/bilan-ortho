@@ -7,6 +7,13 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Build reproductible** : `requirements-lock.txt` fige désormais toutes les
+  dépendances, directes et transitives (51 paquets, marqueurs Linux et
+  Windows dans le même fichier), au lieu de 14 dépendances directes qui
+  laissaient flotter les briques natives de la dictée ; régénération par
+  `scripts/verrouiller-dependances.sh`. L'outillage de la CI (pytest, ruff,
+  PyInstaller, OCRmyPDF) est épinglé dans des fichiers `requirements-*.txt`
+  surveillés par Dependabot.
 - **Écran de verrouillage dès l'ouverture** : la page s'ouvre sur le coffre
   chiffré, avant tout script — l'intérieur de l'application n'apparaît plus
   pendant l'initialisation. Le déverrouillage n'attend plus la vérification

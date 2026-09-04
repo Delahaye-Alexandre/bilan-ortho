@@ -20,9 +20,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Ruff (config dans pyproject.toml)
+      - name: Ruff (config dans pyproject.toml, version épinglée)
         run: |
-          pip install ruff
+          pip install -r requirements-dev.txt
           ruff check .
 
   tests:
@@ -41,16 +41,15 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-      - name: Dépendances (verrouillées)
+      - name: Dépendances (verrouillées, outillage compris)
         run: |
-          pip install -r requirements-lock.txt
-          pip install pytest
+          pip install -r requirements-lock.txt -r requirements-dev.txt
       - name: Dépendances OCR (Linux — le test OCR ne doit plus être sauté)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q tesseract-ocr tesseract-ocr-fra ghostscript
-          pip install ocrmypdf pillow
+          pip install -r requirements-ocr.txt
       - name: Tests (hors ligne — LLM/embeddings mockés ; -rs affiche tout skip)
         run: pytest tests/ -q -rs
 
@@ -91,10 +90,9 @@ jobs:
           if ($tag -ne $ver) {
             throw "Tag v$tag mais app.__version__ = $ver — bumpez app/__init__.py avant de tagger."
           }
-      - name: Dépendances (verrouillées — build reproductible)
+      - name: Dépendances (verrouillées — build reproductible, PyInstaller épinglé)
         run: |
-          pip install -r requirements-lock.txt
-          pip install pyinstaller pillow
+          pip install -r requirements-lock.txt -r requirements-build.txt
       - name: Icône
         run: python packaging/windows/genere_icone.py packaging/windows/icone.ico
       - name: Build PyInstaller (onedir)
