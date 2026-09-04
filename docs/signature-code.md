@@ -55,43 +55,73 @@ Poser le secret : `gh secret set BILAN_ORTHO_CLE_PRIVEE < releases-ed25519.priv`
 Sans elle, Windows affiche deux avertissements à l'installation **manuelle**
 (« fichier pas fréquemment téléchargé », « Windows a protégé votre
 ordinateur »). La mise à jour en un clic depuis l'app ne les déclenche pas,
-mais la première installation, si. La signature de code les fait
-disparaître et identifie l'éditeur.
+mais la première installation, si. Une signature identifie l'éditeur et
+laisse la réputation SmartScreen s'accumuler d'une version à l'autre ; même
+signé, un tout nouveau fichier peut encore déclencher l'avertissement le
+temps que quelques installations réussies construisent cette réputation.
 
-Le service retenu est **Azure Artifact Signing** (anciennement Trusted
-Signing) : environ 10 $ par mois, ouvert aux travailleurs indépendants de
-l'UE depuis 2026, sans certificat à acheter ni à stocker. La CI est déjà
-prête : les étapes « Signature Authenticode » s'activent d'elles-mêmes dès
-que les secrets existent, et signent le binaire puis l'installeur.
+Trois voies, vérifiées le 4 septembre 2026. Le projet ne voulant pas
+d'abonnement, la première est celle retenue.
 
-### Mise en place (une fois)
+### 2.1 SignPath Foundation — gratuit pour les projets libres (voie retenue)
+
+La fondation SignPath signe gratuitement les binaires des projets open
+source qui remplissent ses conditions (signpath.org/terms.html) :
+
+- licence approuvée OSI, sans composant propriétaire ni double licence
+  commerciale — Bilan Ortho est sous AGPL v3 ;
+- projet activement maintenu et déjà publié sous la forme à signer ; sa
+  fonctionnalité décrite sur la page de téléchargement ;
+- binaire issu d'un build automatisé depuis les sources — c'est le cas
+  (GitHub Actions, `dist/BilanOrtho`, installeur Inno) ;
+- authentification à deux facteurs pour toute l'équipe, sur SignPath et sur
+  GitHub ; rôles déclarés (auteurs, relecteurs, approbateurs — une seule
+  personne peut tenir les trois) ;
+- une **politique de signature** publiée sur la page d'accueil du projet
+  (README), sous ce nom, qui indique que les binaires sont signés par la
+  fondation, qui décide d'une signature et que le logiciel n'envoie aucune
+  donnée ;
+- chaque release est approuvée à la main avant signature.
+
+Mise en place, une fois : candidature sur signpath.org (« Apply »), au nom du
+responsable du projet, avec le lien du dépôt ; à l'acceptation, la fondation
+fournit une organisation SignPath et un projet ; la CI soumet alors le
+binaire et l'installeur par l'action GitHub `signpath/github-action-submit-signing-request`
+(secret d'API SignPath dans le dépôt), attend l'approbation et récupère les
+fichiers signés — l'étape à ajouter dans `build-windows`, à la place des
+étapes Azure ci-dessous. Coût : aucun.
+
+### 2.2 Certum — certificat « Open Source » à bas prix
+
+Certum (Asseco) vend un certificat de signature de code réservé aux
+développeurs de logiciels libres, de l'ordre de quelques dizaines d'euros
+la première année (carte à puce ou service en nuage SimplySign, validité
+limitée à 459 jours depuis février 2026). Le certificat est au nom de la
+personne ; la CI signe avec `signtool` ou `osslsigncode`. Une voie de repli
+si la candidature SignPath n'aboutit pas.
+
+### 2.3 Azure Artifact Signing (ex-Trusted Signing) — abonnement
+
+Environ 10 $ par mois (offre Basic, 5 000 signatures), ouvert aux
+développeurs individuels après validation d'identité (Microsoft Entra
+Verified ID). Les étapes « Signature Authenticode » de la CI sont déjà
+écrites pour cette voie et s'activent d'elles-mêmes dès que les six secrets
+`AZURE_*` existent (Settings → Secrets and variables → Actions) ; elles
+restent en place, inactives, au cas où. Écarté le 4 septembre 2026 : le
+projet est gratuit et ne veut pas d'abonnement.
+
+### Étapes Azure (conservées, inactives)
 
 1. **Azure** : créer un abonnement (portal.azure.com), puis une ressource
-   *Artifact Signing account* (région Europe de l'Ouest, offre Basic).
+   *Artifact Signing* dans une région européenne.
 2. **Validation d'identité** : dans la ressource, *Identity validation* →
-   *Individual* (travailleur indépendant) : pièce d'identité et selfie ;
-   validation en quelques heures à quelques jours.
+   individu (pièce d'identité).
 3. **Profil de certificat** : *Certificate profiles* → *Public Trust*, lié
-   à l'identité validée. Noter le nom du profil et celui du compte, ainsi
-   que l'*endpoint* de la région (ex. `https://weu.codesigning.azure.net/`).
+   à l'identité validée.
 4. **Identité pour la CI** : Microsoft Entra ID → *App registrations* →
-   nouvelle application ; créer un *client secret* ; noter *Tenant ID*,
-   *Client ID*, secret. Sur la ressource Artifact Signing, *Access control
-   (IAM)* → attribuer à cette application le rôle *Artifact Signing
-   Certificate Profile Signer*.
-5. **Secrets GitHub** du dépôt (Settings → Secrets and variables → Actions) :
-
-   | Secret | Valeur |
-   |---|---|
-   | `AZURE_TENANT_ID` | Tenant ID de l'application Entra |
-   | `AZURE_CLIENT_ID` | Client ID de l'application Entra |
-   | `AZURE_CLIENT_SECRET` | secret de l'application |
-   | `AZURE_SIGNING_ENDPOINT` | endpoint régional, ex. `https://weu.codesigning.azure.net/` |
-   | `AZURE_SIGNING_ACCOUNT` | nom du compte Artifact Signing |
-   | `AZURE_SIGNING_PROFILE` | nom du profil de certificat |
-
-6. Pousser un tag : la release suivante est signée. Vérifier sur un poste
-   Windows : clic droit sur l'installeur → Propriétés → *Signatures numériques*.
-
-Tant que les secrets sont absents, rien ne change : l'installeur est publié
-non signé, comme aujourd'hui.
+   secret client, rôle *Trusted Signing Certificate Profile Signer* sur la
+   ressource.
+5. **Secrets GitHub** : `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
+   `AZURE_CLIENT_SECRET`, `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`,
+   `AZURE_SIGNING_PROFILE`.
+6. Pousser un tag : la release suivante est signée.

@@ -5,6 +5,21 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
+## Non publié
+
+- Documents juridiques consolidés, sources vérifiées le 4 septembre 2026 :
+  règlement (UE) 2026/1744 (« omnibus » IA, JO du 24 juillet 2026) intégré à
+  l'auto-évaluation AI Act — reports de l'annexe III au 2 décembre 2027 et
+  de l'annexe I au 2 août 2028 confirmés, article 4 (maîtrise de l'IA)
+  assoupli, qualification inchangée ; notice d'usage alignée ; registre RGPD
+  avec les sources CNIL (pas de DPO ni d'AIPD en exercice individuel) ;
+  mention d'information complétée (caractère nécessaire des données) et
+  rapprochée des exemples de la CNIL.
+- Signature de code : `docs/signature-code.md` présente trois voies
+  vérifiées — SignPath Foundation (gratuit pour les projets libres, voie
+  retenue), Certum « Open Source », Azure Artifact Signing (écarté : pas
+  d'abonnement) — et ce qu'il reste à faire.
+
 ## 1.13.0 — 2026-09-04
 
 Ouverture du dépôt aux orthophonistes : écran de verrouillage et d'accueil dès

@@ -1,6 +1,6 @@
 # Auto-évaluation AI Act — Bilan Ortho
 
-> **Projet de document — à faire relire par un juriste avant publication.**
+> **Document du responsable du projet, sources vérifiées, non validé par un juriste à ce jour.**
 
 | | |
 |---|---|
@@ -76,9 +76,9 @@ Le présent document constitue la documentation de l'évaluation exigée par l'a
 - **Article 50, paragraphe 2** (marquage lisible par machine des contenus synthétiques, y compris le texte) : une exception est prévue lorsque le système exerce une **fonction d'assistance pour l'édition standard** ou **ne modifie pas substantiellement les données d'entrée fournies ni leur sémantique**. Bilan Ortho structure sans inventer, à partir des seules données dictées ; cette exception paraît applicable. **Position à confirmer par le juriste** ; à défaut, un marquage lisible par machine sera ajouté aux contenus générés avant la mise sur le marché.
 - **Article 50, paragraphe 4** (texte publié pour informer le public) : sans objet — les bilans sont des documents cliniques individuels, non publiés à destination du public, et font en tout état de cause l'objet d'un examen humain systématique.
 
-### 6.3 Maîtrise de l'IA (article 4, applicable depuis le 2 février 2025)
+### 6.3 Maîtrise de l'IA (article 4, applicable depuis le 2 février 2025, amendé par le règlement (UE) 2026/1744)
 
-L'article 4 impose au fournisseur comme au déployeur de veiller à un niveau suffisant de maîtrise de l'IA des personnes qui utilisent le système. Le fournisseur y contribue par une notice d'usage à l'intention des orthophonistes (`docs/notice-usage-ia.md`) : chaîne de traitement, ce que le système ne fait pas, modes d'échec connus et ce que les vérificateurs automatiques n'attrapent pas, gestes de relecture attendus à chaque bilan. Dans l'interface, chaque nombre ou nom de test absent de la dictée est signalé au moment de la relecture (`app/verif_chiffres.py::chiffres_non_sources`, `app/verif_tests.py::tests_non_sources`). L'orthophoniste, déployeur, informe ses patients au moyen de la mention fournie (`docs/mention-information-patient.md`) et en garde la trace par dossier (`app/patient.py::set_information`).
+L'article 4, dans sa rédaction issue du règlement (UE) 2026/1744 (« omnibus numérique » sur l'IA, JO du 24 juillet 2026, en vigueur le 27 juillet 2026), demande aux fournisseurs et aux déployeurs de **prendre des mesures pour soutenir le développement de la maîtrise de l'IA** des personnes qui utilisent le système, sans exiger de garantir un niveau donné à quiconque. Le fournisseur y contribue par une notice d'usage à l'intention des orthophonistes (`docs/notice-usage-ia.md`) : chaîne de traitement, ce que le système ne fait pas, modes d'échec connus et ce que les vérificateurs automatiques n'attrapent pas, gestes de relecture attendus à chaque bilan. Dans l'interface, chaque nombre ou nom de test absent de la dictée est signalé au moment de la relecture (`app/verif_chiffres.py::chiffres_non_sources`, `app/verif_tests.py::tests_non_sources`). L'orthophoniste, déployeur, informe ses patients au moyen de la mention fournie (`docs/mention-information-patient.md`) et en garde la trace par dossier (`app/patient.py::set_information`).
 
 ### 6.4 Calendrier d'application (vérifié au 18 juillet 2026)
 
@@ -88,10 +88,10 @@ L'article 4 impose au fournisseur comme au déployeur de veiller à un niveau su
 | 2 février 2025 | Interdiction des pratiques d'IA inacceptables |
 | 2 août 2025 | Obligations relatives aux modèles à usage général (chapitre V), gouvernance, sanctions |
 | 2 août 2026 | Application générale, dont l'article 50 (période de grâce jusqu'au 2 décembre 2026 pour le marquage par les systèmes existants) |
-| **2 décembre 2027** | Systèmes à haut risque de l'**annexe III** — échéance initialement fixée au 2 août 2026, **reportée** par le paquet « omnibus numérique » (accord politique de mai 2026, approuvé par le Parlement européen le 16 juin 2026 et par le Conseil le 29 juin 2026 ; publication au Journal officiel attendue à la date du présent document) |
-| 2 août 2028 | Systèmes à haut risque de l'article 6, paragraphe 1 (annexe I, produits réglementés) — au lieu du 2 août 2027 |
+| **2 décembre 2027** | Systèmes à haut risque de l'**annexe III** — échéance initialement fixée au 2 août 2026, **reportée** par le règlement (UE) 2026/1744 (« omnibus numérique » sur l'IA, publié au Journal officiel le 24 juillet 2026, en vigueur le 27 juillet 2026) |
+| 2 août 2028 | Systèmes à haut risque de l'article 6, paragraphe 1 (annexe I, produits réglementés) — au lieu du 2 août 2027 (même règlement) |
 
-La présente auto-évaluation sera relue après publication du paquet « omnibus numérique » au Journal officiel, ainsi qu'au regard des lignes directrices de la Commission relatives à la classification des systèmes à haut risque.
+Relecture du 4 septembre 2026, après publication du règlement (UE) 2026/1744 : les reports ci-dessus sont confirmés ; l'article 4 (maîtrise de l'IA) est assoupli (§ 6.3) ; les obligations de transparence de l'article 50 et la dérogation de l'article 6, paragraphe 3, sur lesquelles repose la présente qualification, ne sont pas modifiées dans un sens qui la remettrait en cause. L'auto-évaluation sera relue au regard des lignes directrices de la Commission relatives à la classification des systèmes à haut risque.
 
 ## 7. Engagement de réévaluation
 
@@ -109,4 +109,4 @@ Fait à : ______________________ , le : ______________________
 
 Signature : ______________________
 
-*Document établi le 18 juillet 2026 pour la version 1.5.0 ; révisé le 3 septembre 2026 pour la version 1.9.0 (références au code par symbole, vérifiées par test) et le 4 septembre 2026 pour la version 1.12.0 (mise en forme des documents, gabarit Word, trace de l'information des patients : sans incidence sur la chaîne d'IA ni sur la qualification). Projet de document — à faire relire par un juriste avant publication.*
+*Document établi le 18 juillet 2026 pour la version 1.5.0 ; révisé le 3 septembre 2026 pour la version 1.9.0 (références au code par symbole, vérifiées par test) et le 4 septembre 2026 pour la version 1.12.0 (mise en forme des documents, gabarit Word, trace de l'information des patients : sans incidence sur la chaîne d'IA ni sur la qualification) avec relecture du calendrier après publication du règlement (UE) 2026/1744. Rédigé avec soin par le responsable du projet, sources vérifiées à chaque révision ; non validé par un juriste à ce jour.*

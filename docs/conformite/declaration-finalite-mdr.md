@@ -1,6 +1,6 @@
 # Déclaration de finalité au regard du règlement (UE) 2017/745 (MDR)
 
-> **Projet de document — à faire relire par un juriste avant publication.**
+> **Document du responsable du projet, sources vérifiées, non validé par un juriste à ce jour.**
 
 | | |
 |---|---|

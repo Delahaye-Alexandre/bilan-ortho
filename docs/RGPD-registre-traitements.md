@@ -6,10 +6,17 @@
 > de patients par un professionnel de santé exerçant seul n'est pas un
 > traitement « à grande échelle » — considérant 91 du RGPD) **ni AIPD
 > systématique** (liste CNIL des traitements dispensés, délibération
-> n° 2019-118). Faire relire par un DPO ou un juriste reste un conseil,
-> notamment pour l'information sur l'enregistrement vocal — pas une condition
-> d'usage. À vérifier pour votre situation (exercice en société, plusieurs
-> professionnels, autres traitements).
+> n° 2019-118 du 12 septembre 2019 : « traitements de données de santé
+> nécessaires à la prise en charge d'un patient par un professionnel de santé
+> exerçant à titre individuel au sein d'un cabinet »). Sources vérifiées le
+> 4 septembre 2026 : page CNIL « RGPD et professionnels de santé libéraux :
+> ce que vous devez savoir » (pas de DPO obligatoire en exercice individuel,
+> registre à tenir en interne, AIPD non requise sauf traitement à grande
+> échelle — réseau, maison de santé, dossiers partagés) et Légifrance
+> (CNILTEXT000039249797). Faire relire par un DPO ou un juriste reste un
+> conseil, notamment pour l'information sur l'enregistrement vocal — pas une
+> condition d'usage. À vérifier pour votre situation (exercice en société,
+> plusieurs professionnels, autres traitements).
 
 ## 1. Responsable de traitement
 - Nom / cabinet : ……

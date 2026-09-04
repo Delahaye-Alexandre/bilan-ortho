@@ -1,9 +1,13 @@
 # Notice d'usage de l'assistant — ce qu'il fait, ce qu'il ne fait pas, comment il se trompe
 
 Écrite pour les orthophonistes qui utilisent Bilan Ortho, au titre de
-l'obligation de maîtrise de l'IA (règlement (UE) 2024/1689, article 4,
-applicable depuis le 2 février 2025) : dix minutes de lecture qui expliquent
-la chaîne, ses limites et ce qui reste à vérifier à chaque bilan. Compléments :
+l'article 4 du règlement (UE) 2024/1689 sur l'IA (applicable depuis le
+2 février 2025, assoupli par le règlement (UE) 2026/1744 : fournisseurs et
+déployeurs « prennent des mesures pour soutenir le développement de la
+maîtrise de l'IA » des personnes qui utilisent le système, sans avoir à
+garantir un niveau donné). C'est la mesure prise par le fournisseur : dix
+minutes de lecture qui expliquent la chaîne, ses limites et ce qui reste à
+vérifier à chaque bilan. Compléments :
 la notice médico-légale (`docs/notice-medico-legale.md`), l'auto-évaluation
 AI Act (`docs/conformite/ai-act-auto-evaluation.md`) et la mention
 d'information à remettre aux patients (`docs/mention-information-patient.md`).

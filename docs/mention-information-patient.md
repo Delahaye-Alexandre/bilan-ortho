@@ -7,7 +7,13 @@
 > (société, plusieurs professionnels, autres logiciels). Dans l'application,
 > la case « Mention d'information remise » du dossier patient garde la date
 > de la remise (`app/patient.py::set_information`) : c'est votre trace, pas
-> un consentement — la prise en charge n'en exige pas.
+> un consentement — la prise en charge n'en exige pas. Le modèle suit les
+> éléments que la CNIL attend d'une mention d'information (identité du
+> responsable, finalités et base légale, destinataires, transferts, durée,
+> droits et réclamation, caractère nécessaire des données, décision
+> automatisée) et sa recommandation d'une mention courte doublée d'une
+> mention complète — vérifié le 4 septembre 2026 sur cnil.fr (« RGPD :
+> exemples de mentions d'information »).
 
 ---
 
@@ -43,6 +49,13 @@ validée par l'orthophoniste, qui reste l'unique auteur du compte-rendu
 (compte-rendu de bilan) ; votre Dossier Médical Partagé le cas échéant ;
 avec votre accord, d'autres professionnels qui vous suivent ou l'école.
 Aucun sous-traitant, aucun transfert hors de l'Union européenne.
+
+**Ces informations sont-elles obligatoires ?** L'identité, la date de
+naissance et les éléments cliniques sont nécessaires à la réalisation du
+bilan et à son compte-rendu ; sans eux, le bilan ne peut pas être réalisé ni
+son compte-rendu adressé au médecin. La dictée vocale, elle, n'est qu'un
+moyen de rédaction : vous pouvez la refuser sans conséquence sur votre prise
+en charge.
 
 **Combien de temps.** [Durée retenue par le cabinet pour les dossiers de
 soins — à préciser ; les sauvegardes chiffrées de l'ordinateur peuvent
