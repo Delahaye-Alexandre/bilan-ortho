@@ -1085,11 +1085,16 @@ def to_pdf(b: dict, cfg: dict | None = None) -> bytes:
             if isinstance(bloc, texte_riche.Paragraphe):
                 flow.append(Paragraph(balise(bloc.segments), corps))
                 continue
-            items = [ListItem(Paragraph(balise(i), corps), leftIndent=14) for i in bloc.items]
+            # Marqueur dans la police et la taille du corps (un « 1 » de 9 pt
+            # flottait au-dessus de la ligne), avec son point pour les listes
+            # numérotées, comme dans le Word.
+            items = [ListItem(Paragraph(balise(i), corps), leftIndent=16) for i in bloc.items]
             flow.append(ListFlowable(
                 items, bulletType="1" if bloc.ordonnee else "bullet",
-                start=1 if bloc.ordonnee else "•", leftIndent=14,
-                bulletFontSize=9, spaceBefore=2, spaceAfter=2,
+                start=1 if bloc.ordonnee else "•", leftIndent=16,
+                bulletFontName=polices["normal"], bulletFontSize=taille,
+                bulletFormat="%s." if bloc.ordonnee else None,
+                spaceBefore=2, spaceAfter=2,
             ))
         return flow
 

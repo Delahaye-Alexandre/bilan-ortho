@@ -7,6 +7,9 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- PDF : les marqueurs de liste (puces, numéros) prennent la police et la
+  taille du texte, et les numéros leur point (« 1. ») — un « 1 » de 9 points
+  flottait au-dessus de la ligne.
 - **Adoption** : guide d'installation pérenne (`docs/installation.md`),
   distinct du protocole d'essai (`docs/guide-test.md`, données fictives,
   trois questions en retour) ; page « Vérifiez vous-même que rien ne sort »
