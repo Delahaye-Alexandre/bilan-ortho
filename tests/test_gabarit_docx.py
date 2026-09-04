@@ -91,8 +91,11 @@ def textes(doc) -> list[str]:
 # --- préparation et description -----------------------------------------------
 
 def test_preparer_gabarit_decrit_le_document():
-    data, desc = export.preparer_gabarit(gabarit(), "Papier à en-tête (cabinet).docx")
-    assert data == gabarit()  # un .docx est gardé tel quel
+    entree = gabarit()
+    data, desc = export.preparer_gabarit(entree, "Papier à en-tête (cabinet).docx")
+    # Un .docx est gardé tel quel (comparé à l'entrée elle-même : deux .docx
+    # générés à une seconde d'écart diffèrent par l'horodatage du zip).
+    assert data == entree
     assert desc["nom"] == "Papier a en-tete cabinet.docx"
     assert desc["taille"] == len(data) and desc["depose_le"] == date.today().isoformat()
     assert desc["styles"] == list(export.STYLES_GABARIT)
