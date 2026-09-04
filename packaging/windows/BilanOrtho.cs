@@ -1,5 +1,10 @@
 // Lanceur Windows de Bilan Ortho (double-clic -> app dans le navigateur).
 //
+// OUTILLAGE DU POSTE DE DÉVELOPPEMENT, hors chaîne de release : il démarre
+// le serveur dans le WSL de cette machine (chemins et distribution en dur
+// ci-dessous, à adapter). L'application distribuée aux orthophonistes est
+// l'exécutable PyInstaller (lanceur.py) livré par l'installeur.
+//
 // 1. Si le serveur local répond déjà : ouvre simplement le navigateur.
 // 2. Sinon : ouvre aussitôt l'écran d'accueil (app/static/accueil.html, qui
 //    bascule de lui-même sur l'application dès qu'elle répond), démarre le
