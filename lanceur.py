@@ -1,9 +1,10 @@
 """Point d'entrée natif de Bilan Ortho (compilé par PyInstaller sous Windows).
 
 Double-clic : si une instance répond déjà sur un port local, ouvre simplement
-le navigateur dessus (single-instance) ; sinon démarre le serveur sur le
-premier port libre et ouvre le navigateur dès qu'il répond. En mode compilé
-(fenêtré, sans console), les journaux partent dans <données>/serveur.log.
+le navigateur dessus (single-instance) ; sinon ouvre aussitôt l'écran d'accueil
+dans le navigateur (qui bascule sur l'application dès qu'elle répond) et démarre
+le serveur sur le premier port libre. En mode compilé (fenêtré, sans console),
+les journaux partent dans <données>/serveur.log.
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ import sys
 import threading
 import time
 import webbrowser
+from pathlib import Path
 
 import httpx
 
@@ -64,7 +66,7 @@ def _port_libre() -> int:
     raise SystemExit("Aucun port local libre (8000-8010).")
 
 
-def _attendre_pret(url: str, essais: int = 240) -> bool:
+def _attendre_pret(url: str, essais: int = 480) -> bool:
     """Sonde /api/status jusqu'à 2 minutes (premier démarrage plus lent).
     True dès que le serveur répond, False s'il n'a jamais répondu."""
     for _ in range(essais):
@@ -73,8 +75,21 @@ def _attendre_pret(url: str, essais: int = 240) -> bool:
                 return True
         except Exception:
             pass
-        time.sleep(0.5)
+        time.sleep(0.25)
     return False
+
+
+def _ecran_accueil(port: int) -> str | None:
+    """URL (fichier local) de l'écran d'accueil, ouvert dès le double-clic :
+    il sonde le serveur et bascule sur l'application dès qu'elle répond — le
+    navigateur se lance ainsi pendant que le serveur démarre, au lieu d'après.
+    En mode compilé, le fichier est dans les données embarquées (_MEIPASS) ;
+    None s'il manque (on retombe alors sur l'ouverture une fois prêt)."""
+    racine = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    fichier = racine / "app" / "static" / "accueil.html"
+    if not fichier.is_file():
+        return None
+    return fichier.as_uri() + f"?port={port}"
 
 
 def _boite_erreur(message: str) -> None:
@@ -87,11 +102,14 @@ def _boite_erreur(message: str) -> None:
         print(message, file=sys.stderr)
 
 
-def _ouvrir_quand_pret(url: str) -> None:
+def _ouvrir_quand_pret(url: str, deja_ouvert: bool = False) -> None:
     """N'ouvre le navigateur QUE si le serveur a fini par répondre : ouvrir une
-    page d'erreur brute n'aiderait pas — on indique plutôt où est le journal."""
+    page d'erreur brute n'aiderait pas — on indique plutôt où est le journal.
+    ``deja_ouvert`` : l'écran d'accueil est déjà affiché et basculera de
+    lui-même ; il ne reste ici qu'à signaler un serveur resté muet."""
     if _attendre_pret(url):
-        _ouvrir_fenetre(url)
+        if not deja_ouvert:
+            _ouvrir_fenetre(url)
         return
     from app import config
 
@@ -144,8 +162,12 @@ def main(argv: list[str] | None = None) -> None:
         port = _port_libre()
         ouvrir_fenetre = True
     if ouvrir_fenetre:
+        url = f"http://127.0.0.1:{port}"
+        accueil = _ecran_accueil(port)
+        if accueil:
+            _ouvrir_fenetre(accueil)  # tout de suite, avant même d'importer le serveur
         threading.Thread(
-            target=_ouvrir_quand_pret, args=(f"http://127.0.0.1:{port}",), daemon=True
+            target=_ouvrir_quand_pret, args=(url, accueil is not None), daemon=True
         ).start()
 
     if getattr(sys, "frozen", False):

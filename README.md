@@ -139,10 +139,11 @@ pip install -r requirements.txt
 > faire ici.
 
 `BilanOrtho.exe` (sur le Bureau, source dans `packaging/windows/`) : double-clic
-→ démarre le serveur dans WSL s'il ne tourne pas déjà (via
-`scripts/start-serveur.sh`, silencieux et idempotent — jamais de doublon), puis
-ouvre l'app dans une **fenêtre dédiée** (mode application d'Edge/Chrome, sans
-onglets ni barre d'adresse ; repli navigateur classique si absent). Recompiler après modification :
+→ ouvre aussitôt un écran d'accueil dans une **fenêtre dédiée** (mode
+application d'Edge/Chrome, sans onglets ni barre d'adresse ; repli navigateur
+classique si absent), démarre le serveur dans WSL s'il ne tourne pas déjà (via
+`scripts/start-serveur.sh`, silencieux et idempotent — jamais de doublon) ; la
+fenêtre bascule sur l'app dès que le serveur répond. Recompiler après modification :
 `packaging/windows/build.sh bureau` (utilise le compilateur C# intégré à
 Windows, rien à installer). Journaux :
 `~/.local/share/bilan-ortho/serveur.log` (et `ollama.log`).

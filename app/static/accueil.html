@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bilan Ortho</title>
+<!-- Écran d'accueil ouvert par le lanceur dès le double-clic, AVANT que le
+     serveur réponde : le navigateur se lance pendant que le serveur démarre,
+     au lieu d'attendre qu'il soit prêt pour s'ouvrir. Fichier local autonome
+     (aucune ressource externe) : il sonde l'application et bascule dessus dès
+     qu'elle répond. Même carte que l'écran de verrouillage, pour que
+     l'enchaînement accueil → déverrouillage se fasse sans rupture. -->
+<style>
+  :root { --bg: #eef1f4; --panel: #fff; --border: #d9dee5; --text: #1f2430; --muted: #6b7280; --accent: #2563eb; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font-size: 14px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 28px 26px; width: 380px; max-width: 92vw; box-shadow: 0 10px 40px rgba(0,0,0,.08); }
+  h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite;
+    vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .err { color: #b91c1c; margin-top: 10px; }
+  .err[hidden] { display: none; }
+  .small { font-size: 11px; margin-top: 14px; }
+</style>
+</head>
+<body>
+<main class="card" role="status" aria-live="polite">
+  <h1>🔒 Bilan Ortho</h1>
+  <p class="muted" id="msg"><span class="spin" aria-hidden="true"></span>Ouverture de l'application…</p>
+  <p class="err" id="err" hidden></p>
+  <p class="muted small">Données chiffrées localement (AES-256). Aucune donnée ne quitte votre machine.</p>
+</main>
+<script>
+(function () {
+  var port = parseInt(new URLSearchParams(location.search).get('port'), 10) || 8000;
+  var url = 'http://127.0.0.1:' + port + '/';
+  var debut = Date.now();
+  var LIMITE_MS = 120000;  // même patience que le lanceur (premier démarrage plus lent)
+  function sonder() {
+    // Mode no-cors : la réponse est opaque, mais la promesse ne se résout que
+    // si le serveur a répondu — connexion refusée, elle est rejetée.
+    fetch(url + 'api/status', { mode: 'no-cors', cache: 'no-store' })
+      .then(function () { location.replace(url); })
+      .catch(function () {
+        if (Date.now() - debut > LIMITE_MS) { echec(); return; }
+        setTimeout(sonder, 250);
+      });
+  }
+  function echec() {
+    document.getElementById('msg').textContent = "L'application n'a pas démarré.";
+    var e = document.getElementById('err');
+    e.textContent = "Le serveur ne répond pas après 2 minutes. Fermez cette fenêtre et relancez "
+      + "Bilan Ortho ; si cela se reproduit, consultez le journal serveur.log dans le dossier "
+      + "de données de l'application.";
+    e.hidden = false;
+  }
+  sonder();
+})();
+</script>
+</body>
+</html>

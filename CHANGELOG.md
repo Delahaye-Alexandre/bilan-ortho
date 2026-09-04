@@ -17,6 +17,10 @@ installeur Windows publié dans les releases.
   serveur et au retour de veille ou de l'onglet ; une frappe ou un clic
   signale l'activité (au plus une fois par minute), pour que « inactif »
   veuille dire inactif.
+- **Écran d'accueil au démarrage** : le lanceur ouvre aussitôt une fenêtre
+  « Ouverture de l'application… » qui bascule sur l'app dès que le serveur
+  répond — le navigateur se lance pendant que le serveur démarre, au lieu
+  d'après.
 - **Démarrage plus rapide** : la détection du GPU (import de ctranslate2,
   nvidia-smi — jusqu'à plusieurs secondes sous Windows) n'est faite qu'une
   fois par session au lieu d'à chaque écran d'installation et chaque
