@@ -5,7 +5,12 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
-## Non publié
+## 1.13.0 — 2026-09-04
+
+Ouverture du dépôt aux orthophonistes : écran de verrouillage et d'accueil dès
+l'ouverture, démarrage plus rapide, information des patients et notice d'usage
+de l'assistant, guide d'installation et page « vérifiez vous-même que rien ne
+sort », build reproductible.
 
 - PDF : les marqueurs de liste (puces, numéros) prennent la police et la
   taille du texte, et les numéros leur point (« 1. ») — un « 1 » de 9 points
