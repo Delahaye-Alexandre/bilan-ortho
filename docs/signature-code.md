@@ -60,45 +60,57 @@ laisse la réputation SmartScreen s'accumuler d'une version à l'autre ; même
 signé, un tout nouveau fichier peut encore déclencher l'avertissement le
 temps que quelques installations réussies construisent cette réputation.
 
-Trois voies, vérifiées le 4 septembre 2026. Le projet ne voulant pas
-d'abonnement, la première est celle retenue.
+Trois voies, vérifiées le 4 septembre 2026. Le projet est gratuit et ne veut
+pas d'abonnement ; aucune n'est engagée à ce jour, l'ordre ci-dessous est
+celui du rendement.
 
-### 2.1 SignPath Foundation — gratuit pour les projets libres (voie retenue)
+### 2.0 Pour l'instant : pas de signature, et l'expliquer
 
-La fondation SignPath signe gratuitement les binaires des projets open
-source qui remplissent ses conditions (signpath.org/terms.html) :
+Les avertissements sont décrits pas à pas dans `docs/installation.md` et
+dans les notes de release ; une fois installée, l'application se met à jour
+d'elle-même sans les redéclencher. Pour un cercle d'amies orthophonistes qui
+reçoivent le lien de la main du responsable du projet, c'est acceptable.
+Revoir la question si les avertissements font renoncer quelqu'un.
 
-- licence approuvée OSI, sans composant propriétaire ni double licence
-  commerciale — Bilan Ortho est sous AGPL v3 ;
-- projet activement maintenu et déjà publié sous la forme à signer ; sa
-  fonctionnalité décrite sur la page de téléchargement ;
-- binaire issu d'un build automatisé depuis les sources — c'est le cas
-  (GitHub Actions, `dist/BilanOrtho`, installeur Inno) ;
-- authentification à deux facteurs pour toute l'équipe, sur SignPath et sur
-  GitHub ; rôles déclarés (auteurs, relecteurs, approbateurs — une seule
-  personne peut tenir les trois) ;
-- une **politique de signature** publiée sur la page d'accueil du projet
-  (README), sous ce nom, qui indique que les binaires sont signés par la
-  fondation, qui décide d'une signature et que le logiciel n'envoie aucune
-  donnée ;
-- chaque release est approuvée à la main avant signature.
+### 2.1 Certum « Open Source » — quelques dizaines d'euros, au nom de la personne
 
-Mise en place, une fois : candidature sur signpath.org (« Apply »), au nom du
-responsable du projet, avec le lien du dépôt ; à l'acceptation, la fondation
-fournit une organisation SignPath et un projet ; la CI soumet alors le
-binaire et l'installeur par l'action GitHub `signpath/github-action-submit-signing-request`
-(secret d'API SignPath dans le dépôt), attend l'approbation et récupère les
-fichiers signés — l'étape à ajouter dans `build-windows`, à la place des
-étapes Azure ci-dessous. Coût : aucun.
+Certum (Asseco, Pologne) vend un certificat de signature de code réservé aux
+personnes qui publient des logiciels libres ou gratuits, vérifié le
+4 septembre 2026 sur shop.certum.eu :
 
-### 2.2 Certum — certificat « Open Source » à bas prix
+- **« Open Source Code Signing in the Cloud »** : 49 € la première fois,
+  sans matériel (service SimplySign, application sur l'ordinateur et code à
+  usage unique sur le téléphone à chaque session de signature) ;
+- **« Open Source Code Signing — set »** : 69 € avec carte à puce et
+  lecteur (plus port), renouvellement de l'ordre de 29 € par an ;
+- vérification d'identité par vidéo (IDNow : pièce d'identité), justificatif
+  de domicile, et un court dossier décrivant le projet (lien du dépôt,
+  licence) ; obtention en quelques jours d'après les retours publiés.
 
-Certum (Asseco) vend un certificat de signature de code réservé aux
-développeurs de logiciels libres, de l'ordre de quelques dizaines d'euros
-la première année (carte à puce ou service en nuage SimplySign, validité
-limitée à 459 jours depuis février 2026). Le certificat est au nom de la
-personne ; la CI signe avec `signtool` ou `osslsigncode`. Une voie de repli
-si la candidature SignPath n'aboutit pas.
+Le certificat est délivré au nom de la personne (validation OV) : il fait
+disparaître « Éditeur inconnu » et laisse la réputation SmartScreen
+s'accumuler sur le certificat d'une version à l'autre, ce qu'un fichier non
+signé ne peut jamais faire. Limite : la signature se fait sur le poste du
+responsable (carte ou SimplySign), pas dans la CI. Le flux prévu : la CI
+construit l'installeur comme aujourd'hui ; un script local le signe
+(`signtool` du SDK Windows, horodatage), recalcule `SHA256SUMS`, le signe
+avec la clé Ed25519 locale (§ 1) et remplace les trois fichiers de la
+release. Une dizaine de minutes par version, à écrire le jour où le
+certificat existe.
+
+### 2.2 SignPath Foundation — gratuit, mais pas encore
+
+La fondation SignPath signe gratuitement les projets libres, mais ses
+conditions (signpath.org/terms.html) précisent : « we cannot sign binaries
+based on source code that nobody knows. For executable programs that may be
+downloaded and executed based on our signature, we require a certain
+verifiable reputation », et la décision reste la leur, sans recours. Un
+projet sans utilisateurs connus n'y a pas sa place aujourd'hui. À retenter
+quand Bilan Ortho aura des utilisatrices visibles (retours publics, étoiles,
+téléchargements) ; le reste des conditions est déjà rempli (AGPL, build
+automatisé par GitHub Actions) ou facile (double authentification, politique
+de signature publiée sur le README, approbation manuelle par version, action
+GitHub `signpath/github-action-submit-signing-request`).
 
 ### 2.3 Azure Artifact Signing (ex-Trusted Signing) — abonnement
 
@@ -106,9 +118,8 @@ Environ 10 $ par mois (offre Basic, 5 000 signatures), ouvert aux
 développeurs individuels après validation d'identité (Microsoft Entra
 Verified ID). Les étapes « Signature Authenticode » de la CI sont déjà
 écrites pour cette voie et s'activent d'elles-mêmes dès que les six secrets
-`AZURE_*` existent (Settings → Secrets and variables → Actions) ; elles
-restent en place, inactives, au cas où. Écarté le 4 septembre 2026 : le
-projet est gratuit et ne veut pas d'abonnement.
+`AZURE_*` existent ; elles restent en place, inactives. Écarté le
+4 septembre 2026 : pas d'abonnement.
 
 ### Étapes Azure (conservées, inactives)
 

@@ -15,10 +15,11 @@ installeur Windows publié dans les releases.
   avec les sources CNIL (pas de DPO ni d'AIPD en exercice individuel) ;
   mention d'information complétée (caractère nécessaire des données) et
   rapprochée des exemples de la CNIL.
-- Signature de code : `docs/signature-code.md` présente trois voies
-  vérifiées — SignPath Foundation (gratuit pour les projets libres, voie
-  retenue), Certum « Open Source », Azure Artifact Signing (écarté : pas
-  d'abonnement) — et ce qu'il reste à faire.
+- Signature de code : `docs/signature-code.md` présente les voies
+  vérifiées et leur ordre — rien pour l'instant (avertissements expliqués),
+  Certum « Open Source » (49 € en nuage ou 69 € avec carte, au nom de la
+  personne, signature locale), SignPath Foundation plus tard (exige une
+  réputation vérifiable), Azure écarté (abonnement).
 
 ## 1.13.0 — 2026-09-04
 
