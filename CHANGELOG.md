@@ -5,7 +5,12 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
-## Non publié
+## 1.12.0 — 2026-09-04
+
+Cette version achève le plan « mise en forme » : mise en page des documents
+et logo (lot B), trame reprise d'un de vos bilans (lot C), gabarit Word du
+cabinet (lot D). Les lots A et B des Paramètres compréhensibles étaient dans
+la 1.11.0.
 
 Lot D du plan « mise en forme » (`docs/plan-mise-en-forme-2026-09-03.md`) :
 
