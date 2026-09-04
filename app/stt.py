@@ -24,6 +24,20 @@ _lock = threading.Lock()
 _cache: dict = {"model": None, "spec": None}
 
 
+class DicteeTropLongue(ValueError):
+    """Enregistrement plus long que `rgpd.dictee_max_minutes` : la borne ne
+    vivait que dans le navigateur (arrêt automatique du micro), un envoi
+    direct à l'API l'ignorait."""
+
+    def __init__(self, duree_s: float, max_minutes: float):
+        self.duree_s, self.max_minutes = duree_s, max_minutes
+        super().__init__(
+            f"Dictée trop longue ({duree_s / 60:.0f} min) : la limite est de "
+            f"{max_minutes:g} min (⚙️ Paramètres → Sécurité et sauvegardes). "
+            "Dictez en plusieurs fois."
+        )
+
+
 class AudioIllisible(ValueError):
     """L'enregistrement reçu n'est pas décodable (fichier tronqué, format
     inattendu) : c'est un problème du fichier envoyé, pas du modèle."""
@@ -190,8 +204,37 @@ def _apply_corrections(text: str, corrections: dict) -> str:
     return text
 
 
+# Marge sur la borne de durée : le navigateur arrête le micro à la limite,
+# l'enregistrement qui en sort la dépasse de quelques secondes.
+_TOLERANCE_DUREE_S = 10.0
+
+
+def _duree_audio(chemin: str) -> float | None:
+    """Durée annoncée par le conteneur (secondes), ou None si elle n'y est
+    pas — un WebM de MediaRecorder n'en porte souvent aucune — ou si le
+    fichier n'est pas décodable (le modèle le dira mieux)."""
+    try:
+        with av.open(chemin) as conteneur:
+            if conteneur.duration:
+                return float(conteneur.duration / av.time_base)  # av.time_base = 1 000 000
+    except Exception:
+        return None
+    return None
+
+
+def _verifier_duree(duree_s: float | None, cfg: dict) -> None:
+    max_minutes = float(((cfg.get("rgpd") or {}).get("dictee_max_minutes")) or 0)
+    if max_minutes > 0 and duree_s and duree_s > max_minutes * 60 + _TOLERANCE_DUREE_S:
+        raise DicteeTropLongue(duree_s, max_minutes)
+
+
 def transcribe(audio_bytes: bytes, filename: str, cfg: dict) -> dict:
-    """Transcrit un audio (bytes) et supprime le fichier temporaire ensuite."""
+    """Transcrit un audio (bytes) et supprime le fichier temporaire ensuite.
+
+    La borne `rgpd.dictee_max_minutes` est appliquée ici aussi : avant la
+    transcription quand le conteneur annonce sa durée, après sinon (la
+    durée mesurée par le modèle) — le texte d'une dictée trop longue n'est
+    jamais rendu."""
     stt = cfg["stt"]
     spec = resolved(cfg)
     model = _get_model(spec)
@@ -204,6 +247,7 @@ def transcribe(audio_bytes: bytes, filename: str, cfg: dict) -> dict:
         tmp.write(audio_bytes)
         tmp.flush()
         tmp.close()
+        _verifier_duree(_duree_audio(tmp.name), cfg)
         try:
             segments, info = model.transcribe(
                 tmp.name,
@@ -217,6 +261,7 @@ def transcribe(audio_bytes: bytes, filename: str, cfg: dict) -> dict:
             # voir avec l'installation du modèle, le message doit le dire.
             raise AudioIllisible(str(exc)) from exc
         text = "".join(seg.text for seg in segments).strip()
+        _verifier_duree(float(getattr(info, "duration", 0.0) or 0.0), cfg)
         text = _apply_corrections(text, stt.get("corrections", {}))
         return {
             "text": text,

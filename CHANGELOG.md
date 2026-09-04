@@ -7,6 +7,14 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Durée de dictée bornée côté serveur** : la limite `rgpd.dictee_max_minutes`
+  n'arrêtait que le micro du navigateur ; un enregistrement plus long envoyé
+  directement à l'API était transcrit. Le serveur la vérifie désormais avant
+  la transcription quand le fichier annonce sa durée, après sinon, et ne rend
+  jamais le texte d'une dictée trop longue (400 explicite).
+- Test des chemins accentués (`tests/test_chemins.py`) : coffre, exports et
+  sauvegarde dans un dossier de données avec accents, espaces et apostrophe,
+  comme un `%LOCALAPPDATA%` Windows dont le nom de session en porte.
 - **Build reproductible** : `requirements-lock.txt` fige désormais toutes les
   dépendances, directes et transitives (51 paquets, marqueurs Linux et
   Windows dans le même fichier), au lieu de 14 dépendances directes qui

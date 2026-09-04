@@ -827,6 +827,8 @@ async def transcribe(audio: UploadFile = File(...)) -> dict:
         result = await run_in_threadpool(stt.transcribe, data, audio.filename or "", cfg)
     except stt.STTUnavailable as exc:
         raise HTTPException(503, str(exc))
+    except stt.DicteeTropLongue as exc:
+        raise HTTPException(400, str(exc))
     except stt.AudioIllisible as exc:
         logger.warning("Audio de dictée illisible : %s", exc)
         raise HTTPException(
