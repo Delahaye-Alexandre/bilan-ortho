@@ -361,6 +361,31 @@ def test_nom_modele_valide():
     assert not systeme.nom_modele_valide("a" * 100)
 
 
+def test_detection_gpu_une_fois_par_processus(monkeypatch):
+    """L'import de ctranslate2 et l'appel à nvidia-smi coûtent des secondes sous
+    Windows : la détection est faite une fois, puis servie de mémoire à chaque
+    écran d'installation et à chaque « Dictée : … »."""
+    from app import stt
+
+    appels = {"cuda": 0, "vram": 0}
+
+    def cuda():
+        appels["cuda"] += 1
+        return 1
+
+    def vram():
+        appels["vram"] += 1
+        return 8000
+
+    monkeypatch.setattr(stt, "_cuda_device_count", cuda)
+    monkeypatch.setattr(stt, "_vram_total_mib", vram)
+    monkeypatch.setattr(stt, "_MATERIEL", None)
+    cfg = {"stt": {"device": "auto", "compute_type": "auto", "model": "auto"}}
+    assert stt.resolved(cfg) == {"device": "cuda", "compute_type": "float16", "model": "large-v3"}
+    assert stt.resolved(cfg)["device"] == "cuda"
+    assert appels == {"cuda": 1, "vram": 1}
+
+
 def test_etat_installation_sans_ollama(monkeypatch):
     from app import config, systeme
 

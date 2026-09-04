@@ -17,6 +17,10 @@ installeur Windows publié dans les releases.
   serveur et au retour de veille ou de l'onglet ; une frappe ou un clic
   signale l'activité (au plus une fois par minute), pour que « inactif »
   veuille dire inactif.
+- **Démarrage plus rapide** : la détection du GPU (import de ctranslate2,
+  nvidia-smi — jusqu'à plusieurs secondes sous Windows) n'est faite qu'une
+  fois par session au lieu d'à chaque écran d'installation et chaque
+  « Dictée : … ».
 - **Information des patients (RGPD art. 13)** : un modèle de mention prêt à
   remettre, avec une version courte pour la salle d'attente
   (`docs/mention-information-patient.md`), et dans le dossier patient une

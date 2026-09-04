@@ -53,14 +53,29 @@ def _vram_total_mib() -> int | None:
         return None
 
 
+_MATERIEL: dict | None = None
+_MATERIEL_LOCK = threading.Lock()
+
+
+def _materiel() -> dict:
+    """GPU utilisable ? Détecté une fois par processus : l'import de ctranslate2
+    et l'appel à nvidia-smi coûtent jusqu'à plusieurs secondes sous Windows, et
+    cette détection était refaite à chaque écran d'installation et à chaque
+    « Dictée : … » — le matériel, lui, ne change pas en cours d'exécution."""
+    global _MATERIEL
+    with _MATERIEL_LOCK:
+        if _MATERIEL is None:
+            _MATERIEL = {"cuda": _cuda_device_count() > 0, "vram_mib": _vram_total_mib() or 0}
+        return _MATERIEL
+
+
 def resolved(cfg: dict) -> dict:
     """Résout (sans charger le modèle) le device/compute_type/model effectifs."""
     stt = cfg["stt"]
     device = stt.get("device", "auto")
     if device == "auto":
-        has_cuda = _cuda_device_count() > 0
-        vram = _vram_total_mib() or 0
-        device = "cuda" if (has_cuda and vram >= 6000) else "cpu"
+        m = _materiel()
+        device = "cuda" if (m["cuda"] and m["vram_mib"] >= 6000) else "cpu"
 
     compute = stt.get("compute_type", "auto")
     if compute == "auto":
