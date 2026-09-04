@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Date d'établissement** | 18 juillet 2026 |
-| **Version du logiciel évaluée** | 1.9.0 (`app/__init__.py`) |
+| **Version du logiciel évaluée** | 1.12.0 (`app/__init__.py`) |
 | **Responsable de l'évaluation** | Alexandre Delahaye — alexandre-delahaye@outlook.fr |
 | **Référentiel** | Règlement (UE) 2024/1689 (« AI Act »), en tenant compte du paquet « omnibus numérique » adopté en juin 2026 (voir § 6.3) |
 | **Statut du logiciel** | Non encore mis sur le marché : dépôt privé à ce jour, publication prévue sous licence AGPL v3 |
@@ -14,7 +14,7 @@
 
 ## 1. Objet et conclusion anticipée
 
-Le présent document constitue l'auto-évaluation de classification du logiciel **Bilan Ortho** au regard du règlement (UE) 2024/1689. Il conclut que le système **n'est pas un système d'IA à haut risque** : à titre principal parce qu'il ne relève d'aucun cas d'usage de l'annexe III, et à titre subsidiaire parce que, même dans une lecture extensive de cette annexe, les conditions de la dérogation de l'**article 6, paragraphe 3** sont remplies. Il est établi **avant toute mise sur le marché** et tient lieu de documentation de l'évaluation au sens de l'article 6, paragraphe 4. Toutes les références au code renvoient au dépôt du projet, version 1.9.0, sous la forme `fichier::symbole` — un test automatisé (`tests/test_docs.py`) vérifie que chaque symbole cité existe.
+Le présent document constitue l'auto-évaluation de classification du logiciel **Bilan Ortho** au regard du règlement (UE) 2024/1689. Il conclut que le système **n'est pas un système d'IA à haut risque** : à titre principal parce qu'il ne relève d'aucun cas d'usage de l'annexe III, et à titre subsidiaire parce que, même dans une lecture extensive de cette annexe, les conditions de la dérogation de l'**article 6, paragraphe 3** sont remplies. Il est établi **avant toute mise sur le marché** et tient lieu de documentation de l'évaluation au sens de l'article 6, paragraphe 4. Toutes les références au code renvoient au dépôt du projet, version 1.12.0, sous la forme `fichier::symbole` — un test automatisé (`tests/test_docs.py`) vérifie que chaque symbole cité existe.
 
 ## 2. Description du système
 
@@ -76,7 +76,11 @@ Le présent document constitue la documentation de l'évaluation exigée par l'a
 - **Article 50, paragraphe 2** (marquage lisible par machine des contenus synthétiques, y compris le texte) : une exception est prévue lorsque le système exerce une **fonction d'assistance pour l'édition standard** ou **ne modifie pas substantiellement les données d'entrée fournies ni leur sémantique**. Bilan Ortho structure sans inventer, à partir des seules données dictées ; cette exception paraît applicable. **Position à confirmer par le juriste** ; à défaut, un marquage lisible par machine sera ajouté aux contenus générés avant la mise sur le marché.
 - **Article 50, paragraphe 4** (texte publié pour informer le public) : sans objet — les bilans sont des documents cliniques individuels, non publiés à destination du public, et font en tout état de cause l'objet d'un examen humain systématique.
 
-### 6.3 Calendrier d'application (vérifié au 18 juillet 2026)
+### 6.3 Maîtrise de l'IA (article 4, applicable depuis le 2 février 2025)
+
+L'article 4 impose au fournisseur comme au déployeur de veiller à un niveau suffisant de maîtrise de l'IA des personnes qui utilisent le système. Le fournisseur y contribue par une notice d'usage à l'intention des orthophonistes (`docs/notice-usage-ia.md`) : chaîne de traitement, ce que le système ne fait pas, modes d'échec connus et ce que les vérificateurs automatiques n'attrapent pas, gestes de relecture attendus à chaque bilan. Dans l'interface, chaque nombre ou nom de test absent de la dictée est signalé au moment de la relecture (`app/verif_chiffres.py::chiffres_non_sources`, `app/verif_tests.py::tests_non_sources`). L'orthophoniste, déployeur, informe ses patients au moyen de la mention fournie (`docs/mention-information-patient.md`) et en garde la trace par dossier (`app/patient.py::set_information`).
+
+### 6.4 Calendrier d'application (vérifié au 18 juillet 2026)
 
 | Échéance | Objet |
 |---|---|
@@ -95,7 +99,7 @@ Le titulaire du projet s'engage à **ne jamais ajouter** de fonction de suspicio
 
 ## 8. Conclusion motivée
 
-Bilan Ortho, version 1.9.0, est un outil local d'assistance à la rédaction, dont chaque production est une simple proposition soumise à la validation expresse d'un professionnel qui demeure seul auteur de l'évaluation clinique. Il ne relève d'aucun cas d'usage de l'annexe III du règlement (UE) 2024/1689 et, à titre subsidiaire, remplit les conditions a), b) et d) de la dérogation de l'article 6, paragraphe 3, sans effectuer de profilage. **Il n'est donc pas un système d'IA à haut risque.** Les obligations résiduelles identifiées (documentation au titre de l'article 6, paragraphe 4 ; transparence au titre de l'article 50 ; enregistrement éventuel au titre de l'article 49, paragraphe 2) sont traitées au § 6. Cette conclusion sera réexaminée à chaque évolution fonctionnelle significative du logiciel et à chaque évolution du cadre réglementaire.
+Bilan Ortho, version 1.12.0, est un outil local d'assistance à la rédaction, dont chaque production est une simple proposition soumise à la validation expresse d'un professionnel qui demeure seul auteur de l'évaluation clinique. Il ne relève d'aucun cas d'usage de l'annexe III du règlement (UE) 2024/1689 et, à titre subsidiaire, remplit les conditions a), b) et d) de la dérogation de l'article 6, paragraphe 3, sans effectuer de profilage. **Il n'est donc pas un système d'IA à haut risque.** Les obligations résiduelles identifiées (documentation au titre de l'article 6, paragraphe 4 ; transparence au titre de l'article 50 ; enregistrement éventuel au titre de l'article 49, paragraphe 2) sont traitées au § 6. Cette conclusion sera réexaminée à chaque évolution fonctionnelle significative du logiciel et à chaque évolution du cadre réglementaire.
 
 ---
 
@@ -105,4 +109,4 @@ Fait à : ______________________ , le : ______________________
 
 Signature : ______________________
 
-*Document établi le 18 juillet 2026 pour la version 1.5.0 ; révisé le 3 septembre 2026 pour la version 1.9.0 (références au code par symbole, vérifiées par test). Projet de document — à faire relire par un juriste avant publication.*
+*Document établi le 18 juillet 2026 pour la version 1.5.0 ; révisé le 3 septembre 2026 pour la version 1.9.0 (références au code par symbole, vérifiées par test) et le 4 septembre 2026 pour la version 1.12.0 (mise en forme des documents, gabarit Word, trace de l'information des patients : sans incidence sur la chaîne d'IA ni sur la qualification). Projet de document — à faire relire par un juriste avant publication.*

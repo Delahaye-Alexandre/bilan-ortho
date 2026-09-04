@@ -1294,5 +1294,39 @@ check("réessai : le même enregistrement est transcrit, rien à redicter",
   document.getElementById("dicteeText").value.includes("texte transcrit")
   && document.getElementById("recRetry") === null);
 
+// === 18. Dossier patient : la remise de la mention d'information est tracée ==
+// (RGPD art. 13 ; table `consentement`, type « information »). La case envoie
+// `informe` au serveur, la liste montre la date renvoyée, le formulaire de
+// modification la reflète.
+const patientPosts = [];
+let PATIENTS_STUB = [];
+const fetchAvantPatients = globalThis.fetch;
+globalThis.fetch = async (p, o = {}) => {
+  const url = String(p);
+  if (url.endsWith("/api/patients") && o.method === "POST") {
+    const b = JSON.parse(o.body); patientPosts.push(b);
+    const cree = { id: 7, nom: b.nom, prenom: b.prenom, date_naissance: b.date_naissance, sexe: b.sexe,
+                   notes: b.notes, nb_bilans: 0, nb_references: 0, informe_le: b.informe ? "2026-09-04" : null };
+    PATIENTS_STUB = [cree];
+    return rep(cree);
+  }
+  if (url.endsWith("/api/patients")) return rep(PATIENTS_STUB.map((x) => ({ ...x })));
+  return fetchAvantPatients(p, o);
+};
+const elt = (id) => document.getElementById(id);
+elt("patientsBtn").click(); await settle();
+check("dossier patient : case « mention d'information remise » présente, décochée par défaut",
+  elt("patInforme") !== null && elt("patInforme").checked === false && elt("patientsOverlay").hidden === false);
+elt("patNom").value = "Durand"; elt("patInforme").checked = true;
+elt("patSave").click(); await settle(); await settle();
+check("enregistrement : la remise est envoyée au serveur avec le dossier",
+  patientPosts.length === 1 && patientPosts[0].informe === true && patientPosts[0].nom === "Durand");
+check("liste des patients : date de remise en clair",
+  elt("patList").textContent.includes("information remise le 04/09/2026"));
+check("formulaire remis à zéro après enregistrement : case décochée", elt("patInforme").checked === false);
+elt("patList").querySelector("a[data-id]").click(); await settle();
+check("modification d'un dossier : la case reflète la trace enregistrée", elt("patInforme").checked === true);
+globalThis.fetch = fetchAvantPatients;
+
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

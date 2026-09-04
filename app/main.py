@@ -851,7 +851,9 @@ async def create_patient(req: PatientIn) -> dict:
         raise HTTPException(400, "Nom requis.")
     with security.transaction() as con:
         pid = patient.create(con, req.nom, req.prenom, req.date_naissance, req.sexe, req.notes)
-        security.audit("create", "patient", pid, "")
+        if req.informe is not None:
+            patient.set_information(con, pid, req.informe)
+        security.audit("create", "patient", pid, "information remise" if req.informe else "")
         return patient.get(con, pid)
 
 
@@ -863,6 +865,12 @@ async def update_patient(patient_id: int, req: PatientIn) -> dict:
         if not patient.update(con, patient_id, req.nom, req.prenom,
                               req.date_naissance, req.sexe, req.notes):
             raise HTTPException(404, "Patient introuvable.")
+        if req.informe is not None:
+            avant = (patient.get(con, patient_id) or {}).get("informe_le")
+            patient.set_information(con, patient_id, req.informe)
+            if bool(avant) != req.informe:
+                security.audit("update", "patient", patient_id,
+                               "information remise" if req.informe else "information retirée")
         security.audit("update", "patient", patient_id, "")
         return patient.get(con, patient_id)
 

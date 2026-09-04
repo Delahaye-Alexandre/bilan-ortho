@@ -9,8 +9,10 @@ bilans**, puis vous **relisez, validez, cotez et exportez**.
 > l'orthophoniste *relit, corrige, valide et signe*. La responsabilité du
 > contenu vous revient entièrement. Aucune donnée ne quitte votre machine (pas
 > d'obligation HDS ; RGPD par conception). Voir la
-> [notice médico-légale](docs/notice-medico-legale.md) et le
-> [registre RGPD](docs/RGPD-registre-traitements.md).
+> [notice médico-légale](docs/notice-medico-legale.md), la
+> [notice d'usage de l'assistant](docs/notice-usage-ia.md) (ce qu'il fait,
+> comment il se trompe), le [registre RGPD](docs/RGPD-registre-traitements.md)
+> et la [mention d'information à remettre aux patients](docs/mention-information-patient.md).
 
 ## ⬇️ Télécharger (Windows)
 
@@ -282,6 +284,11 @@ finalité MDR).
 Ce logiciel ne pose aucun diagnostic et ne remplace pas le jugement clinique.
 Les valeurs NGAP évoluent par avenants : vérifiez-les sur ameli.fr (elles sont
 modifiables dans les paramètres). Avant tout usage sur données réelles de
-patients, faites valider votre organisation par un DPO / juriste santé
-(consentement à l'enregistrement vocal notamment). Détails :
-`docs/notice-medico-legale.md`.
+patients : lisez la notice d'usage de l'assistant (`docs/notice-usage-ia.md`),
+informez vos patients de l'enregistrement vocal et de l'assistant local avec
+la mention fournie (`docs/mention-information-patient.md`, remise tracée dans
+le dossier patient) et complétez votre registre des traitements
+(`docs/RGPD-registre-traitements.md`). Un cabinet libéral individuel n'a en
+principe ni DPO obligatoire ni analyse d'impact systématique ; faire relire
+par un DPO ou un juriste reste un conseil, pas une condition d'usage.
+Détails : `docs/notice-medico-legale.md`.

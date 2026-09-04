@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from datetime import date
 
 from app import config, llm, rag, security
 from tests.conftest import PASSPHRASE
@@ -699,6 +700,22 @@ def test_patients_api_et_cascade(client):
     r = client.put(f"/api/patients/{p['id']}", json={"nom": "Durand", "prenom": "Léa-Marie"})
     assert r.json()["prenom"] == "Léa-Marie"
     assert client.put("/api/patients/999", json={"nom": "X"}).status_code == 404
+    # Mention d'information remise (RGPD art. 13) : tracée par patient, datée
+    # de la première remise, retirable ; absente tant que rien n'est dit.
+    assert r.json()["informe_le"] is None and client.get("/api/patients").json()[0]["informe_le"] is None
+    r = client.put(f"/api/patients/{p['id']}", json={"nom": "Durand", "informe": True})
+    assert r.json()["informe_le"] == date.today().isoformat()
+    r = client.put(f"/api/patients/{p['id']}", json={"nom": "Durand", "informe": True})
+    assert r.json()["informe_le"] == date.today().isoformat()  # pas de doublon
+    with security.transaction() as con:
+        assert con.execute("SELECT count(*) FROM consentement").fetchone()[0] == 1
+    assert client.put(f"/api/patients/{p['id']}", json={"nom": "Durand"}).json()["informe_le"]  # inchangé
+    assert client.put(f"/api/patients/{p['id']}", json={"nom": "Durand", "informe": False}).json()["informe_le"] is None
+    q = client.post("/api/patients", json={"nom": "Martin", "informe": True}).json()
+    assert q["informe_le"] == date.today().isoformat()
+    assert client.delete(f"/api/patients/{q['id']}").status_code == 200
+    with security.transaction() as con:
+        assert con.execute("SELECT count(*) FROM consentement").fetchone()[0] == 0  # cascade
     # effacement RGPD : le bilan rattaché disparaît
     assert client.delete(f"/api/patients/{p['id']}").status_code == 200
     assert client.get(f"/api/bilans/{bid}").status_code == 404

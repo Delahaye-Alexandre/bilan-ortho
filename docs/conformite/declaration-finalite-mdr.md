@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Logiciel** | Bilan Ortho, version 1.9.0 |
+| **Logiciel** | Bilan Ortho, version 1.12.0 |
 | **Éditeur** | Alexandre Delahaye — alexandre-delahaye@outlook.fr |
-| **Date** | 18 juillet 2026, révisé le 3 septembre 2026 |
+| **Date** | 18 juillet 2026, révisé le 4 septembre 2026 |
 
 ## 1. Finalité déclarée
 

@@ -32,3 +32,10 @@ Voir `RGPD-registre-traitements.md`. L'application fonctionne **100 % en local**
 aucune donnée patient ne quitte la machine (LLM Ollama et transcription Whisper
 locaux). N'utilisez **jamais** un modèle Ollama « :cloud » sur des données
 patient.
+
+## Pour aller plus loin
+
+- Ce que l'assistant fait, ne fait pas, et comment il se trompe :
+  `notice-usage-ia.md` (notice d'usage, règlement IA art. 4).
+- Mention d'information à remettre aux patients (RGPD art. 13), avec une
+  version courte pour la salle d'attente : `mention-information-patient.md`.

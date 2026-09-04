@@ -61,7 +61,12 @@
   chiffrées conservées hors du cabinet, antivirus/pare-feu à jour.
 
 ## 5. Droits des personnes
-Information des patients ; accès, rectification, effacement (fonctions d'export
-et de suppression prévues dans l'app). La suppression d'un patient emporte ses
+Information des patients : un modèle de mention prêt à remettre (articles 12
+et 13), avec une version courte pour la salle d'attente, est fourni dans
+`docs/mention-information-patient.md` ; l'app garde par dossier la date à
+laquelle la mention a été remise (case « Mention d'information remise » du
+patient, `app/patient.py::set_information`, table `consentement`). Accès,
+rectification, effacement (fonctions d'export et de suppression prévues dans
+l'app). La suppression d'un patient emporte ses
 bilans, épreuves, prescriptions, dictées et les extraits de style qui lui sont
 rattachés (`app/patient.py::delete`).

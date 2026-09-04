@@ -19,6 +19,8 @@ DOCS = [
     RACINE / "docs/conformite/declaration-finalite-mdr.md",
     RACINE / "docs/RGPD-registre-traitements.md",
     RACINE / "docs/notice-medico-legale.md",
+    RACINE / "docs/notice-usage-ia.md",
+    RACINE / "docs/mention-information-patient.md",
     RACINE / "README.md",
     RACINE / "SECURITY.md",
 ]

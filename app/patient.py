@@ -67,13 +67,27 @@ def create(
     ).lastrowid
 
 
+# Remise de la mention d'information (RGPD art. 13 : enregistrement vocal,
+# assistant d'IA local) : une ligne de la table `consentement`, type
+# « information », statut « remise », datée du jour de la case cochée. Ce n'est
+# pas un consentement — le soin n'en exige pas — mais la trace, par patient,
+# que l'information a été donnée (obligation de responsabilité, art. 5.2).
+_INFORMATION = (
+    "(SELECT min(c.date) FROM consentement c WHERE c.patient_id = p.id "
+    "AND c.type = 'information' AND c.statut = 'remise') AS informe_le"
+)
+
+
 def get(con, patient_id: int) -> dict | None:
-    rows = _dicts(con.execute("SELECT * FROM patient WHERE id=?", (patient_id,)))
+    rows = _dicts(con.execute(
+        f"SELECT p.*, {_INFORMATION} FROM patient p WHERE p.id=?", (patient_id,)
+    ))
     return rows[0] if rows else None
 
 
 def liste(con) -> list[dict]:
-    """Patients + nombre de bilans et d'extraits de style rattachés.
+    """Patients + nombre de bilans et d'extraits de style rattachés, et date
+    de remise de la mention d'information.
 
     Le décompte des extraits sert à annoncer exactement ce qu'un effacement
     RGPD va emporter, avant de le déclencher."""
@@ -81,9 +95,32 @@ def liste(con) -> list[dict]:
         "SELECT p.*, "
         "(SELECT count(*) FROM bilan b WHERE b.patient_id = p.id) AS nb_bilans, "
         "(SELECT count(*) FROM bilan_reference r WHERE r.patient_id = p.id) "
-        "AS nb_references "
+        f"AS nb_references, {_INFORMATION} "
         "FROM patient p ORDER BY p.nom COLLATE NOCASE, p.prenom COLLATE NOCASE"
     ))
+
+
+def set_information(con, patient_id: int, remise: bool) -> None:
+    """Enregistre (ou retire) la remise de la mention d'information au
+    patient. La date de première remise est conservée : cocher deux fois ne
+    la rajeunit pas ; décocher efface la trace (case cochée par erreur)."""
+    if remise:
+        deja = con.execute(
+            "SELECT 1 FROM consentement WHERE patient_id=? AND type='information' "
+            "AND statut='remise'", (patient_id,)
+        ).fetchone()
+        if not deja:
+            con.execute(
+                "INSERT INTO consentement(patient_id, type, date, texte, statut) "
+                "VALUES(?, 'information', ?, ?, 'remise')",
+                (patient_id, date.today().isoformat(),
+                 "Mention d'information remise (enregistrement vocal, assistant d'IA local)"),
+            )
+    else:
+        con.execute(
+            "DELETE FROM consentement WHERE patient_id=? AND type='information'",
+            (patient_id,),
+        )
 
 
 def update(

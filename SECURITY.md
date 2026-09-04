@@ -1,20 +1,20 @@
 # Politique de sécurité
 
-> **EN — Security policy:** report vulnerabilities privately to alexandre-delahaye@outlook.fr (or via GitHub Security Advisories once the repository is public); do not open a public issue. Only the latest release is supported.
+> **EN — Security policy:** report vulnerabilities privately to alexandre-delahaye@outlook.fr or via GitHub Security Advisories; do not open a public issue. Only the latest release is supported.
 
 ## Versions supportées
 
-Seule la **dernière release** publiée est supportée (actuellement **v1.9.0**). Les versions antérieures ne reçoivent pas de correctifs : mettez à jour vers la dernière release avant de signaler un problème.
+Seule la **dernière release** publiée est supportée : celle que présente la page [Releases](https://github.com/Delahaye-Alexandre/bilan-ortho/releases/latest), et que l'application propose d'installer d'elle-même (⚙️ Paramètres → Sécurité et sauvegardes → Mises à jour). Les versions antérieures ne reçoivent pas de correctifs : mettez à jour avant de signaler un problème.
 
 | Version | Supportée |
 |---|---|
-| Dernière release (v1.9.0) | Oui |
+| Dernière release publiée | Oui |
 | Versions antérieures | Non |
 
 ## Signaler une vulnérabilité
 
 - **N'ouvrez pas d'issue publique** pour une faille de sécurité.
-- Écrivez en privé à **alexandre-delahaye@outlook.fr**, ou utilisez **GitHub Security Advisories** (« Report a vulnerability ») une fois le dépôt public.
+- Écrivez en privé à **alexandre-delahaye@outlook.fr**, ou utilisez **GitHub Security Advisories** (« Report a vulnerability » dans l'onglet Security du dépôt).
 - Décrivez si possible : version concernée, étapes de reproduction, impact estimé.
 - **Accusé de réception sous 7 jours.**
 
@@ -38,7 +38,7 @@ En trois points :
 
 - Les versions sont figées dans `requirements-lock.txt`, utilisé par la CI et le build (surveillé par Dependabot).
 - La **CI s'exécute sur chaque pull request** (lint, tests Python multi-versions et multi-OS, tests UI).
-- **Dependabot est activé** (`.github/dependabot.yml`) : ses pull requests de mise à jour passent par la même CI.
+- **Dependabot est activé** (`.github/dependabot.yml` pour les mises à jour, alertes de vulnérabilité au niveau du dépôt) : ses pull requests passent par la même CI. Le **secret scanning** de GitHub est activé sur le dépôt, avec blocage des pushes qui contiendraient un secret.
 
 ## Remerciements
 

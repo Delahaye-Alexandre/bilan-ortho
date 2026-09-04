@@ -5,6 +5,26 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
+## Non publié
+
+- **Information des patients (RGPD art. 13)** : un modèle de mention prêt à
+  remettre, avec une version courte pour la salle d'attente
+  (`docs/mention-information-patient.md`), et dans le dossier patient une
+  case « Mention d'information remise » qui garde la date de la remise (table
+  `consentement`, jusqu'ici déclarée et jamais utilisée). Ce n'est pas un
+  consentement : la prise en charge n'en exige pas, c'est la trace que
+  l'information a été donnée.
+- **Notice d'usage de l'assistant** (`docs/notice-usage-ia.md`, règlement IA
+  art. 4) : la chaîne étape par étape, ce que l'assistant ne fait pas, ses
+  modes d'échec et ce que les vérificateurs n'attrapent pas, les gestes de
+  relecture attendus. Citée par l'auto-évaluation AI Act (§ 6.3) ; ses
+  références au code sont vérifiées par `tests/test_docs.py`.
+- Documents mis à jour : `SECURITY.md` ne cite plus un numéro de version
+  (« la dernière release publiée », lien vers la page Releases), dépôt public,
+  Dependabot et secret scanning activés ; charte, déclaration MDR et
+  auto-évaluation AI Act révisées pour la 1.12.0 ; le README ne renvoie plus
+  vers « un DPO / juriste » comme condition d'usage.
+
 ## 1.12.0 — 2026-09-04
 
 Cette version achève le plan « mise en forme » : mise en page des documents

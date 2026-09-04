@@ -479,6 +479,8 @@ class PatientIn(BaseModel):
     date_naissance: str = ""   # ISO AAAA-MM-JJ (ou JJ/MM/AAAA accepté)
     sexe: str = ""
     notes: str = ""
+    # Mention d'information remise au patient (RGPD art. 13) ; None : inchangé.
+    informe: bool | None = None
 
 
 class ResultatIn(BaseModel):

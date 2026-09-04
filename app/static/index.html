@@ -625,6 +625,10 @@
           <div><label for="patSexe">Sexe</label>
             <select id="patSexe"><option value="">—</option><option value="F">F</option><option value="M">M</option><option value="autre">autre</option></select></div>
           <div><label for="patNotes">Notes (contexte, précautions…)</label><input id="patNotes"></div>
+          <div class="check" style="grid-column:1/-1">
+            <label for="patInforme"><input type="checkbox" id="patInforme"> Mention d'information remise (enregistrement vocal, assistant d'IA local)</label>
+            <a href="https://github.com/Delahaye-Alexandre/bilan-ortho/blob/main/docs/mention-information-patient.md" target="_blank" rel="noopener" class="muted" style="margin-left:8px">modèle à imprimer</a>
+          </div>
         </div>
         <div class="row" style="margin-top:10px">
           <button id="patSave">Enregistrer</button>
@@ -1112,7 +1116,7 @@ function renderPatList() {
   const el = document.getElementById('patList');
   if (!el) return;
   el.innerHTML = PATIENTS.length ? PATIENTS.map(p =>
-    `<a href="#" data-id="${p.id}"><span>${escapeHtml(patLabel(p))}${p.date_naissance ? ` <span class="muted">· ${escapeHtml(p.date_naissance)}</span>` : ''} <span class="muted">(${p.nb_bilans} bilan${p.nb_bilans > 1 ? 's' : ''})</span></span><span class="delpat" data-id="${p.id}" role="button" tabindex="0" aria-label="Supprimer ${escapeHtml(patLabel(p))} et tous ses bilans" style="float:right;cursor:pointer">✕</span></a>`
+    `<a href="#" data-id="${p.id}"><span>${escapeHtml(patLabel(p))}${p.date_naissance ? ` <span class="muted">· ${escapeHtml(p.date_naissance)}</span>` : ''} <span class="muted">(${p.nb_bilans} bilan${p.nb_bilans > 1 ? 's' : ''})</span>${p.informe_le ? ` <span class="muted">· information remise le ${escapeHtml(dateFr(p.informe_le))}</span>` : ''}</span><span class="delpat" data-id="${p.id}" role="button" tabindex="0" aria-label="Supprimer ${escapeHtml(patLabel(p))} et tous ses bilans" style="float:right;cursor:pointer">✕</span></a>`
   ).join('') : 'Aucun.';
   el.querySelectorAll('a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); editPatient(+a.dataset.id); }));
   activerBoutonsClavier(el);
@@ -1151,12 +1155,16 @@ function editPatient(id) {
   $('patFormTitle').textContent = 'Modifier : ' + patLabel(p);
   $('patNom').value = p.nom || ''; $('patPrenom').value = p.prenom || '';
   $('patDdn').value = p.date_naissance || ''; $('patSexe').value = p.sexe || '';
-  $('patNotes').value = p.notes || ''; $('patCancel').hidden = false;
+  $('patNotes').value = p.notes || ''; $('patInforme').checked = !!p.informe_le; $('patCancel').hidden = false;
 }
 function resetPatForm() {
   PAT_EDIT = null; $('patFormTitle').textContent = 'Nouveau patient';
   ['patNom', 'patPrenom', 'patDdn', 'patNotes'].forEach(i => { $(i).value = ''; });
-  $('patSexe').value = ''; $('patCancel').hidden = true; $('patStatus').textContent = '';
+  $('patSexe').value = ''; $('patInforme').checked = false; $('patCancel').hidden = true; $('patStatus').textContent = '';
+}
+// AAAA-MM-JJ → JJ/MM/AAAA (dates du serveur) ; tout autre texte est rendu tel quel.
+function dateFr(iso) {
+  return /^\d{4}-\d{2}-\d{2}/.test(iso || '') ? iso.slice(0, 10).split('-').reverse().join('/') : (iso || '');
 }
 document.getElementById('patientsBtn').addEventListener('click', () => {
   resetPatForm(); loadPatients(); document.getElementById('patientsOverlay').hidden = false;
@@ -1168,6 +1176,7 @@ document.getElementById('patSave').addEventListener('click', e => avecBouton(e.t
   const body = {
     nom: $('patNom').value.trim(), prenom: $('patPrenom').value.trim(),
     date_naissance: $('patDdn').value, sexe: $('patSexe').value, notes: $('patNotes').value.trim(),
+    informe: $('patInforme').checked,
   };
   if (!body.nom) { st.textContent = 'Nom requis.'; return; }
   st.textContent = '…';
@@ -2938,7 +2947,7 @@ $('mepLogoRetirer').addEventListener('click', e => avecBouton(e.target, async ()
 // styles trouvés) ; l'écran dit ce qui en sera repris et ce qui sera complété.
 function decrireGabarit(g) {
   const ko = Math.max(1, Math.round((g.taille || 0) / 1024));
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(g.depose_le || '') ? g.depose_le.split('-').reverse().join('/') : '';
+  const date = dateFr(g.depose_le);
   const styles = g.styles || [];
   const morceaux = [
     g.en_tete ? 'en-tête repris' : "pas d'en-tête dans le gabarit",
