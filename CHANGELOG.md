@@ -7,6 +7,27 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+Lot D du plan « mise en forme » (`docs/plan-mise-en-forme-2026-09-03.md`) :
+
+- **Mon papier à en-tête (gabarit Word)** : dans ⚙️ Paramètres → Mise en
+  page, déposez un document Word de votre cabinet (.docx, ou modèle .dotx,
+  converti). Vos comptes-rendus Word en reprennent l'en-tête, le pied de
+  page, les marges, la police et les styles de titre ; son texte est ignoré,
+  le contenu du bilan prend sa place. Ce que le gabarit ne définit pas est
+  complété : titres d'après la couleur et la taille réglées, listes écrites
+  en texte, tableau quadrillé, numéros de page dans un pied de page vide si
+  le réglage est coché. Le fichier est vérifié (document Word sans macro,
+  mise en page d'un bilan d'essai) et rangé dans le coffre chiffré, à part
+  de la configuration (`PUT`/`GET`/`DELETE /api/config/gabarit`).
+- Case « Mon gabarit porte déjà l'identité du cabinet » : le document ne
+  répète pas nom, adresse et numéros sous l'en-tête du gabarit.
+- « Exemple Word » télécharge le bilan fictif de l'aperçu en .docx, sur le
+  gabarit s'il y en a un, avec les réglages de l'écran
+  (`POST /api/config/mise_en_page/apercu?format=docx`). Le PDF et l'aperçu
+  gardent les réglages de la section : le gabarit ne s'applique qu'au Word.
+- Correction : une liste dans un document sans style de liste ne laisse plus
+  un paragraphe vide devant chaque élément.
+
 Lot C du plan « mise en forme » (`docs/plan-mise-en-forme-2026-09-03.md`) :
 
 - **Reprendre la trame d'un de mes bilans** : dans ⚙️ Paramètres → Trame des

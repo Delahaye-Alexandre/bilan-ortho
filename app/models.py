@@ -278,15 +278,19 @@ class MiseEnPagePatch(_SectionPatch):
     numeros_de_page: bool | None = None
     logo_position: Literal["gauche", "centre", "droite"] | None = None
     logo_hauteur_mm: float | None = Field(None, ge=5, le=60)
+    gabarit_porte_identite: bool | None = None
 
     @model_validator(mode="before")
     @classmethod
-    def _logo_par_sa_route(cls, data):
-        # Le logo est une image validée et redimensionnée par PUT /api/config/logo ;
-        # accepté ici, n'importe quel texte deviendrait « l'image » de l'en-tête.
-        if isinstance(data, dict) and "logo" in data:
+    def _fichiers_par_leur_route(cls, data):
+        # Le logo est une image validée et redimensionnée par PUT /api/config/logo,
+        # le gabarit un document vérifié par PUT /api/config/gabarit ; acceptés
+        # ici, n'importe quel texte deviendrait « l'image » de l'en-tête ou la
+        # description d'un gabarit qui n'existe pas.
+        if isinstance(data, dict) and ("logo" in data or "gabarit" in data):
             raise ValueError(
-                "le logo se dépose par PUT /api/config/logo (fichier image), "
+                "le logo et le gabarit se déposent par leurs routes "
+                "(PUT /api/config/logo, PUT /api/config/gabarit : un fichier), "
                 "pas dans les réglages"
             )
         return data

@@ -9,6 +9,7 @@ Deux niveaux :
 """
 from __future__ import annotations
 
+import base64
 import copy
 import ipaddress
 import json
@@ -155,6 +156,10 @@ DEFAULTS: dict[str, Any] = {
         "logo": None,                # {"type": "image/png", "donnees": base64, ...}
         "logo_position": "gauche",   # gauche | centre | droite
         "logo_hauteur_mm": 20,
+        # Gabarit Word du cabinet (lot D) : description seule ; le fichier vit
+        # sous sa propre clé de la table config (ConfigStore.gabarit_docx).
+        "gabarit": None,             # {"nom", "taille", "depose_le", "styles", "en_tete", "pied_de_page"}
+        "gabarit_porte_identite": False,  # l'en-tête du gabarit tient lieu d'identité du cabinet
     },
     "llm": {
         "model": "qwen2.5:7b-instruct-q4_K_M",
@@ -288,6 +293,9 @@ class ConfigStore:
     """Lit/écrit les surcharges de config dans la base chiffrée (table config)."""
 
     KEY = "overrides"
+    # Octets (base64) du gabarit Word du praticien, à part des surcharges :
+    # relus au seul export Word, pas à chaque requête comme la configuration.
+    CLE_GABARIT = "gabarit_docx"
 
     def __init__(self, con):
         self._con = con
@@ -305,7 +313,7 @@ class ConfigStore:
     def set_overrides(self, override: dict) -> dict:
         """Fusionne de nouvelles surcharges et persiste. Retourne l'effectif."""
         merged = _deep_merge(self.overrides(), override)
-        self._persister(merged)
+        self._ecrire(merged)
         return _deep_merge(DEFAULTS, merged)
 
     def remplacer_section(self, cle: str, valeur) -> dict:
@@ -314,7 +322,7 @@ class ConfigStore:
         liste ni supprimer un domaine surchargé. Retourne l'effectif."""
         ov = self.overrides()
         ov[cle] = copy.deepcopy(valeur)
-        self._persister(ov)
+        self._ecrire(ov)
         return _deep_merge(DEFAULTS, ov)
 
     def effacer_section(self, cle: str) -> dict:
@@ -322,10 +330,7 @@ class ConfigStore:
         suivent les mises à jour de l'application. Retourne l'effectif."""
         ov = self.overrides()
         ov.pop(cle, None)
-        if ov:
-            self._persister(ov)
-        else:
-            self._con.execute("DELETE FROM config WHERE key = ?", (self.KEY,))
+        self._ecrire(ov)
         return _deep_merge(DEFAULTS, ov)
 
     def effacer_cles(self, cle: str, cles: list[str]) -> dict:
@@ -341,20 +346,56 @@ class ConfigStore:
                 section.pop(k, None)
             if not section:
                 ov.pop(cle, None)
-        if ov:
-            self._persister(ov)
-        else:
-            self._con.execute("DELETE FROM config WHERE key = ?", (self.KEY,))
+        self._ecrire(ov)
         return _deep_merge(DEFAULTS, ov)
 
     def reset(self) -> dict:
-        """Efface toutes les surcharges praticien. Retourne les défauts."""
-        self._con.execute("DELETE FROM config WHERE key = ?", (self.KEY,))
+        """Efface toutes les surcharges praticien (gabarit compris). Retourne
+        les défauts."""
+        self._ecrire({})
         return copy.deepcopy(DEFAULTS)
 
-    def _persister(self, ov: dict) -> None:
+    # --- Gabarit Word (lot D) : octets à part de la configuration ----------
+
+    def gabarit_docx(self) -> bytes | None:
+        """Octets du gabarit Word du praticien, ou None : absent, illisible,
+        ou plus décrit par la configuration (retiré)."""
+        if not (self.overrides().get("mise_en_page") or {}).get("gabarit"):
+            return None
+        row = self._con.execute(
+            "SELECT value FROM config WHERE key = ?", (self.CLE_GABARIT,)
+        ).fetchone()
+        try:
+            return base64.b64decode(row[0], validate=True) if row and row[0] else None
+        except (ValueError, TypeError):
+            return None
+
+    def set_gabarit_docx(self, data: bytes, description: dict) -> dict:
+        """Range le gabarit (octets) et sa description (`mise_en_page.gabarit`,
+        celle que l'écran affiche). Retourne l'effectif."""
         self._con.execute(
             "INSERT INTO config(key, value) VALUES(?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (self.KEY, json.dumps(ov, ensure_ascii=False)),
+            (self.CLE_GABARIT, base64.b64encode(data).decode("ascii")),
         )
+        return self.set_overrides({"mise_en_page": {"gabarit": copy.deepcopy(description)}})
+
+    def effacer_gabarit_docx(self) -> dict:
+        """Retire le gabarit (description et octets) sans toucher aux autres
+        réglages de mise en page. Retourne l'effectif."""
+        return self.effacer_cles("mise_en_page", ["gabarit"])
+
+    def _ecrire(self, ov: dict) -> None:
+        """Persiste les surcharges (rien à écrire : la ligne disparaît) et
+        retire les octets du gabarit dès que sa description n'y est plus,
+        quel que soit le chemin (retrait, section effacée, réinitialisation)."""
+        if ov:
+            self._con.execute(
+                "INSERT INTO config(key, value) VALUES(?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (self.KEY, json.dumps(ov, ensure_ascii=False)),
+            )
+        else:
+            self._con.execute("DELETE FROM config WHERE key = ?", (self.KEY,))
+        if not (ov.get("mise_en_page") or {}).get("gabarit"):
+            self._con.execute("DELETE FROM config WHERE key = ?", (self.CLE_GABARIT,))

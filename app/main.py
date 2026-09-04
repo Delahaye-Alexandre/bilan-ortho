@@ -594,23 +594,90 @@ async def delete_logo() -> dict:
         return eff
 
 
-@app.post("/api/config/mise_en_page/apercu", dependencies=[Depends(require_unlock)])
-async def apercu_mise_en_page(reglages: MiseEnPagePatch):
-    """PDF d'un bilan fictif mis en page avec les réglages envoyés (ceux de
-    l'écran, pas encore enregistrés) par-dessus la configuration en place
-    (logo compris) : l'écran Paramètres montre l'effet avant d'enregistrer."""
+# --- Gabarit Word du cabinet (lot D du plan « mise en forme ») ---------------
+
+_MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+@app.put("/api/config/gabarit", dependencies=[Depends(require_unlock)])
+async def put_gabarit(fichier: UploadFile = File(...)) -> dict:
+    """Gabarit Word (.docx ; un modèle .dotx est converti) dont les exports
+    Word reprennent l'en-tête, le pied de page, les sections et les styles.
+    Vérifié (enveloppe Word, pas de macro, mise en page d'un bilan d'essai)
+    puis rangé dans le coffre chiffré, à part de la configuration. Retourne
+    la configuration effective, description du gabarit comprise."""
+    data = await _lire_borne(fichier, export.TAILLE_MAX_GABARIT, "Gabarit")
+    try:
+        data, description = await run_in_threadpool(
+            export.preparer_gabarit, data, fichier.filename or ""
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
     with security.transaction() as con:
-        cfg = config.ConfigStore(con).effective()
+        eff = config.ConfigStore(con).set_gabarit_docx(data, description)
+        security.audit("config_gabarit", "config", None, "dépôt")
+        return eff
+
+
+@app.get("/api/config/gabarit", dependencies=[Depends(require_unlock)])
+async def get_gabarit():
+    """Le gabarit tel qu'il est conservé (.docx), pour le récupérer ou le
+    retoucher dans Word."""
+    with security.transaction() as con:
+        store = config.ConfigStore(con)
+        data = store.gabarit_docx()
+        description = store.effective()["mise_en_page"].get("gabarit") or {}
+    if not data:
+        raise HTTPException(404, "Aucun gabarit déposé.")
+    nom = description.get("nom") or "gabarit.docx"
+    return Response(
+        content=data, media_type=_MIME_DOCX,
+        headers={"Content-Disposition": f'attachment; filename="{nom}"'},
+    )
+
+
+@app.delete("/api/config/gabarit", dependencies=[Depends(require_unlock)])
+async def delete_gabarit() -> dict:
+    """Retire le gabarit (description et fichier) sans toucher aux autres
+    réglages de mise en page."""
+    with security.transaction() as con:
+        eff = config.ConfigStore(con).effacer_gabarit_docx()
+        security.audit("config_gabarit", "config", None, "retrait")
+        return eff
+
+
+@app.post("/api/config/mise_en_page/apercu", dependencies=[Depends(require_unlock)])
+async def apercu_mise_en_page(
+    reglages: MiseEnPagePatch, format: Literal["pdf", "docx"] = "pdf",
+):
+    """Bilan fictif mis en page avec les réglages envoyés (ceux de l'écran,
+    pas encore enregistrés) par-dessus la configuration en place (logo et
+    gabarit compris) : l'écran Paramètres montre l'effet avant d'enregistrer.
+    PDF affiché dans le cadre ; `format=docx` rend le Word (sur le gabarit
+    s'il y en a un) à ouvrir dans Word."""
+    with security.transaction() as con:
+        store = config.ConfigStore(con)
+        cfg = store.effective()
+        gabarit = store.gabarit_docx() if format == "docx" else None
     cfg["mise_en_page"] = config._deep_merge(
         cfg["mise_en_page"], reglages.model_dump(exclude_unset=True)
     )
+    exemple = export.bilan_exemple(cfg)
     try:
-        pdf = await run_in_threadpool(export.to_pdf, export.bilan_exemple(cfg), cfg)
+        if format == "docx":
+            data = await run_in_threadpool(export.to_docx, exemple, cfg, gabarit)
+        else:
+            data = await run_in_threadpool(export.to_pdf, exemple, cfg)
     except Exception:
-        logger.exception("Échec de l'aperçu de mise en page")
+        logger.exception("Échec de l'aperçu de mise en page (%s)", format)
         raise HTTPException(500, "L'aperçu n'a pas pu être mis en page avec ces réglages.")
+    if format == "docx":
+        return Response(
+            content=data, media_type=_MIME_DOCX,
+            headers={"Content-Disposition": 'attachment; filename="exemple-mise-en-page.docx"'},
+        )
     return Response(
-        content=pdf, media_type="application/pdf",
+        content=data, media_type="application/pdf",
         headers={"Content-Disposition": 'inline; filename="apercu-mise-en-page.pdf"'},
     )
 
@@ -1273,15 +1340,30 @@ async def export_bilan(
     # sans en-tête ni signature, donc non envoyable en l'état.
     with security.transaction() as con:
         b = bilan.get(con, bilan_id)
-        cfg = config.ConfigStore(con).effective()
+        store = config.ConfigStore(con)
+        cfg = store.effective()
+        # Le gabarit Word du praticien ne sert qu'au Word : lu ici seulement.
+        gabarit = store.gabarit_docx() if format == "docx" else None
     if not b:
         raise HTTPException(404, "Bilan introuvable.")
     fname = f"bilan-{bilan_id}"
     if format == "docx":
-        data = export.to_docx(b, cfg)
+        try:
+            data = export.to_docx(b, cfg, gabarit)
+        except Exception:
+            if not gabarit:
+                raise
+            # Un gabarit accepté a déjà mis en page un bilan d'essai ; s'il
+            # échoue sur celui-ci, le praticien doit le savoir plutôt que
+            # recevoir un document sans son papier à en-tête.
+            logger.exception("Échec du Word sur le gabarit (bilan %s)", bilan_id)
+            raise HTTPException(
+                500,
+                "Le gabarit Word n'a pas pu être appliqué à ce compte-rendu. "
+                "Retirez-le dans Paramètres → Mise en page, ou exportez en PDF.",
+            )
         return Response(
-            content=data,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            content=data, media_type=_MIME_DOCX,
             headers={"Content-Disposition": f'attachment; filename="{fname}.docx"'},
         )
     if format == "pdf":

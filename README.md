@@ -67,6 +67,9 @@ ci-dessous.
   des titres, rubriques numérotées, numéros de page et logo du cabinet, réglés
   dans ⚙️ Paramètres avec un aperçu en direct ; le Word et le PDF les
   appliquent tous deux.
+- **Gabarit Word du cabinet** : déposez votre papier à en-tête (.docx ou
+  .dotx) ; les comptes-rendus Word en reprennent l'en-tête, le pied de page,
+  les marges et les styles, le contenu du bilan prenant la place de son texte.
 - **Trame reprise d'un de vos bilans** : les intitulés de rubriques d'un
   compte-rendu existant (Word, LibreOffice, PDF, texte) deviennent, après
   vérification, la trame des prochains bilans.

@@ -31,7 +31,7 @@ const DEFAUTS = {
                code_postal: "", ville: "", telephone: "", email: "", lieu_signature: "" },
   mise_en_page: { police: "Calibri", taille_corps: 11, interligne: 1.15, marges_mm: 20, couleur_titres: "#000000",
                   rubriques_numerotees: false, numeros_de_page: true, logo: null, logo_position: "gauche",
-                  logo_hauteur_mm: 20 },
+                  logo_hauteur_mm: 20, gabarit: null, gabarit_porte_identite: false },
   llm: { model: "qwen2.5:7b-instruct-q4_K_M", temperature: 0.3 },
   stt: { device: "auto", model: "auto", beam_size: 5, vad: true, language: "fr",
          hotwords: ["orthophonie", "bilan"], corrections: {} },
@@ -54,15 +54,23 @@ CFG.llm.model = "qwen3.5:9b";    // configuré mais non installé (cf. /api/mode
 CFG.stt.corrections = { ortofonie: "orthophonie" };
 CFG.mise_en_page.police = "Garamond";   // hors liste → « personnalisé »
 CFG.mise_en_page.logo = { type: "image/png", donnees: "iVBORw0KGgo=", largeur: 10, hauteur: 10 };
+CFG.mise_en_page.gabarit = { nom: "papier-en-tete.docx", taille: 48213, depose_le: "2026-09-04",
+                             styles: ["Normal", "List Bullet", "List Number"], en_tete: true, pied_de_page: false };
+CFG.mise_en_page.gabarit_porte_identite = true;
 
-const configPuts = [], deletes = [], apercus = [];
-let logoRetire = 0;
+const configPuts = [], deletes = [], apercus = [], exemplesWord = [];
+let logoRetire = 0, gabaritRetire = 0;
 const rep = (r) => ({ ok: true, status: 200, json: async () => r });
 globalThis.fetch = async (p, o = {}) => {
   const url = String(p);
   if (url.includes("/api/config/defauts")) return rep(structuredClone(DEFAUTS));
   if (url.includes("/api/config/overrides")) return rep({});
   if (url.endsWith("/api/config/mise_en_page/apercu")) { apercus.push(JSON.parse(o.body)); return rep({}); }
+  if (url.endsWith("/api/config/mise_en_page/apercu?format=docx")) { exemplesWord.push(JSON.parse(o.body)); return rep({}); }
+  if (url.endsWith("/api/config/gabarit") && o.method === "DELETE") {
+    gabaritRetire++;
+    const eff = structuredClone(CFG); eff.mise_en_page.gabarit = null; return rep(eff);
+  }
   if (url.endsWith("/api/config/logo") && o.method === "DELETE") {
     logoRetire++;
     const eff = structuredClone(CFG); eff.mise_en_page.logo = null; return rep(eff);
@@ -231,6 +239,28 @@ await settle();
 check("retirer le logo : DELETE /api/config/logo, vignette masquée",
   logoRetire === 1 && $("mepLogoImg").hidden === true && $("mepLogoRetirer").hidden === true
   && $("mepLogoStatus").textContent.includes("✓"));
+// Gabarit Word (lot D) : description en clair, lien de récupération, retrait.
+const etat = $("mepGabaritEtat").textContent;
+check("gabarit déposé : nom, taille, date et ce qui en est repris, en clair",
+  $("mepGabaritEtat").hidden === false && $("mepGabaritAucun").hidden === true
+  && etat.startsWith("papier-en-tete.docx (47 Ko, déposé le 04/09/2026)")
+  && etat.includes("en-tête repris") && etat.includes("pied de page vide")
+  && etat.includes("pas de style de titre") && etat.includes("listes reprises"));
+check("gabarit : lien « Récupérer le fichier » et bouton « Retirer » visibles",
+  $("mepGabaritLien").hidden === false && $("mepGabaritLien").getAttribute("href") === "/api/config/gabarit"
+  && $("mepGabaritRetirer").hidden === false);
+check("« porte déjà l'identité » relu de la configuration", $("cfgMepGabaritIdentite").checked === true);
+$("mepGabaritExemple").click();
+await settle();
+check("exemple Word : POST …/apercu?format=docx avec les réglages de l'écran, rien d'enregistré",
+  exemplesWord.length === 1 && exemplesWord[0].marges_mm === 25 && exemplesWord[0].gabarit_porte_identite === true
+  && !("gabarit" in exemplesWord[0]) && $("mepGabaritStatus").textContent.includes("✓"));
+$("mepGabaritRetirer").click();
+await settle();
+check("retirer le gabarit : DELETE /api/config/gabarit, état « aucun gabarit »",
+  gabaritRetire === 1 && $("mepGabaritEtat").hidden === true && $("mepGabaritAucun").hidden === false
+  && $("mepGabaritRetirer").hidden === true && $("mepGabaritLien").hidden === true
+  && $("mepGabaritStatus").textContent.includes("✓"));
 
 // === 8. Bloc technique et sommaire ==========================================
 $("techToggle").click();
@@ -260,10 +290,11 @@ check("listes à choix → nombres",
 check("vouvoiement absent de l'enregistrement (valeur enregistrée conservée)", !("vouvoiement" in envoye.style));
 check("mise en forme par l'assistant renvoyée", envoye.style.mise_en_forme_ia === true);
 check("modèle non installé renvoyé tel quel", envoye.llm.model === "qwen3.5:9b");
-check("mise en page renvoyée sans le logo (déposé par sa propre route)",
+check("mise en page renvoyée sans le logo ni le gabarit (déposés par leurs routes)",
   envoye.mise_en_page.police === "Garamond" && envoye.mise_en_page.marges_mm === 25
   && envoye.mise_en_page.interligne === 1.15 && envoye.mise_en_page.rubriques_numerotees === true
-  && envoye.mise_en_page.numeros_de_page === true && !("logo" in envoye.mise_en_page));
+  && envoye.mise_en_page.numeros_de_page === true && envoye.mise_en_page.gabarit_porte_identite === true
+  && !("logo" in envoye.mise_en_page) && !("gabarit" in envoye.mise_en_page));
 check("corrections relues", JSON.stringify(envoye.stt.corrections) === JSON.stringify({ ortofonie: "orthophonie" }));
 const lire = (o, ch) => ch.split(".").reduce((x, k) => (x == null ? undefined : x[k]), o);
 const nonRenvoyes = Object.values(__t.CHAMPS).map((c) => c.chemin).filter((ch) => ch && lire(envoye, ch) === undefined);
@@ -284,9 +315,9 @@ await settle();
 check("sécurité : rgpd, sauvegarde et mises à jour", deletes.slice(2).map((d) => d.section).join(",") === "rgpd,sauvegarde,maj");
 $("secMiseEnPage").querySelector("[data-reset-btn]").click();
 await settle();
-check("mise en page : toutes les clés sauf le logo, qui reste",
+check("mise en page : toutes les clés sauf le logo et le gabarit, qui restent",
   deletes[5] && deletes[5].section === "mise_en_page"
-  && deletes[5].cles === "police,taille_corps,interligne,marges_mm,couleur_titres,rubriques_numerotees,numeros_de_page,logo_position,logo_hauteur_mm");
+  && deletes[5].cles === "police,taille_corps,interligne,marges_mm,couleur_titres,rubriques_numerotees,numeros_de_page,logo_position,logo_hauteur_mm,gabarit_porte_identite");
 globalThis.confirm = () => false;
 deletes.length = 0;
 $("secCotation").querySelector("[data-reset-btn]").click();

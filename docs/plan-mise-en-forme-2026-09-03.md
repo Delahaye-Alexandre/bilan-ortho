@@ -142,3 +142,58 @@ recommandées) ; pytest, ruff et les six suites UI verts.
 
 `tests/test_trame_import.py` ; sections 22 bis et 26 bis de
 `tests/ui/test_robustesse_ui.mjs`, scénario 6 de `tests/ui/test_relecture_ui.mjs`.
+
+## Lot D — gabarit Word personnel (fait le 2026-09-04)
+
+### Décisions
+
+1. Le gabarit est un document Word du praticien (.docx ; un modèle .dotx est
+   converti en réécrivant son type de contenu, un .docm/.dotm ou un projet
+   VBA embarqué est refusé). `export.preparer_gabarit` vérifie l'enveloppe
+   (zip Word, contenu décompressé borné), le décrit (nom nettoyé, taille,
+   date, styles utiles présents parmi `STYLES_GABARIT`, en-tête et pied de
+   page garnis) et met en page le bilan d'exemple avant d'accepter : un
+   gabarit accepté ne fait pas échouer un export.
+2. Les octets vivent dans la table `config` sous leur propre clé
+   (`ConfigStore.CLE_GABARIT`, base64), pas dans les surcharges : la
+   configuration est relue à chaque requête, le gabarit au seul export Word.
+   La description seule est dans `mise_en_page.gabarit` ; `ConfigStore._ecrire`
+   retire les octets dès que la description disparaît (retrait, section
+   effacée, réinitialisation). `MiseEnPagePatch` refuse la clé `gabarit`
+   comme `logo` ; nouvelle clé `gabarit_porte_identite`.
+3. `to_docx(b, cfg, gabarit)` : le document part du gabarit vidé de son corps
+   (tout sauf le `sectPr` final : un gabarit à plusieurs sections garde la
+   dernière) ; `_docx_mise_en_page` n'est pas appelée, les styles et sections
+   sont ceux du gabarit. Complément de ce qu'il ne définit pas : Heading 1/2
+   créés (style intégré, basé sur Normal, taille du corps du gabarit ou des
+   défauts du document + 6/+2, couleur des titres de la configuration) ;
+   listes écrites en texte (« • », « 1. », retrait suspendu, espacement
+   serré : un document Word neuf n'a pas de style de liste, c'est le cas
+   courant) sans paragraphe orphelin — le
+   repli du lot B en laissait un, `add_paragraph(style=…)` créant le
+   paragraphe avant d'échouer ; tableau quadrillé par `tblBorders` sans
+   « Table Grid » ; numéros de page ajoutés seulement à un pied de page vide
+   quand le réglage est coché.
+4. `_content(b, cfg, gabarit=True)` : pas de logo (le papier à en-tête est le
+   gabarit), pas d'identité du cabinet en tête si `gabarit_porte_identite`.
+   Le PDF ignore le gabarit : l'écran le dit, et « Exemple Word »
+   (`POST /api/config/mise_en_page/apercu?format=docx`, réglages de l'écran,
+   gabarit en place) permet de juger dans Word.
+5. Routes `PUT` (fichier, 5 Mo, 413/422), `GET` (le .docx conservé, sous son
+   nom) et `DELETE /api/config/gabarit` ; l'export Word d'un bilan lit le
+   gabarit dans la même transaction et, s'il échoue dessus, répond 500 avec
+   un message qui renvoie au retrait ou au PDF plutôt qu'un document sans
+   papier à en-tête.
+6. Écran : bloc « Mon papier à en-tête (gabarit Word) » sous le logo —
+   description en clair de ce qui est repris et complété, lien « Récupérer le
+   fichier », « Retirer le gabarit », « Exemple Word », case « porte déjà
+   l'identité ». Le retour aux valeurs recommandées de la section garde le
+   gabarit comme le logo.
+
+### Vérification
+
+`tests/test_gabarit_docx.py` (description, conversion .dotx, refus, export
+sur gabarit, replis, pied de page, identité, sections multiples, routes,
+réinitialisation) ; section 7 bis de `tests/ui/test_parametres_ui.mjs` ;
+pytest, ruff et les six suites UI verts ; document ouvert dans Word (Windows)
+par automatisation sur un papier à en-tête créé par Word lui-même.

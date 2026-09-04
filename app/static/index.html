@@ -373,7 +373,7 @@
         </div>
       </fieldset>
 
-      <fieldset id="secMiseEnPage" tabindex="-1" data-reset="mise_en_page:police,taille_corps,interligne,marges_mm,couleur_titres,rubriques_numerotees,numeros_de_page,logo_position,logo_hauteur_mm" data-reset-nom="Mise en page">
+      <fieldset id="secMiseEnPage" tabindex="-1" data-reset="mise_en_page:police,taille_corps,interligne,marges_mm,couleur_titres,rubriques_numerotees,numeros_de_page,logo_position,logo_hauteur_mm,gabarit_porte_identite" data-reset-nom="Mise en page">
         <legend>🖨️ Mise en page de mes documents</legend>
         <p class="muted" style="margin:0 0 4px">Apparence des comptes-rendus exportés en Word et en PDF. L'aperçu ci-dessous, sur un bilan fictif, suit chaque changement ; le contenu de vos bilans n'est pas concerné.</p>
         <div class="grid3">
@@ -397,6 +397,18 @@
           <button class="ghost" id="mepLogoRetirer" hidden>Retirer le logo</button>
           <span class="status" id="mepLogoStatus" role="status"></span>
         </div>
+        <div class="soustitre" id="mepGabaritLib">Mon papier à en-tête (gabarit Word)</div>
+        <p class="muted" style="margin:0 0 4px">Déposez un document Word de votre cabinet : vos comptes-rendus Word en reprennent l'en-tête, le pied de page, les marges, la police et les styles de titre ; son texte n'est pas repris. Le PDF et l'aperçu ci-dessous gardent les réglages de cette section.</p>
+        <div class="row" style="flex-wrap:wrap;gap:12px;margin-top:4px">
+          <span class="muted" id="mepGabaritAucun">Aucun gabarit : le Word suit les réglages ci-dessus.</span>
+          <span id="mepGabaritEtat" hidden></span>
+          <div><label for="cfgMepGabarit">Déposer un gabarit Word (.docx)</label><input type="file" id="cfgMepGabarit" accept=".docx,.dotx"></div>
+          <a id="mepGabaritLien" href="/api/config/gabarit" download hidden>Récupérer le fichier</a>
+          <button class="ghost" id="mepGabaritRetirer" hidden>Retirer le gabarit</button>
+          <button class="ghost" id="mepGabaritExemple">⬇ Exemple Word</button>
+          <span class="status" id="mepGabaritStatus" role="status"></span>
+        </div>
+        <label class="check" for="cfgMepGabaritIdentite"><input type="checkbox" id="cfgMepGabaritIdentite"> Mon gabarit porte déjà l'identité du cabinet : ne pas la répéter en tête du document</label>
         <div class="soustitre" id="mepApercuLib">Aperçu</div>
         <div class="row" style="margin:4px 0"><button class="ghost" id="mepApercuBtn">↻ Actualiser l'aperçu</button><span class="status" id="mepApercuSt" role="status"></span></div>
         <iframe id="mepApercu" title="Aperçu d'un compte-rendu fictif avec ces réglages" style="width:100%;height:460px;border:1px solid var(--border);border-radius:8px;background:#fff"></iframe>
@@ -2062,13 +2074,15 @@ async function telechargerExport(format) {
   }
   try {
     const r = await api(`/api/bilans/${CUR.id}/export?format=${format}`);
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `bilan-${CUR.id}.${format}`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    telechargerBlob(await r.blob(), `bilan-${CUR.id}.${format}`);
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+}
+function telechargerBlob(blob, nom) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nom;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 document.getElementById('expPdf').addEventListener('click', e => avecBouton(e.target, () => telechargerExport('pdf')));
 document.getElementById('expDocx').addEventListener('click', e => avecBouton(e.target, () => telechargerExport('docx')));
@@ -2576,6 +2590,9 @@ const CHAMPS = {
   cfgMepLogo: { aide: "Choisissez un fichier PNG ou JPEG : il est déposé aussitôt, sans attendre « Enregistrer ». Pour l'enlever, « Retirer le logo »." },
   cfgMepLogoPos: { chemin: 'mise_en_page.logo_position', aide: "Où placer le logo sur la ligne : à gauche, centré ou à droite. Sans logo, ce réglage est sans effet." },
   cfgMepLogoHaut: { chemin: 'mise_en_page.logo_hauteur_mm', aide: "Hauteur imprimée du logo ; la largeur suit. 20 mm correspond à un logo de papier à en-tête." },
+  mepGabaritLib: { aide: "Un document Word de votre cabinet (papier à en-tête, .docx ou modèle .dotx) dont vos comptes-rendus Word reprennent l'en-tête, le pied de page, les marges, la police et les styles de titre. Son texte est ignoré. Le fichier est rangé dans votre coffre chiffré. Police, taille, interligne, marges et couleur des titres réglés ci-dessus ne servent alors qu'au PDF, et aux styles que le gabarit ne définit pas." },
+  cfgMepGabarit: { aide: "Choisissez le fichier : il est vérifié et déposé aussitôt, sans attendre « Enregistrer ». Un document avec macros est refusé. « Exemple Word » télécharge un compte-rendu fictif mis en page avec, pour l'ouvrir dans Word." },
+  cfgMepGabaritIdentite: { chemin: 'mise_en_page.gabarit_porte_identite', aide: "Cochez si l'en-tête de votre gabarit indique déjà votre nom, votre adresse et vos numéros : le document ne les répète pas en tête. Décoché, ils sont écrits sous l'en-tête, comme sans gabarit. Le bloc de signature reste dans les deux cas. Sans gabarit, ce réglage est sans effet." },
   mepApercuLib: { aide: "Un compte-rendu fictif (patient et résultats inventés) mis en page avec les réglages de cet écran, même non enregistrés, et votre identité. Il se met à jour à chaque changement." },
   trameLib: { aide: "Rubriques créées pour chaque nouveau bilan, dans cet ordre. La trame intégrée suit l'arrêté du 25 juillet 2023 et les mises à jour de l'application ; une trame personnalisée ne bouge plus tant que vous n'y revenez pas. « Reprendre la trame d'un de mes bilans » reprend les intitulés d'un de vos documents." },
   cfgSttHotwords: { chemin: 'stt.hotwords',
@@ -2689,7 +2706,9 @@ function fillSettings(c) {
   remplirChoix('cfgMepLogoHaut', mep.logo_hauteur_mm);
   $('cfgMepNumerotees').checked = !!mep.rubriques_numerotees;
   $('cfgMepPages').checked = mep.numeros_de_page !== false;
+  $('cfgMepGabaritIdentite').checked = !!mep.gabarit_porte_identite;
   afficherLogo(mep.logo);
+  afficherGabarit(mep.gabarit);
   planifierApercu();
   $('cfgSttHotwords').value = (c.stt.hotwords || []).join('\n');
   $('cfgSttCorr').value = Object.entries(c.stt.corrections || {}).map(([k, v]) => `${k} => ${v}`).join('\n');
@@ -2846,9 +2865,9 @@ initAides();
 ].forEach(id => $(id).addEventListener('input', majApercus));
 // --- Mise en page des documents (lot B) --------------------------------------
 // Réglages de l'écran, enregistrés ou non, tels que le serveur les attend. Le
-// logo n'en fait pas partie : il se dépose et se retire par ses routes propres,
-// dès le choix du fichier — renvoyer son image à chaque « Enregistrer » ferait
-// transiter des centaines de Ko pour rien.
+// logo et le gabarit Word n'en font pas partie : ils se déposent et se retirent
+// par leurs routes propres, dès le choix du fichier — renvoyer leurs octets à
+// chaque « Enregistrer » ferait transiter des centaines de Ko pour rien.
 function collectMiseEnPage() {
   const num = v => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
   return {
@@ -2857,6 +2876,7 @@ function collectMiseEnPage() {
     marges_mm: num($('cfgMepMarges').value), couleur_titres: $('cfgMepCouleur').value || undefined,
     rubriques_numerotees: $('cfgMepNumerotees').checked, numeros_de_page: $('cfgMepPages').checked,
     logo_position: $('cfgMepLogoPos').value || undefined, logo_hauteur_mm: num($('cfgMepLogoHaut').value),
+    gabarit_porte_identite: $('cfgMepGabaritIdentite').checked,
   };
 }
 function afficherLogo(logo) {
@@ -2911,6 +2931,65 @@ $('mepLogoRetirer').addEventListener('click', e => avecBouton(e.target, async ()
     if (CFG_EFF) CFG_EFF.mise_en_page = eff.mise_en_page;
     afficherLogo(null);
     st.textContent = '✓ logo retiré'; planifierApercu();
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
+// --- Gabarit Word du cabinet (lot D) -----------------------------------------
+// Le serveur décrit le gabarit (nom, taille, date, en-tête, pied de page,
+// styles trouvés) ; l'écran dit ce qui en sera repris et ce qui sera complété.
+function decrireGabarit(g) {
+  const ko = Math.max(1, Math.round((g.taille || 0) / 1024));
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(g.depose_le || '') ? g.depose_le.split('-').reverse().join('/') : '';
+  const styles = g.styles || [];
+  const morceaux = [
+    g.en_tete ? 'en-tête repris' : "pas d'en-tête dans le gabarit",
+    g.pied_de_page ? 'pied de page repris' : 'pied de page vide (les numéros de page réglés ci-dessus s\'y écrivent)',
+    styles.includes('Heading 1') && styles.includes('Heading 2') ? 'styles de titre repris' : 'pas de style de titre (couleur et taille réglées ci-dessus)',
+    styles.includes('List Bullet') && styles.includes('List Number') ? 'listes reprises' : 'listes écrites en texte (style de liste absent)',
+  ];
+  return `${g.nom} (${ko} Ko${date ? ', déposé le ' + date : ''}) : ${morceaux.join(' · ')}.`;
+}
+function afficherGabarit(g) {
+  const present = !!(g && g.nom);
+  $('mepGabaritEtat').textContent = present ? decrireGabarit(g) : '';
+  $('mepGabaritEtat').hidden = !present; $('mepGabaritAucun').hidden = present;
+  $('mepGabaritRetirer').hidden = !present; $('mepGabaritLien').hidden = !present;
+}
+$('cfgMepGabarit').addEventListener('change', async () => {
+  const entree = $('cfgMepGabarit'), st = $('mepGabaritStatus');
+  const fichier = entree.files && entree.files[0];
+  if (!fichier) return;
+  statutOccupe(st, 'Vérification du gabarit…');
+  try {
+    const fd = new FormData(); fd.append('fichier', fichier, fichier.name);
+    const eff = await (await api('/api/config/gabarit', { method: 'PUT', body: fd })).json();
+    if (CFG_EFF) CFG_EFF.mise_en_page = eff.mise_en_page;
+    afficherGabarit((eff.mise_en_page || {}).gabarit);
+    st.textContent = '✓ gabarit déposé';
+  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+  entree.value = '';
+});
+$('mepGabaritRetirer').addEventListener('click', e => avecBouton(e.target, async () => {
+  const st = $('mepGabaritStatus');
+  try {
+    const eff = await (await api('/api/config/gabarit', { method: 'DELETE' })).json();
+    if (CFG_EFF) CFG_EFF.mise_en_page = eff.mise_en_page;
+    afficherGabarit(null);
+    st.textContent = '✓ gabarit retiré';
+  } catch (err) { st.textContent = 'Erreur : ' + err.message; }
+}));
+// Exemple Word : le bilan fictif de l'aperçu, en .docx, sur le gabarit s'il y
+// en a un, avec les réglages de l'écran — à ouvrir dans Word pour juger.
+$('mepGabaritExemple').addEventListener('click', e => avecBouton(e.target, async () => {
+  const st = $('mepGabaritStatus');
+  statutOccupe(st, "Mise en page de l'exemple…");
+  try {
+    const r = await api('/api/config/mise_en_page/apercu?format=docx', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(collectMiseEnPage()),
+    });
+    if (typeof r.blob === 'function' && typeof URL.createObjectURL === 'function') {
+      telechargerBlob(await r.blob(), 'exemple-mise-en-page.docx');
+    }
+    st.textContent = '✓ exemple téléchargé';
   } catch (err) { st.textContent = 'Erreur : ' + err.message; }
 }));
 // Bloc technique replié par défaut ; le sommaire l'ouvre quand on y va.

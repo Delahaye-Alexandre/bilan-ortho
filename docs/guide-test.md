@@ -82,6 +82,10 @@ irrécupérable** (personne, pas même Alexandre, ne peut la retrouver).
    Dans **Mise en page de mes documents**, choisissez police, marges, couleur
    des titres, numérotation, et déposez votre logo (PNG ou JPEG) : l'aperçu
    d'un bilan fictif se met à jour sous les réglages avant d'enregistrer.
+   Si vous avez un papier à en-tête Word, déposez-le comme gabarit :
+   « Exemple Word » télécharge un bilan fictif mis en page dessus, à ouvrir
+   dans Word ; cochez « porte déjà l'identité du cabinet » si votre en-tête
+   indique déjà vos coordonnées.
 8. **€ Coter**, **⬇ Word**, puis « Marquer validé ».
 9. Optionnel : importez un de vos bilans **anonymisé** dans « Mes bilans de
    référence » — les prochaines rédactions imiteront votre style, y compris

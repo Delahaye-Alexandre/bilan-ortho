@@ -15,12 +15,20 @@ numérotation des rubriques, numéros de page, logo) vient de la section
 `mise_en_page` de la configuration (lot B du plan « mise en forme ») : le
 Word et le PDF la lisent tous deux, l'écran Paramètres en montre l'effet sur
 un bilan fictif (`bilan_exemple`).
+
+Le praticien peut aussi déposer son propre document Word (lot D) : le Word
+exporté part alors de ce gabarit — en-tête, pied de page, sections et styles
+gardés, corps vidé — et les réglages ci-dessus ne servent plus qu'au PDF et
+aux styles que le gabarit ne définit pas (`preparer_gabarit`, `to_docx`).
 """
 from __future__ import annotations
 
 import base64
 import io
 import os
+import re
+import unicodedata
+import zipfile
 from datetime import date
 from pathlib import Path
 
@@ -244,6 +252,130 @@ def preparer_logo(data: bytes) -> dict:
     }
 
 
+# --- Gabarit Word du praticien (lot D du plan « mise en forme ») -------------
+# Un document Word du cabinet (papier à en-tête) sert de point de départ au
+# Word exporté : corps vidé, en-tête, pied de page, sections (marges,
+# orientation) et styles gardés tels quels. Ses octets vivent dans le coffre
+# chiffré, à part de la configuration (`ConfigStore.gabarit_docx`) : la
+# configuration est relue à chaque requête, le gabarit au seul export Word.
+TAILLE_MAX_GABARIT = 5 * 1024 * 1024
+# Un .docx est un zip : le contenu décompressé est borné avant tout parsing.
+TAILLE_MAX_GABARIT_DECOMPRESSE = 60 * 1024 * 1024
+_CT_DOCUMENT = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+_CT_MODELE = "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml"
+# Styles que le document exporté emploie. Ceux que le gabarit ne définit pas
+# sont créés (titres) ou remplacés (listes en texte, bordures de tableau
+# posées à la main) : un papier à en-tête n'a souvent jamais servi à écrire
+# un titre ni une liste.
+STYLES_GABARIT = ("Normal", "Heading 1", "Heading 2", "List Bullet", "List Number", "Table Grid")
+
+
+def _docx_a_style(doc, nom: str) -> bool:
+    try:
+        doc.styles[nom]
+    except KeyError:
+        return False
+    return True
+
+
+def _docx_partie_garnie(partie) -> bool:
+    """Un en-tête ou un pied de page porte-t-il quelque chose (texte, image,
+    tableau, champ) ? Lié à la section précédente : rien en propre."""
+    if partie.is_linked_to_previous:
+        return False
+    el = partie._element
+    if any((t.text or "").strip() for t in el.xpath(".//w:t")):
+        return True
+    return bool(el.xpath(".//w:drawing | .//w:pict | .//w:tbl | .//w:fldSimple | .//w:instrText"))
+
+
+def _gabarit_en_docx(data: bytes) -> bytes:
+    """Vérifie l'enveloppe (zip Word, taille décompressée, pas de macro) et
+    rend un .docx : un modèle .dotx est converti (même contenu, autre type
+    déclaré — python-docx n'ouvre que le premier)."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            noms = z.namelist()
+            if "[Content_Types].xml" not in noms:
+                raise ValueError("Ce fichier n'est pas un document Word (.docx).")
+            if sum(i.file_size for i in z.infolist()) > TAILLE_MAX_GABARIT_DECOMPRESSE:
+                raise ValueError("Gabarit trop volumineux une fois décompressé.")
+            types = z.read("[Content_Types].xml").decode("utf-8", "replace")
+            if "macroEnabled" in types or any(n.endswith("vbaProject.bin") for n in noms):
+                raise ValueError(
+                    "Document avec macros (.docm, .dotm) refusé : enregistrez-le en .docx, sans macro."
+                )
+            if _CT_DOCUMENT in types:
+                return data
+            if _CT_MODELE not in types:
+                raise ValueError(
+                    "Ce fichier n'est pas un document Word (.docx) : "
+                    "enregistrez-le depuis Word ou LibreOffice au format Word."
+                )
+            types = types.replace(_CT_MODELE, _CT_DOCUMENT)
+            out = io.BytesIO()
+            with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as w:
+                for info in z.infolist():
+                    contenu = types.encode("utf-8") if info.filename == "[Content_Types].xml" else z.read(info)
+                    w.writestr(info, contenu)
+            return out.getvalue()
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Ce fichier n'est pas un document Word (.docx).") from exc
+
+
+def _nom_gabarit(nom: str) -> str:
+    """Nom conservé pour le fichier : sans chemin ni accent ni caractère
+    spécial (il repart dans un en-tête HTTP), en .docx (un .dotx est converti)."""
+    base = Path(re.split(r"[\\/]", nom or "")[-1]).stem  # séparateurs Windows compris
+    base = unicodedata.normalize("NFKD", base).encode("ascii", "ignore").decode("ascii")
+    base = re.sub(r"[^\w .-]+", "", base).strip(" .-")[:60]
+    return (base or "gabarit") + ".docx"
+
+
+def preparer_gabarit(data: bytes, nom: str = "") -> tuple[bytes, dict]:
+    """Vérifie un gabarit Word déposé et le décrit.
+
+    Retourne les octets à conserver (un .dotx est converti en .docx) et
+    l'entrée `mise_en_page.gabarit` de la configuration : nom, taille, date,
+    styles utiles présents, en-tête et pied de page garnis. Le gabarit met en
+    page le bilan d'exemple avant d'être accepté : un gabarit accepté ne peut
+    pas faire échouer un export. ValueError avec un message pour l'écran."""
+    from docx import Document
+
+    data = _gabarit_en_docx(data)
+    try:
+        doc = Document(io.BytesIO(data))
+        styles = [s for s in STYLES_GABARIT if _docx_a_style(doc, s)]
+        en_tete = any(
+            _docx_partie_garnie(s.header)
+            or (s.different_first_page_header_footer and _docx_partie_garnie(s.first_page_header))
+            for s in doc.sections
+        )
+        pied = any(
+            _docx_partie_garnie(s.footer)
+            or (s.different_first_page_header_footer and _docx_partie_garnie(s.first_page_footer))
+            for s in doc.sections
+        )
+    except Exception as exc:
+        raise ValueError(
+            "Document Word illisible : ré-enregistrez-le depuis Word ou LibreOffice."
+        ) from exc
+    try:
+        to_docx(bilan_exemple(), None, gabarit=data)
+    except Exception as exc:
+        raise ValueError(
+            f"Ce gabarit n'a pas pu mettre en page un document d'essai ({exc})."
+        ) from exc
+    return data, {
+        "nom": _nom_gabarit(nom),
+        "taille": len(data),
+        "depose_le": date.today().isoformat(),
+        "styles": styles,
+        "en_tete": en_tete,
+        "pied_de_page": pied,
+    }
+
+
 def bilan_exemple(cfg: dict | None = None) -> dict:
     """Bilan fictif, court, qui passe par tous les blocs du document (en-tête,
     destinataire, rubriques en texte riche, tableau, cotation, signature) :
@@ -301,21 +433,27 @@ def est_brouillon(b: dict) -> bool:
     return (b.get("statut") or "brouillon") not in ("valide", "envoye")
 
 
-def _content(b: dict, cfg: dict | None = None) -> list[tuple[str, object]]:
-    """Document sous forme de blocs (type, contenu), rendus par chaque format."""
+def _content(
+    b: dict, cfg: dict | None = None, gabarit: bool = False
+) -> list[tuple[str, object]]:
+    """Document sous forme de blocs (type, contenu), rendus par chaque format.
+
+    `gabarit` (Word sur le gabarit du praticien) : le papier à en-tête est
+    celui du gabarit — pas de logo, et pas d'identité du cabinet en tête si
+    le praticien a dit que son gabarit la porte déjà."""
     prat = ((cfg or {}).get("praticien")) or {}
     mp = mise_en_page(cfg)
     blocks: list[tuple[str, object]] = []
     if est_brouillon(b):
         blocks.append(("brouillon", MENTION_BROUILLON))
-    logo = _logo_octets(mp)
+    logo = None if gabarit else _logo_octets(mp)
     if logo:
         # Word et PDF seulement ; Markdown et texte l'ignorent.
         blocks.append(("logo", {
             "donnees": logo, "position": mp["logo_position"],
             "hauteur_mm": float(mp["logo_hauteur_mm"]),
         }))
-    entete = _entete_praticien(prat)
+    entete = [] if gabarit and mp.get("gabarit_porte_identite") else _entete_praticien(prat)
     if entete:
         blocks.append(("entete", entete))
     dest = _destinataire(b)
@@ -496,14 +634,24 @@ def _docx_numerotation_neuve(doc, nom_style: str):
 
 def _docx_liste(doc, bloc: texte_riche.Liste) -> None:
     nom_style = "List Number" if bloc.ordonnee else "List Bullet"
-    num_id = _docx_numerotation_neuve(doc, nom_style) if bloc.ordonnee else None
+    # Style vérifié avant d'ajouter le paragraphe : `add_paragraph(style=…)`
+    # crée le paragraphe puis échoue sur le style, ce qui laissait un
+    # paragraphe vide devant chaque élément.
+    style = nom_style if _docx_a_style(doc, nom_style) else None
+    num_id = _docx_numerotation_neuve(doc, nom_style) if style and bloc.ordonnee else None
     for i, item in enumerate(bloc.items, 1):
-        try:
-            p = doc.add_paragraph(style=nom_style)
-        except KeyError:
-            # Style absent (gabarit personnalisé) : le marqueur devient du texte.
-            p = doc.add_paragraph(f"{i}. " if bloc.ordonnee else "- ")
+        if style is None:
+            # Style absent — le cas d'un document Word neuf, donc de la plupart
+            # des gabarits : le marqueur devient du texte, avec le retrait
+            # suspendu et l'espacement serré d'une liste.
+            from docx.shared import Mm, Pt
+
+            p = doc.add_paragraph(f"{i}. " if bloc.ordonnee else "• ")
+            p.paragraph_format.left_indent = Mm(6)
+            p.paragraph_format.first_line_indent = Mm(-4)
+            p.paragraph_format.space_after = Pt(6 if i == len(bloc.items) else 2)
         else:
+            p = doc.add_paragraph(style=style)
             if num_id is not None:
                 num_pr = p._p.get_or_add_pPr().get_or_add_numPr()
                 num_pr.get_or_add_numId().val = num_id
@@ -552,10 +700,9 @@ def _docx_champ(paragraphe, instruction: str) -> None:
 
 def _docx_mise_en_page(doc, mp: dict) -> None:
     """Applique police, corps, interligne, marges, couleur des titres et
-    numéros de page au document (styles Normal, Heading 1 et Heading 2, et
-    sections). Le lot D (gabarit .docx du praticien) court-circuitera cette
-    fonction : les styles viendront alors du gabarit."""
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    numéros de page au document neuf (styles Normal, Heading 1 et Heading 2,
+    et sections). Sur le gabarit du praticien, `to_docx` ne l'appelle pas :
+    les styles et les sections sont ceux du gabarit."""
     from docx.shared import Mm, Pt, RGBColor
 
     taille = float(mp["taille_corps"])
@@ -575,23 +722,116 @@ def _docx_mise_en_page(doc, mp: dict) -> None:
         section.left_margin = section.right_margin = marge
         section.top_margin = section.bottom_margin = marge
         if mp.get("numeros_de_page"):
-            pied = section.footer
-            p = pied.paragraphs[0] if pied.paragraphs else pied.add_paragraph()
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            p.add_run("Page ")
-            _docx_champ(p, "PAGE")
-            p.add_run(" / ")
-            _docx_champ(p, "NUMPAGES")
+            _docx_numeros_de_page(section)
 
 
-def to_docx(b: dict, cfg: dict | None = None) -> bytes:
+def _docx_numeros_de_page(section) -> None:
+    """« Page i / n » centré dans le pied de page de la section."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    pied = section.footer
+    p = pied.paragraphs[0] if pied.paragraphs else pied.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.add_run("Page ")
+    _docx_champ(p, "PAGE")
+    p.add_run(" / ")
+    _docx_champ(p, "NUMPAGES")
+
+
+def _docx_vider_corps(doc) -> None:
+    """Retire tout le contenu du corps du gabarit (texte de remplissage) en
+    gardant sa dernière section — donc en-tête, pied de page, marges et
+    orientation. Un gabarit à plusieurs sections ne garde que la dernière."""
+    from docx.oxml.ns import qn
+
+    corps = doc.element.body
+    for enfant in list(corps):
+        if enfant.tag != qn("w:sectPr"):
+            corps.remove(enfant)
+
+
+def _docx_completer_styles(doc, mp: dict) -> None:
+    """Crée les styles de titre que le gabarit ne définit pas, d'après sa
+    taille de texte courante et la couleur des titres de la configuration.
+    Les styles présents ne sont pas touchés : c'est le sens du gabarit."""
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.shared import Pt, RGBColor
+
+    normal = doc.styles["Normal"] if _docx_a_style(doc, "Normal") else None
+    taille = normal.font.size if normal is not None else None
+    if taille is None:
+        # Word range le plus souvent la taille du corps dans les défauts du
+        # document (demi-points), pas dans le style Normal.
+        sz = doc.styles.element.xpath("./w:docDefaults/w:rPrDefault/w:rPr/w:sz/@w:val")
+        try:
+            taille = Pt(float(sz[0]) / 2)
+        except (IndexError, ValueError):
+            taille = Pt(float(mp["taille_corps"]))
+    couleur = RGBColor.from_string(mp["couleur_titres"].lstrip("#").upper())
+    for nom, delta in (("Heading 1", 6), ("Heading 2", 2)):
+        if _docx_a_style(doc, nom):
+            continue
+        st = doc.styles.add_style(nom, WD_STYLE_TYPE.PARAGRAPH, builtin=True)
+        if normal is not None:
+            st.base_style = normal
+            st.next_paragraph_style = normal
+        st.font.bold = True
+        st.font.size = Pt(taille.pt + delta)
+        st.font.color.rgb = couleur
+        st.paragraph_format.space_before = Pt(12)
+        st.paragraph_format.space_after = Pt(4)
+        st.paragraph_format.keep_with_next = True
+
+
+def _docx_pied_du_gabarit(doc, mp: dict) -> None:
+    """Le pied de page du gabarit est gardé tel quel. Vide, et si les numéros
+    de page sont demandés, il les reçoit : un gabarit sans pied de page ne
+    fait pas perdre le réglage."""
+    if not mp.get("numeros_de_page"):
+        return
+    for i, section in enumerate(doc.sections):
+        if i and section.footer.is_linked_to_previous:
+            continue  # hérite du pied de la section précédente
+        if not _docx_partie_garnie(section.footer):
+            _docx_numeros_de_page(section)
+
+
+def _docx_bordures(table) -> None:
+    """Quadrillage fin posé sur le tableau lui-même, quand le gabarit n'a
+    pas le style « Table Grid » : sans lui, le tableau sortait sans bordure."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    bordures = OxmlElement("w:tblBorders")
+    for cote in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        b = OxmlElement(f"w:{cote}")
+        b.set(qn("w:val"), "single")
+        b.set(qn("w:sz"), "4")
+        b.set(qn("w:space"), "0")
+        b.set(qn("w:color"), "auto")
+        bordures.append(b)
+    table._tbl.tblPr.append(bordures)
+
+
+def to_docx(b: dict, cfg: dict | None = None, gabarit: bytes | None = None) -> bytes:
+    """Document Word. Avec `gabarit` (octets du .docx du praticien), le
+    document part de ce gabarit vidé de son corps : ses en-tête, pied de
+    page, sections et styles font la mise en page ; sinon un document neuf
+    reçoit les réglages de `mise_en_page`."""
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Mm
 
-    doc = Document()
-    _docx_mise_en_page(doc, mise_en_page(cfg))
-    for k, t in _content(b, cfg):
+    mp = mise_en_page(cfg)
+    if gabarit:
+        doc = Document(io.BytesIO(gabarit))
+        _docx_vider_corps(doc)
+        _docx_completer_styles(doc, mp)
+        _docx_pied_du_gabarit(doc, mp)
+    else:
+        doc = Document()
+        _docx_mise_en_page(doc, mp)
+    for k, t in _content(b, cfg, gabarit=bool(gabarit)):
         if k == "brouillon":
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -621,7 +861,10 @@ def to_docx(b: dict, cfg: dict | None = None) -> bytes:
             _docx_riche(doc, t)
         elif k == "table":
             table = doc.add_table(rows=1, cols=len(_COLONNES))
-            table.style = "Table Grid"
+            if _docx_a_style(doc, "Table Grid"):
+                table.style = "Table Grid"
+            else:
+                _docx_bordures(table)
             for i, titre in enumerate(_COLONNES):
                 table.rows[0].cells[i].paragraphs[0].add_run(titre).bold = True
             for ligne in t:
