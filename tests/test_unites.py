@@ -1120,6 +1120,10 @@ def test_titre_en_capitales_voisin_d_un_mot_ne_fabrique_pas_un_prenom():
     prose = ("Le TROUBLEX Persistant a été discuté avec la famille lors de la "
              "restitution du bilan ce mardi.")
     assert "Persistant" not in anonymisation.noms_du_document(prose)
+    # …mais une ligne d'identité longue qui COMMENCE par le nom est bien lue.
+    identite = ("Léa DURAND, née le 12 mars 2018, scolarisée en CE2 à l'école des "
+                "Lilas, adressée par le médecin traitant pour lenteur en lecture.")
+    assert {"Léa", "DURAND"} <= anonymisation.noms_du_document(identite)
 
 
 def test_titres_de_rubriques_inconnus_conserves():

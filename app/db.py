@@ -351,8 +351,12 @@ def migrate(con) -> None:
     # Hors transaction : executescript commet ce qui est en attente.
     con.executescript(_SCHEMA)
     # Copies pré-migration des versions antérieures, laissées à la racine des
-    # données : rangées avec les sauvegardes, où elles suivent la rotation.
-    sauvegarde.ranger_copies_migration(config.ConfigStore(con).effective())
+    # données : rangées avec les sauvegardes, où elles suivent la rotation. Du
+    # ménage : un échec (config illisible, disque) ne bloque pas l'ouverture.
+    try:
+        sauvegarde.ranger_copies_migration(config.ConfigStore(con).effective())
+    except Exception as exc:  # pragma: no cover - dépend du système de fichiers
+        logger.warning("Rangement des copies pré-migration impossible : %s", exc)
     a_jour = (
         "patient_id" in _colonnes(con, "bilan_reference")
         and "signalements" in _colonnes(con, "section")

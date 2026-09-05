@@ -237,8 +237,9 @@ _NOM_ET_PRENOM = [
     re.compile(rf"\b({_PRENOM_MIXTE})[ \t]+({_PATRONYME_CAPITALES})(?![\w'’-])"),
 ]
 # Au-delà, la ligne est de la prose (un titre suivi de son texte), pas une
-# ligne d'identité.
-_LIGNE_IDENTITE_MOTS_MAX = 8
+# ligne d'identité — sauf si elle COMMENCE par le nom (« Léa DURAND, née le
+# 12 mars 2018, scolarisée en CE2 à l'école des Lilas, adressée par… »).
+_LIGNE_IDENTITE_MOTS_MAX = 12
 
 # Mots qui suivent parfois une civilité ou une étiquette sans être des noms.
 _PAS_DES_NOMS = {
@@ -269,10 +270,11 @@ def noms_du_document(texte: str) -> set[str]:
                 _retenir_nom(noms, mot)
     attendus = None
     for ligne in texte.splitlines():
-        if len(ligne.split()) > _LIGNE_IDENTITE_MOTS_MAX:
-            continue
+        longue = len(ligne.split()) > _LIGNE_IDENTITE_MOTS_MAX
         for motif in _NOM_ET_PRENOM:
             for m in motif.finditer(ligne):
+                if longue and m.start() != len(ligne) - len(ligne.lstrip()):
+                    continue  # de la prose, pas une ligne d'identité
                 a, b = m.group(1), m.group(2)
                 capitales, mixte = (a, b) if a.isupper() else (b, a)
                 if attendus is None:
