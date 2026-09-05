@@ -7,14 +7,12 @@ chiffrée, pour une cohérence RGPD forte.
 from __future__ import annotations
 
 import logging
-import os
 import sys
-from pathlib import Path
 
 import sqlcipher3
 import sqlite_vec
 
-from . import config
+from . import config, sauvegarde
 
 logger = logging.getLogger(__name__)
 
@@ -306,30 +304,6 @@ def _colonnes(con, table: str) -> set[str]:
     return {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
 
 
-def _copie_avant_migration(con, version: int) -> Path | None:
-    """Copie chiffrée du coffre, prise AVANT toute modification de schéma.
-
-    Une migration est le seul moment où l'application réécrit la structure du
-    coffre : si elle échoue à mi-chemin (coupure, disque plein), le praticien
-    doit pouvoir revenir à l'état d'avant. La sauvegarde automatique, elle, ne
-    tourne qu'*après* le déverrouillage — donc trop tard. La copie porte le
-    numéro de version d'origine, et un échec de copie n'empêche pas la
-    migration (elle reste transactionnelle) : il est seulement journalisé."""
-    try:
-        cible = config.data_dir() / f"coffre-avant-migration-v{version}.db"
-        tmp = cible.with_suffix(".db.tmp")
-        tmp.unlink(missing_ok=True)
-        cible.unlink(missing_ok=True)
-        con.commit()  # VACUUM refuse de tourner dans une transaction ouverte
-        con.execute("VACUUM INTO ?", (str(tmp),))
-        os.replace(tmp, cible)
-        config.restreindre_acces(cible)
-        return cible
-    except Exception as exc:  # pragma: no cover - dépend du système de fichiers
-        logger.warning("Copie de sécurité avant migration impossible : %s", exc)
-        return None
-
-
 def _migrer_v2(con) -> None:
     """v1 → v2 : deux colonnes ajoutées après l'audit du 2026-08-11.
 
@@ -376,13 +350,16 @@ def migrate(con) -> None:
     # prime, le message « espace disque insuffisant » du gestionnaire global.
     # Hors transaction : executescript commet ce qui est en attente.
     con.executescript(_SCHEMA)
+    # Copies pré-migration des versions antérieures, laissées à la racine des
+    # données : rangées avec les sauvegardes, où elles suivent la rotation.
+    sauvegarde.ranger_copies_migration(config.ConfigStore(con).effective())
     a_jour = (
         "patient_id" in _colonnes(con, "bilan_reference")
         and "signalements" in _colonnes(con, "section")
     )
     if v == SCHEMA_VERSION and a_jour:
         return  # rien à faire : ni copie ni écriture inutiles
-    _copie_avant_migration(con, v)
+    sauvegarde.copie_avant_migration(con, v)
     try:
         con.execute("BEGIN")
         if v < 2:

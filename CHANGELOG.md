@@ -41,6 +41,17 @@ installeur Windows publié dans les releases.
   du clinicien (une conclusion fondée était signalée une fois sur deux), et
   une rubrique de deux phrases est désormais jugée (huit termes au lieu de
   douze).
+- **Conservation (RGPD)** : la fiche d'un patient qui n'a plus aucun bilan et
+  dépasse le délai de conservation est supprimée à chaque déverrouillage — elle
+  ne partait qu'en effet de bord d'une purge de bilans le même jour, et pouvait
+  rester des années. Aide du réglage et registre des traitements alignés.
+- **Copie pré-migration** : la copie du coffre prise avant un changement de
+  schéma est désormais une sauvegarde comme les autres (même dossier, suffixe
+  `-avant-migration-vN`) : listée, restaurable depuis les Paramètres, soumise à
+  la rotation et couverte par la mention faite aux patients. Rangée jusqu'ici
+  à la racine des données sous un autre nom, elle n'était jamais tournée ; la
+  copie laissée par les versions précédentes rejoint les sauvegardes au
+  premier déverrouillage.
 
 ## 1.13.0 — 2026-09-04
 

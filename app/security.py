@@ -457,27 +457,34 @@ def _purge_conservation(con) -> None:
     Prescriptions et identités suivent explicitement : elles sont rattachées au
     *patient*, pas au bilan, si bien que la purge détruisait le soin et gardait
     l'identité — l'inverse exact de l'effet recherché. Un patient n'est
-    supprimé que s'il ne lui reste plus aucun bilan et qu'il a lui-même dépassé
-    le délai de conservation (sans quoi un dossier ouvert la veille, pas encore
-    documenté, partirait avec la purge)."""
-    ids = bilans_a_purger(con)
-    if not ids:
+    supprimé que s'il ne lui reste aucun bilan et qu'il a lui-même dépassé le
+    délai de conservation (sans quoi un dossier ouvert la veille, pas encore
+    documenté, partirait avec la purge). Cette règle vaut à chaque
+    déverrouillage, qu'un bilan parte ou non le même jour : elle ne jouait
+    qu'en effet de bord d'une purge de bilans, si bien qu'une fiche sans
+    bilan pouvait rester des années passé le délai (revue du 2026-09-02)."""
+    try:
+        jours = int(config.ConfigStore(con).effective()["rgpd"]["conservation_jours"])
+    except (KeyError, TypeError, ValueError):
         return
-    jours = int(config.ConfigStore(con).effective()["rgpd"]["conservation_jours"])
-    trous = ",".join("?" * len(ids))  # identifiants entiers, jamais interpolés
-    # Les prescriptions sont relevées avant, supprimées après : tant que le
-    # bilan existe, il les référence (clé étrangère sans cascade).
-    prescriptions = [
-        r[0] for r in con.execute(
-            f"SELECT prescription_id FROM bilan WHERE id IN ({trous}) "
-            f"AND prescription_id IS NOT NULL",
-            ids,
-        )
-    ]
-    con.execute(f"DELETE FROM bilan WHERE id IN ({trous})", ids)
-    if prescriptions:
-        ph = ",".join("?" * len(prescriptions))
-        con.execute(f"DELETE FROM prescription WHERE id IN ({ph})", prescriptions)
+    if jours <= 0:
+        return
+    ids = bilans_a_purger(con)
+    if ids:
+        trous = ",".join("?" * len(ids))  # identifiants entiers, jamais interpolés
+        # Les prescriptions sont relevées avant, supprimées après : tant que le
+        # bilan existe, il les référence (clé étrangère sans cascade).
+        prescriptions = [
+            r[0] for r in con.execute(
+                f"SELECT prescription_id FROM bilan WHERE id IN ({trous}) "
+                f"AND prescription_id IS NOT NULL",
+                ids,
+            )
+        ]
+        con.execute(f"DELETE FROM bilan WHERE id IN ({trous})", ids)
+        if prescriptions:
+            ph = ",".join("?" * len(prescriptions))
+            con.execute(f"DELETE FROM prescription WHERE id IN ({ph})", prescriptions)
     orphelins = [
         r[0] for r in con.execute(
             "SELECT p.id FROM patient p "
@@ -490,13 +497,19 @@ def _purge_conservation(con) -> None:
         from . import patient as _patient
 
         _patient.delete(con, pid)
+    if not ids and not orphelins:
+        return
     # Journaliser les identifiants, pas un décompte : la suppression définitive
     # de pièces du dossier de soins doit laisser une trace de CE QUI est parti.
-    audit(
-        "purge_conservation", "bilan", None,
-        f"{len(ids)} bilan(s) > {jours} j — n° " + ", ".join(str(i) for i in ids)
-        + (f" ; {len(orphelins)} patient(s) sans bilan restant" if orphelins else ""),
-    )
+    parts = []
+    if ids:
+        parts.append(f"{len(ids)} bilan(s) > {jours} j — n° " + ", ".join(str(i) for i in ids))
+    if orphelins:
+        parts.append(
+            f"{len(orphelins)} patient(s) sans aucun bilan > {jours} j — n° "
+            + ", ".join(str(i) for i in orphelins)
+        )
+    audit("purge_conservation", "bilan", None, " ; ".join(parts))
 
 
 def _sauvegarde_auto(con) -> None:

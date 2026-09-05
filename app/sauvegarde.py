@@ -9,14 +9,26 @@ puis le fichier est remplacé atomiquement.
 """
 from __future__ import annotations
 
+import logging
 import os
+import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
 from . import config
 
+logger = logging.getLogger(__name__)
+
 PREFIXE = "bilan-ortho-sauvegarde-"
 _META_KEY = "derniere_sauvegarde"
+# Copie prise avant une migration du schéma : une sauvegarde comme les autres
+# (même préfixe → listée, restaurable, soumise à la rotation, couverte par la
+# mention faite aux patients), distinguée par ce suffixe.
+SUFFIXE_MIGRATION = "-avant-migration-v{version}"
+# Emplacement et nom des copies pré-migration des versions antérieures (racine
+# du dossier de données, jamais tournées : revue du 2026-09-02).
+_ANCIENNE_COPIE = re.compile(r"^coffre-avant-migration-v(\d+)\.db$")
 
 
 class SupportIntrouvable(RuntimeError):
@@ -95,19 +107,22 @@ def _rotation(d: Path, retention: int, garder: Path | None = None) -> None:
             pass
 
 
-def creer(con, cfg: dict) -> dict:
-    """Sauvegarde immédiate. Retourne {fichier, octets}."""
-    d = dossier(cfg)
-    base = PREFIXE + datetime.now().strftime("%Y%m%d-%H%M%S")
+def _nom_libre(d: Path, base: str) -> Path:
+    """``<base>.db`` dans ``d``, suffixé en cas de collision (même seconde)."""
     cible, n = d / f"{base}.db", 1
-    while cible.exists():  # collision improbable (même seconde)
+    while cible.exists():
         n += 1
         cible = d / f"{base}-{n}.db"
+    return cible
+
+
+def _vacuum_vers(con, cible: Path) -> None:
+    """Copie chiffrée et cohérente du coffre dans ``cible``, écrite de façon
+    atomique : VACUUM INTO vers un .tmp puis os.replace — un échec en cours de
+    route (disque plein, coupure) ne laisse jamais une sauvegarde partielle qui
+    passerait pour valide. Les .tmp sont invisibles de liste() et de la
+    rotation (motif « *.db »)."""
     con.commit()  # VACUUM refuse de tourner dans une transaction ouverte
-    # Écriture atomique : VACUUM INTO vers un .tmp puis os.replace — un échec
-    # en cours de route (disque plein, coupure) ne laisse jamais une sauvegarde
-    # partielle qui passerait pour valide. Les .tmp sont invisibles de liste()
-    # et de la rotation (motif « *.db »).
     tmp = cible.parent / (cible.name + ".tmp")
     try:
         tmp.unlink(missing_ok=True)  # .tmp orphelin (arrêt brutal) : VACUUM refuse d'écraser
@@ -120,14 +135,89 @@ def creer(con, cfg: dict) -> dict:
             pass
         raise
     config.restreindre_acces(cible)
+
+
+def _retention(cfg: dict) -> int:
+    try:
+        return int((cfg.get("sauvegarde") or {}).get("retention") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def creer(con, cfg: dict) -> dict:
+    """Sauvegarde immédiate. Retourne {fichier, octets}."""
+    d = dossier(cfg)
+    cible = _nom_libre(d, PREFIXE + datetime.now().strftime("%Y%m%d-%H%M%S"))
+    _vacuum_vers(con, cible)
     con.execute(
         "INSERT INTO meta(key, value) VALUES(?, datetime('now')) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (_META_KEY,),
     )
-    retention = int((cfg.get("sauvegarde") or {}).get("retention") or 0)
-    _rotation(d, retention, garder=cible)
+    _rotation(d, _retention(cfg), garder=cible)
     return {"fichier": str(cible), "octets": cible.stat().st_size}
+
+
+def _dossier_ou_interne(cfg: dict) -> Path:
+    """Dossier de sauvegarde configuré ; à défaut (support débranché), le
+    dossier interne — pour un filet de sécurité, mieux vaut le disque interne
+    que rien du tout. La sauvegarde ordinaire, elle, refuse (5.4)."""
+    try:
+        return dossier(cfg)
+    except SupportIntrouvable:
+        return dossier({})
+
+
+def copie_avant_migration(con, version: int) -> Path | None:
+    """Copie chiffrée du coffre, prise AVANT toute modification de schéma.
+
+    Une migration est le seul moment où l'application réécrit la structure du
+    coffre : si elle échoue à mi-chemin (coupure, disque plein), le praticien
+    doit pouvoir revenir à l'état d'avant. La sauvegarde automatique, elle, ne
+    tourne qu'*après* le déverrouillage — donc trop tard.
+
+    La copie est une sauvegarde comme les autres — même dossier, même préfixe,
+    suffixe ``-avant-migration-vN`` : elle apparaît dans la liste, se restaure
+    depuis les Paramètres, suit la rotation et relève de la mention faite aux
+    patients sur les sauvegardes. Rangée à la racine des données sous un autre
+    nom, elle échappait à tout cela : un patient effacé y survivait sans limite
+    (revue du 2026-09-02). Un échec de copie n'empêche pas la migration (elle
+    reste transactionnelle) : il est seulement journalisé."""
+    try:
+        cfg = config.ConfigStore(con).effective()
+        d = _dossier_ou_interne(cfg)
+        base = PREFIXE + datetime.now().strftime("%Y%m%d-%H%M%S")
+        cible = _nom_libre(d, base + SUFFIXE_MIGRATION.format(version=version))
+        _vacuum_vers(con, cible)
+        _rotation(d, _retention(cfg), garder=cible)
+        return cible
+    except Exception as exc:  # pragma: no cover - dépend du système de fichiers
+        logger.warning("Copie de sécurité avant migration impossible : %s", exc)
+        return None
+
+
+def ranger_copies_migration(cfg: dict) -> list[Path]:
+    """Range avec les sauvegardes les copies pré-migration laissées à la racine
+    des données par les versions antérieures (``coffre-avant-migration-vN.db``),
+    renommées comme des sauvegardes datées de leur création. Elles n'étaient ni
+    listées, ni tournées, ni couvertes par la mention faite aux patients."""
+    deplacees: list[Path] = []
+    for f in config.data_dir().glob("coffre-avant-migration-v*.db"):
+        m = _ANCIENNE_COPIE.match(f.name)
+        if not m:
+            continue
+        try:
+            d = _dossier_ou_interne(cfg)
+            horodatage = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y%m%d-%H%M%S")
+            cible = _nom_libre(
+                d, PREFIXE + horodatage + SUFFIXE_MIGRATION.format(version=m.group(1))
+            )
+            shutil.move(str(f), str(cible))  # d'un support à l'autre si besoin
+            config.restreindre_acces(cible)
+            deplacees.append(cible)
+        except Exception as exc:  # pragma: no cover - dépend du système de fichiers
+            logger.warning("Copie pré-migration %s non rangée : %s", f.name, exc)
+    return deplacees
 
 
 def resoudre(nom: str, cfg: dict) -> Path:

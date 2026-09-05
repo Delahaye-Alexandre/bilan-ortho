@@ -36,7 +36,12 @@
 
 ## 3. Durée de conservation
 - Bilans / dossiers de soins : selon les durées applicables aux dossiers de
-  soins (à préciser). Paramétrable dans l'app (`rgpd.conservation_jours`).
+  soins (à préciser). Paramétrable dans l'app (`rgpd.conservation_jours`) :
+  au déverrouillage, un bilan non modifié depuis ce délai est supprimé avec
+  ses rubriques, épreuves et dictées, ainsi que la fiche d'identité d'un
+  patient qui n'a plus aucun bilan et dépasse lui-même ce délai
+  (`app/security.py::_purge_conservation`) ; chaque purge est journalisée
+  avec les identifiants concernés.
 - **Audio brut** : supprimé dès la fin de la transcription, sans option ni
   réglage (`app/stt.py::transcribe`). Le fichier transite par le répertoire
   temporaire du système : un arrêt brutal en pleine transcription peut y
@@ -44,7 +49,10 @@
 - **Sauvegardes chiffrées du coffre** : un dossier supprimé y subsiste jusqu'à
   la rotation des copies (`sauvegarde.retention`, 10 par défaut). Effacement
   différé admis pour les jeux de sauvegarde, à condition de le mentionner ici —
-  l'app le rappelle au moment de la suppression.
+  l'app le rappelle au moment de la suppression. La copie prise avant une
+  migration du coffre (changement de version de l'application) est une
+  sauvegarde comme les autres — même dossier, suffixe `-avant-migration-vN`
+  (`app/sauvegarde.py::copie_avant_migration`) — et suit la même rotation.
 
 ## 4. Mesures de sécurité (mises en œuvre par l'app)
 - **Chiffrement au repos** : base SQLCipher (AES-256), déverrouillage par

@@ -68,6 +68,34 @@ def test_purge_conservation_emporte_identite_et_prescription(data_dir):
         assert con.execute("SELECT count(*) FROM prescription").fetchone()[0] == 0
 
 
+def test_purge_conservation_emporte_la_fiche_sans_bilan_meme_seule(data_dir):
+    """Revue du 2026-09-02 : la suppression des patients sans bilan ne jouait
+    qu'en effet de bord d'une purge de bilans — une fiche seule pouvait rester
+    des années passé le délai. Elle part à chaque déverrouillage."""
+    assert security.unlock(PASSPHRASE)
+    with security.transaction() as con:
+        pid_vieux = patient.create(con, "Ancien", "Sans-Bilan")
+        con.execute("UPDATE patient SET created_at = datetime('now','-40 days') WHERE id=?",
+                    (pid_vieux,))
+        pid_neuf = patient.create(con, "Nouveau", "Cas")
+        # Un patient ancien MAIS documenté récemment reste, avec son bilan.
+        pid_suivi = patient.create(con, "Suivi", "Actif")
+        con.execute("UPDATE patient SET created_at = datetime('now','-400 days') WHERE id=?",
+                    (pid_suivi,))
+        bid = bilan.create(con, [], "initial_simple", patient_id=pid_suivi)
+        config.ConfigStore(con).set_overrides({"rgpd": {"conservation_jours": 30}})
+    security.lock()
+    assert security.unlock(PASSPHRASE)
+    with security.transaction() as con:
+        assert patient.get(con, pid_vieux) is None
+        assert patient.get(con, pid_neuf) is not None
+        assert patient.get(con, pid_suivi) is not None and bilan.get(con, bid) is not None
+        detail = con.execute(
+            "SELECT details FROM audit_log WHERE action='purge_conservation'"
+        ).fetchone()[0]
+        assert "patient(s) sans aucun bilan" in detail and str(pid_vieux) in detail
+
+
 def test_effacement_patient_emporte_ses_extraits_de_style(data_dir, mock_embed):
     """Audit 2026-08-11 (3.2) : le texte intégral du bilan restait indexé après
     un effacement RGPD — puis réinjectable dans le prompt d'un autre dossier."""
@@ -113,8 +141,65 @@ def test_migration_v1_vers_v2_ajoute_le_rattachement(data_dir):
         cols = {r[1] for r in con2.execute("PRAGMA table_info(bilan_reference)")}
         assert "patient_id" in cols
         assert con2.execute("SELECT texte FROM bilan_reference").fetchone()[0] == "Texte"
-    # Une copie de sécurité a été prise avant d'écrire dans le coffre.
-    assert (config.data_dir() / "coffre-avant-migration-v1.db").exists()
+    # Une copie de sécurité a été prise avant d'écrire dans le coffre — rangée
+    # avec les sauvegardes (listée, restaurable, tournée), pas à la racine des
+    # données sous un nom à part (revue du 2026-09-02).
+    assert not list(config.data_dir().glob("coffre-avant-migration-*.db"))
+    copies = list((config.data_dir() / "sauvegardes").glob(
+        "bilan-ortho-sauvegarde-*-avant-migration-v1.db"))
+    assert len(copies) == 1
+    brut = copies[0].read_bytes()
+    assert b"SQLite format 3" not in brut and b"bilan_reference" not in brut
+    with security.transaction() as con2:
+        cfg = config.ConfigStore(con2).effective()
+        assert copies[0].name in {f["fichier"] for f in sauvegarde.liste(con2, cfg)["fichiers"]}
+        assert sauvegarde.resoudre(copies[0].name, cfg) == copies[0]
+
+
+def _coffre_v1_a_migrer(retention: int | None = None) -> None:
+    """Fabrique un coffre v1 (colonne `patient_id` absente) prêt à être migré."""
+    con = db.connect(config.db_path(), PASSPHRASE)
+    db.init_schema(con)
+    con.execute("DROP TABLE bilan_reference")
+    con.execute(
+        "CREATE TABLE bilan_reference (id INTEGER PRIMARY KEY, praticien_id INTEGER, "
+        "source TEXT, domaine TEXT, section_cle TEXT, titre TEXT, texte TEXT, "
+        "meta TEXT, created_at TEXT)"
+    )
+    con.execute("PRAGMA user_version = 1")
+    if retention is not None:
+        config.ConfigStore(con).set_overrides({"sauvegarde": {"retention": retention}})
+    con.commit()
+    con.close()
+
+
+def test_copie_pre_migration_suit_la_rotation(data_dir):
+    """Rangée avec les sauvegardes, la copie pré-migration obéit à la rétention
+    comme les autres : avec une rétention de 1, la sauvegarde automatique du
+    déverrouillage la remplace. Elle ne s'accumulait auparavant sans fin."""
+    _coffre_v1_a_migrer(retention=1)
+    assert security.unlock(PASSPHRASE)
+    fichiers = sorted((data_dir / "sauvegardes").glob("bilan-ortho-sauvegarde-*.db"))
+    assert len(fichiers) == 1 and "avant-migration" not in fichiers[0].name
+
+
+def test_ancienne_copie_pre_migration_rangee_avec_les_sauvegardes(data_dir):
+    """Les versions antérieures laissaient « coffre-avant-migration-v1.db » à la
+    racine des données, hors rotation et hors effacement RGPD : au premier
+    déverrouillage, elle rejoint les sauvegardes, datée de sa création."""
+    assert security.unlock(PASSPHRASE)
+    security.lock()
+    ancienne = data_dir / "coffre-avant-migration-v1.db"
+    ancienne.write_bytes(b"\x00" * 4096)
+    import os
+    import time
+    vieux = time.mktime((2026, 9, 3, 11, 43, 50, 0, 0, -1))
+    os.utime(ancienne, (vieux, vieux))
+    assert security.unlock(PASSPHRASE)  # coffre à jour : aucune migration, rangement quand même
+    assert not ancienne.exists()
+    rangees = list((data_dir / "sauvegardes").glob("bilan-ortho-sauvegarde-*-avant-migration-v1.db"))
+    assert len(rangees) == 1 and rangees[0].name.startswith("bilan-ortho-sauvegarde-20260903-114350")
+    assert rangees[0].stat().st_size == 4096
 
 
 # --- config persistée -----------------------------------------------------------
