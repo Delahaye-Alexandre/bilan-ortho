@@ -849,6 +849,35 @@ await settle();
 check("copie : la correction est enregistrée et présente dans le presse-papiers",
   sectionPuts.length === 1 && copie !== null && copie.includes("AUTRE CORRECTION"));
 
+// Le temps de lire la confirmation, le navigateur peut avoir « oublié » le
+// clic (activation transitoire) et refuser le presse-papiers : les corrections
+// sont bien enregistrées, et le message dit qu'un second clic suffit — pas de
+// copier « à la main » (passe réelle du 2026-09-02).
+Object.defineProperty(navigator, "clipboard", {
+  value: { writeText: async () => { throw new DOMException("refus", "NotAllowedError"); } },
+  configurable: true,
+});
+ecrire("anamnese", "Texte initial. TROISIÈME CORRECTION");
+confirmReponse = true; confirmCalls = []; sectionPuts = [];
+document.getElementById("copyBilan").click();
+await settle();
+check("copie refusée après confirmation : la correction est tout de même enregistrée",
+  confirmCalls.length === 1 && sectionPuts.length === 1
+  && sectionPuts[0].body.contenu.includes("TROISIÈME CORRECTION"));
+check("copie refusée après confirmation : invite à cliquer de nouveau, pas à copier à la main",
+  document.getElementById("copyStatus").textContent.includes("Cliquez de nouveau")
+  && !document.getElementById("copyStatus").textContent.includes("à la main"));
+// Sans confirmation intermédiaire, un refus reste un vrai refus.
+confirmCalls = [];
+document.getElementById("copyBilan").click();
+await settle();
+check("copie refusée sans confirmation : message « à la main » inchangé",
+  confirmCalls.length === 0
+  && document.getElementById("copyStatus").textContent.includes("à la main"));
+Object.defineProperty(navigator, "clipboard", {
+  value: { writeText: async (t) => { copie = t; } }, configurable: true,
+});
+
 ecrire("diagnostic", "Diagnostic corrigé à la main");
 confirmReponse = false; statutPuts = []; sectionPuts = [];
 document.getElementById("valideBtn").click();

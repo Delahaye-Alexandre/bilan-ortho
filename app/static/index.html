@@ -2122,6 +2122,11 @@ let copyTimer = null;
 document.getElementById('copyBilan').addEventListener('click', async () => {
   if (!CUR) return;
   const st = document.getElementById('copyStatus');
+  // Une confirmation va être demandée : le temps de la lire, le navigateur
+  // peut avoir « oublié » le clic (activation transitoire) et refuser l'accès
+  // au presse-papiers — l'erreur disait alors de copier à la main, alors
+  // qu'un second clic suffit (passe réelle du 2026-09-02).
+  const confirmation = sectionsNonEnregistrees().length > 0 || enteteModifie();
   if (!await enregistrerAvant('la copie')) {
     st.textContent = 'Copie interrompue — vos corrections ne sont pas enregistrées.';
     return;
@@ -2129,14 +2134,21 @@ document.getElementById('copyBilan').addEventListener('click', async () => {
   const secs = CUR.sections.filter(s => (s.contenu || '').trim());
   const txt = secs.map(s => s.titre.toUpperCase() + '\n\n' + rtEnClair(s.contenu)).join('\n\n');
   const html = secs.map(s => `<h3>${escapeHtml(s.titre)}</h3>` + rtBlocsVersHtml(rtAnalyser(s.contenu))).join('');
+  let delai = 4000;
   try {
     await copierRiche(txt, html);
     st.textContent = '✓ Copié dans le presse-papiers';
   } catch {
-    st.textContent = 'Copie impossible — sélectionnez le texte à la main.';
+    if (confirmation) {
+      st.textContent = 'Corrections enregistrées. Cliquez de nouveau sur « Copier » : '
+        + 'le navigateur n\'autorise la copie qu\'au moment du clic.';
+      delai = 10000;
+    } else {
+      st.textContent = 'Copie impossible — sélectionnez le texte à la main.';
+    }
   }
   clearTimeout(copyTimer);
-  copyTimer = setTimeout(() => { st.textContent = ''; }, 4000);
+  copyTimer = setTimeout(() => { st.textContent = ''; }, delai);
 });
 document.getElementById('coteBtn').addEventListener('click', e => avecBouton(e.target, async () => {
   if (!CUR) return;

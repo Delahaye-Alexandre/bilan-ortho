@@ -52,6 +52,11 @@ installeur Windows publié dans les releases.
   à la racine des données sous un autre nom, elle n'était jamais tournée ; la
   copie laissée par les versions précédentes rejoint les sauvegardes au
   premier déverrouillage.
+- **Copier le bilan** : quand la copie suit une demande d'enregistrement des
+  corrections en cours, le navigateur peut refuser le presse-papiers (le clic
+  est « oublié » le temps de lire la confirmation). Les corrections sont bien
+  enregistrées et le message invite à cliquer de nouveau — il conseillait de
+  copier le texte à la main.
 
 ## 1.13.0 — 2026-09-04
 
