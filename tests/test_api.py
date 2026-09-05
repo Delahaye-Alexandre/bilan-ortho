@@ -447,6 +447,26 @@ def test_etalonnage_hors_bornes_signale_sans_bloquer(client):
     assert r.json()["avertissements"] == []
 
 
+def test_alerte_de_plausibilite_survit_a_la_relecture(client):
+    """Passe réelle du 2026-09-02 : l'alerte n'était rendue qu'à la saisie et
+    disparaissait au premier F5, alors que le drapeau en dépend toujours. Elle
+    est recalculée à chaque lecture du bilan, épreuve par épreuve."""
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    client.post(f"/api/bilans/{bid}/epreuves", json={
+        "test_nom": "Alouette-R",
+        "resultats": [{"score_brut": "12", "etalonnage_type": "percentile",
+                       "etalonnage_valeur": "-300"}],
+    })
+    client.post(f"/api/bilans/{bid}/epreuves", json={
+        "test_nom": "Vineland", "resultats": [
+            {"etalonnage_type": "note_standard_100", "etalonnage_valeur": "85"}],
+    })
+    eps = client.get(f"/api/bilans/{bid}").json()["epreuves"]
+    par_nom = {e["test_nom"]: e["avertissements"] for e in eps}
+    assert len(par_nom["Alouette-R"]) == 1 and "0 à 100" in par_nom["Alouette-R"][0]
+    assert par_nom["Vineland"] == []
+
+
 def test_seuils_incoherents_refuses(client):
     """Saisir 1.5 au lieu de -1.5 basculait tous les résultats normaux en
     « zone de fragilité », sans un mot."""
@@ -465,6 +485,28 @@ def test_seuils_incoherents_refuses(client):
     # Jeu cohérent : accepté.
     r = client.put("/api/config", json={"overrides": {"seuils": {
         "fragilite_et": -1, "pathologique_et": -1.5, "severe_et": -2}}})
+    assert r.status_code == 200
+
+
+def test_seuils_juges_sur_la_configuration_fusionnee(client):
+    """Passe réelle du 2026-09-02 : un patch d'un seul seuil est toujours
+    cohérent avec lui-même — « pathologique_et : -1 » passait alors que la
+    fragilité enregistrée valait -1,5, et les drapeaux ne voulaient plus rien
+    dire. Le contrôle porte sur ce qui sera effectivement appliqué."""
+    r = client.put("/api/config", json={"overrides": {"seuils": {"fragilite_et": -1.5}}})
+    assert r.status_code == 200
+    r = client.put("/api/config", json={"overrides": {"seuils": {"pathologique_et": -1}}})
+    assert r.status_code == 422 and "pathologique_et" in r.json()["detail"]
+    # Rien n'a été écrit : l'effectif garde la fragilité à -1,5 et le
+    # pathologique par défaut.
+    seuils = client.get("/api/config").json()["seuils"]
+    assert seuils["fragilite_et"] == -1.5 and seuils["pathologique_et"] == -1.5
+    # Même chose côté percentiles, dans l'autre sens.
+    r = client.put("/api/config", json={"overrides": {"seuils": {"severe_percentile": 20}}})
+    assert r.status_code == 422
+    # Un patch qui rétablit la cohérence en une fois est accepté.
+    r = client.put("/api/config", json={"overrides": {"seuils": {
+        "pathologique_et": -2, "severe_et": -2.5}}})
     assert r.status_code == 200
 
 

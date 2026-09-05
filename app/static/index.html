@@ -1944,12 +1944,19 @@ function epreuvesCardHtml() {
       const unite = r.etalonnage_valeur ? (ETAL_LBL[r.etalonnage_type] || '') : '';
       return `${escapeHtml(r.sous_epreuve || '')} : ${escapeHtml(r.score_brut || '')} ${escapeHtml(r.etalonnage_valeur || '')}${escapeHtml(unite)}${drap}`;
     }).join(' · ');
+    // Alerte de plausibilité (percentile hors 0-100, note sur la mauvaise
+    // échelle…) : le serveur la recalcule à chaque lecture, elle reste donc
+    // visible après un F5 ou un verrouillage — pas seulement à la saisie.
+    const avert = (e.avertissements || []);
+    const alerte = avert.length
+      ? `<div class="ep-alerte" role="note" style="color:#b45309;margin:0 0 2px 12px">⚠️ ${escapeHtml(avert.join(' '))}</div>`
+      : '';
     // Une épreuve mal saisie partait dans le tableau du compte-rendu sans
     // aucun moyen de l'en retirer : le seul recours était de supprimer le
     // patient entier.
     return `<div class="muted" style="margin:2px 0"><b>${escapeHtml(e.test_nom)}</b> — ${rs}`
       + `<span class="delep" data-ep-del="${e.id}" role="button" tabindex="0"`
-      + ` aria-label="Retirer l'épreuve ${escapeHtml(e.test_nom)}" style="float:right;cursor:pointer">✕</span></div>`;
+      + ` aria-label="Retirer l'épreuve ${escapeHtml(e.test_nom)}" style="float:right;cursor:pointer">✕</span></div>${alerte}`;
   }).join('');
   return `
     <div class="sec">

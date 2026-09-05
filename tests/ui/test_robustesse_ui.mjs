@@ -947,7 +947,10 @@ check("épreuve sans score ni étalonnage : refusée avant l'appel serveur",
 const bepPlein = structuredClone(bep);
 bepPlein.epreuves = [{ id: 9, test_nom: "Alouette-R", resultats: [
   { sous_epreuve: "", score_brut: "12", etalonnage_type: "percentile",
-    etalonnage_valeur: "-300", drapeau_seuil: "severe" }] }];
+    etalonnage_valeur: "-300", drapeau_seuil: "severe" }],
+  // Recalculée par le serveur à chaque lecture (passe réelle du 2026-09-02).
+  avertissements: ["Alouette-R : « -300 » sort des valeurs possibles "
+                   + "(un percentile va de 0 à 100)."] }];
 epreuveResponder = (suppression) => suppression
   ? { ...structuredClone(bep), epreuves: [] }
   : { ...structuredClone(bepPlein),
@@ -965,6 +968,20 @@ check("épreuve ajoutée : les champs de saisie sont vidés",
   && document.getElementById("epVal").value === "");
 check("épreuve ajoutée : elle apparaît avec son ✕ de retrait",
   document.querySelector("[data-ep-del]") !== null);
+check("épreuve : l'alerte de plausibilité est affichée sous l'épreuve, pas seulement dans le statut",
+  document.querySelector("#epList .ep-alerte")?.textContent.includes("sort des valeurs possibles") === true);
+// Rechargement (F5, verrouillage) : le bilan relu du serveur porte l'alerte,
+// elle doit rester visible sans nouvelle saisie.
+__t.CUR = structuredClone(bepPlein);
+__t.renderBilan();
+check("épreuve : l'alerte survit à un re-rendu depuis le bilan relu",
+  document.querySelector("#epList .ep-alerte")?.textContent.includes("0 à 100") === true);
+__t.CUR = structuredClone(bepPlein); __t.CUR.epreuves[0].avertissements = [];
+__t.renderBilan();
+check("épreuve plausible : aucune alerte affichée",
+  document.querySelector("#epList .ep-alerte") === null);
+__t.CUR = bepPlein;
+__t.renderBilan();
 
 confirmCalls = []; confirmReponse = false; epreuveDeletes = [];
 document.querySelector("[data-ep-del]").click();

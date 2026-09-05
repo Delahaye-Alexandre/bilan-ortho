@@ -76,6 +76,7 @@ from .models import (
     StructureRequest,
     TrameRemplacement,
     UnlockRequest,
+    ordre_seuils_incoherent,
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -331,7 +332,17 @@ async def get_config() -> dict:
 async def put_config(patch: ConfigPatch) -> dict:
     overrides = patch.overrides.model_dump(exclude_unset=True)
     with security.transaction() as con:
-        return config.ConfigStore(con).set_overrides(overrides)
+        store = config.ConfigStore(con)
+        if "seuils" in overrides:
+            # Le modèle ne voit que les champs du patch : « pathologique_et :
+            # -1 » seul est cohérent avec lui-même, mais pas avec le
+            # « fragilite_et : -1,5 » déjà enregistré. Juger ce qui sera
+            # effectivement appliqué, avant d'écrire quoi que ce soit.
+            fusion = config.fusionner(store.effective(), overrides)
+            msg = ordre_seuils_incoherent(fusion.get("seuils") or {})
+            if msg:
+                raise HTTPException(422, msg)
+        return store.set_overrides(overrides)
 
 
 @app.delete("/api/config", dependencies=[Depends(require_unlock)])

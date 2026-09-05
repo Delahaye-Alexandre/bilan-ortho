@@ -204,20 +204,35 @@ class SeuilsPatch(_SectionPatch):
     @model_validator(mode="after")
     def _ordre_coherent(self):
         # Contrôle deux à deux, sur les seuls champs fournis : les surcharges
-        # sont partielles (fusion profonde côté serveur).
-        paires = [
-            ("severe_et", "pathologique_et"), ("pathologique_et", "fragilite_et"),
-            ("severe_percentile", "pathologique_percentile"),
-            ("pathologique_percentile", "fragilite_percentile"),
-        ]
-        for bas, haut in paires:
-            a, b = getattr(self, bas), getattr(self, haut)
-            if a is not None and b is not None and a > b:
-                raise ValueError(
-                    f"seuils incohérents : {bas} ({a}) doit rester inférieur ou égal "
-                    f"à {haut} ({b}) — sinon les drapeaux ne veulent plus rien dire"
-                )
+        # sont partielles (fusion profonde côté serveur). Le même contrôle est
+        # rejoué par la route sur la configuration FUSIONNÉE : un patch d'un
+        # seul seuil est toujours cohérent avec lui-même, pas forcément avec
+        # les cinq autres déjà enregistrés (passe réelle du 2026-09-02).
+        msg = ordre_seuils_incoherent(self.model_dump(exclude_none=True))
+        if msg:
+            raise ValueError(msg)
         return self
+
+
+_PAIRES_SEUILS = [
+    ("severe_et", "pathologique_et"), ("pathologique_et", "fragilite_et"),
+    ("severe_percentile", "pathologique_percentile"),
+    ("pathologique_percentile", "fragilite_percentile"),
+]
+
+
+def ordre_seuils_incoherent(seuils: dict) -> str | None:
+    """Message d'erreur si les seuils présents violent l'ordre sévère ≤
+    pathologique ≤ fragilité (percentiles compris), None sinon. Les seuils
+    absents ou non numériques ne sont pas jugés."""
+    for bas, haut in _PAIRES_SEUILS:
+        a, b = seuils.get(bas), seuils.get(haut)
+        if isinstance(a, int | float) and isinstance(b, int | float) and a > b:
+            return (
+                f"seuils incohérents : {bas} ({a}) doit rester inférieur ou égal "
+                f"à {haut} ({b}) — sinon les drapeaux ne veulent plus rien dire"
+            )
+    return None
 
 
 class CotationPatch(_SectionPatch):

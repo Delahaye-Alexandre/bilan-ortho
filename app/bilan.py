@@ -226,6 +226,10 @@ def get(con, bilan_id: int) -> dict | None:
         e["resultats"] = _dicts(
             con.execute("SELECT * FROM resultat WHERE epreuve_id=? ORDER BY id", (e["id"],))
         )
+        # Recalculée à chaque lecture depuis les valeurs enregistrées : l'alerte
+        # n'était rendue qu'à la saisie et disparaissait au premier F5, alors
+        # que le drapeau du compte-rendu continuait d'en dépendre.
+        e["avertissements"] = alertes_plausibilite(e["test_nom"], e["resultats"])
     b["epreuves"] = eps
     b["prescripteur"] = prescripteur_bilan(con, bilan_id)
     cot = _dicts(con.execute("SELECT * FROM cotation WHERE bilan_id=?", (bilan_id,)))

@@ -20,6 +20,15 @@ installeur Windows publié dans les releases.
   Certum « Open Source » (49 € en nuage ou 69 € avec carte, au nom de la
   personne, signature locale), SignPath Foundation plus tard (exige une
   réputation vérifiable), Azure écarté (abonnement).
+- **Étalonnages** : l'alerte de plausibilité (percentile hors 0-100, note
+  sur la mauvaise échelle…) est recalculée par le serveur à chaque lecture du
+  bilan et affichée sous l'épreuve concernée — elle n'était rendue qu'au moment
+  de la saisie et disparaissait au premier rechargement, alors que le drapeau
+  du compte-rendu en dépend toujours.
+- **Seuils de drapeaux** : la cohérence sévère ≤ pathologique ≤ fragilité est
+  jugée sur la configuration qui sera effectivement appliquée, pas sur le seul
+  réglage envoyé — modifier un seuil à la fois pouvait installer un jeu
+  incohérent sans un mot (passe réelle du 2026-09-02).
 
 ## 1.13.0 — 2026-09-04
 

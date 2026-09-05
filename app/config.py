@@ -289,6 +289,12 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return out
 
 
+def fusionner(base: dict, override: dict) -> dict:
+    """Fusion profonde publique (défauts ou effectif + surcharges), sans effet
+    de bord : ce que `set_overrides` appliquera, pour le juger avant d'écrire."""
+    return _deep_merge(base, override)
+
+
 class ConfigStore:
     """Lit/écrit les surcharges de config dans la base chiffrée (table config)."""
 
