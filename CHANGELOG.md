@@ -5,7 +5,7 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
-## Non publié
+## 1.14.0 — 2026-09-05
 
 - Documents juridiques consolidés, sources vérifiées le 4 septembre 2026 :
   règlement (UE) 2026/1744 (« omnibus » IA, JO du 24 juillet 2026) intégré à
