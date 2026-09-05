@@ -63,6 +63,28 @@ _DATE = re.compile(
 def _sans_dates(texte: str) -> str:
     return _DATE.sub(" ", texte or "")
 
+# Ordinaux : les percentiles se dictent ainsi (« au cinquième percentile »,
+# « au vingt-cinquième »), et le modèle écrit « percentile 5 ». Non convertis,
+# le 5 était signalé comme absent de la dictée — et « vingt-cinquième » lu 20
+# (passe réelle du 2026-09-05). Le radical retrouve son cardinal tel quel
+# (« dix-ième »), avec un « e » (« quatr-ième », « onz-ième », « trent-ième »)
+# ou par exception (« cinqu-ième », « neuv-ième »). « Premier » et « second »
+# restent hors champ : ambigus (« premier bilan », « en second lieu »).
+_ORDINAL = re.compile(r"^(.+?)iemes?$")
+_RADICAUX_ORDINAUX = {"cinqu": "cinq", "neuv": "neuf"}
+
+
+def _cardinal(jeton: str) -> str:
+    m = _ORDINAL.match(jeton)
+    if not m:
+        return jeton
+    radical = m.group(1)
+    for candidat in (_RADICAUX_ORDINAUX.get(radical), radical, radical + "e"):
+        if candidat in _MOTS_NOMBRE:
+            return candidat
+    return jeton
+
+
 # Mots qui *modifient* le nombre suivant sans en faire partie.
 _NEGATIFS = {"moins", "-"}
 # « pour cent » (et « pour mille ») est une locution, pas une valeur : lire
@@ -129,7 +151,7 @@ def _valeur_mots(mots: list[str]) -> float:
 
 def _nombres_en_mots(texte: str) -> set[str]:
     """Valeurs énoncées en mots, y compris « moins deux virgule cinq »."""
-    jetons = re.split(r"[^a-z0-9]+", _sans_accents(texte.lower()))
+    jetons = [_cardinal(j) for j in re.split(r"[^a-z0-9]+", _sans_accents(texte.lower()))]
     valeurs: set[str] = set()
     i = 0
     while i < len(jetons):

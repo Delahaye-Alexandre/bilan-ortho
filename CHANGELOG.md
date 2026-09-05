@@ -57,6 +57,11 @@ installeur Windows publié dans les releases.
   est « oublié » le temps de lire la confirmation). Les corrections sont bien
   enregistrées et le message invite à cliquer de nouveau — il conseillait de
   copier le texte à la main.
+- **Chiffres dictés en ordinaux** : « au cinquième percentile », « au
+  vingt-cinquième » sont désormais reconnus comme 5 et 25 dans la dictée. Le
+  garde-fou des chiffres signalait « 5 absent de la dictée » sur un percentile
+  fidèlement restitué, et lisait 20 dans « vingt-cinquième » (passe réelle du
+  5 septembre 2026).
 
 ## 1.13.0 — 2026-09-04
 

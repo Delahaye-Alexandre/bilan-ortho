@@ -732,6 +732,39 @@ def test_nombres_dictes_en_mots_sont_reconnus(mots, attendu):
     assert attendu in verif_chiffres.valeurs_numeriques(mots)
 
 
+@pytest.mark.parametrize(
+    "mots, attendu",
+    [
+        ("au cinquième percentile", "5"),
+        ("au vingt-cinquième percentile", "25"),
+        ("au dixième percentile", "10"),
+        ("au quatre-vingt-dixième percentile", "90"),
+        ("neuvième", "9"),
+        ("seizième", "16"),
+        ("quatrième", "4"),
+        ("trentième", "30"),
+        ("vingt et unième", "21"),
+        ("centième", "100"),
+    ],
+)
+def test_ordinaux_dictes_en_mots_sont_reconnus(mots, attendu):
+    """Les percentiles se dictent en ordinaux : « au cinquième percentile »
+    devenait « percentile 5 » signalé comme absent de la dictée, et
+    « vingt-cinquième » était lu 20 (passe réelle du 2026-09-05)."""
+    assert attendu in verif_chiffres.valeurs_numeriques(mots)
+
+
+def test_percentile_dicte_en_ordinal_nest_pas_signale():
+    assert verif_chiffres.chiffres_non_sources(
+        "Lecture de mots : percentile 5. Dictée : 25e percentile.",
+        ["le score est au cinquième percentile, la dictée au vingt-cinquième"],
+    ) == []
+    # Un ordinal absent de la dictée reste signalé.
+    assert verif_chiffres.chiffres_non_sources(
+        "Lecture de mots : percentile 5.", ["le score est au dixième percentile"],
+    ) == ["5"]
+
+
 def test_texte_fidele_ne_declenche_aucun_signalement():
     fidele = ("À l'Alouette-R : 28 erreurs, âge de lecture 7 ans. "
               "EXALANG 8-11 : -2 ET et -2,5 ET.")
