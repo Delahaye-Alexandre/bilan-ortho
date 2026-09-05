@@ -29,6 +29,18 @@ installeur Windows publié dans les releases.
   jugée sur la configuration qui sera effectivement appliquée, pas sur le seul
   réglage envoyé — modifier un seuil à la fois pouvait installer un jeu
   incohérent sans un mot (passe réelle du 2026-09-02).
+- **Bilans de référence — pseudonymisation** : un prénom en casse mixte
+  accolé au patronyme en capitales sur une ligne d'en-tête sans étiquette
+  (« DURAND Léa », « Léa DURAND — 7 ans ») est désormais relevé et caviardé
+  dans tout le document — il restait en clair. Les titres de rubriques en
+  capitales hors du tronc commun (« ANTÉCÉDENTS MÉDICAUX », « PRÉCONISATIONS »)
+  et les étiquettes de champ (« HORAIRES : ») ne sont plus remplacés par
+  « [NOM] » : l'extrait garde sa structure.
+- **Adossement à la dictée** : le seuil d'alerte est plus bas pour le
+  diagnostic et le projet thérapeutique, qui s'écrivent dans le vocabulaire
+  du clinicien (une conclusion fondée était signalée une fois sur deux), et
+  une rubrique de deux phrases est désormais jugée (huit termes au lieu de
+  douze).
 
 ## 1.13.0 — 2026-09-04
 

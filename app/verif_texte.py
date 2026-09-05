@@ -31,10 +31,17 @@ _MOTS_OUTILS = {
     "peut", "doit", "sont", "etait", "ete", "cet", "ses", "son", "que", "qui",
 }
 # En deçà, une rubrique est trop courte pour qu'un recouvrement faible
-# signifie quoi que ce soit (« Audition normale. »).
-LONGUEUR_MIN = 12
+# signifie quoi que ce soit (« Audition normale. »). Douze termes laissaient
+# passer une plainte inventée de deux phrases (passe réelle du 2026-09-02).
+LONGUEUR_MIN = 8
 # Seuil délibérément bas : il ne doit se déclencher que sur le cas franc.
 SEUIL = 0.2
+# Le diagnostic et le projet thérapeutique sont, par nature, écrits dans le
+# vocabulaire du clinicien plutôt que dans celui de la dictée (« trouble
+# spécifique du langage écrit », « deux séances hebdomadaires ») : au seuil
+# général, une conclusion parfaitement fondée était signalée une fois sur deux
+# (passe réelle du 2026-09-02). Le garde-fou y reste, plus bas.
+SEUIL_PAR_RUBRIQUE = {"diagnostic": 0.1, "projet": 0.1}
 # Racine grossière : absorbe accords et flexions (« difficultés » /
 # « difficulté », « langagières » / « langage »), sans lexique ni dépendance.
 _RACINE = 6
@@ -57,10 +64,17 @@ def adossement(propose: str, sources: Iterable[str]) -> float | None:
     return retrouves / len(termes)
 
 
-def signalements(propose: str, sources: Iterable[str]) -> list[str]:
+def seuil_pour(rubrique: str | None) -> float:
+    """Seuil d'alerte applicable à une rubrique (clé de la trame)."""
+    return SEUIL_PAR_RUBRIQUE.get(rubrique or "", SEUIL)
+
+
+def signalements(
+    propose: str, sources: Iterable[str], rubrique: str | None = None
+) -> list[str]:
     """Message court prêt à afficher quand la rubrique n'est presque pas adossée."""
     part = adossement(propose, sources)
-    if part is None or part >= SEUIL:
+    if part is None or part >= seuil_pour(rubrique):
         return []
     return [
         f"rubrique très peu adossée à votre dictée ({round(part * 100)} % de ses "

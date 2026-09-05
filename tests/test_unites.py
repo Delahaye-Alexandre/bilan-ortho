@@ -1085,6 +1085,88 @@ def test_caviardage_conserve_titres_composes_et_noms_de_tests():
 def test_patronyme_en_capitales_part_toujours():
     """L'exemption des titres et des tests ne doit rien relâcher sur les noms."""
     assert "DURAND" not in anonymisation.caviarder("DURAND MARTIN")[0]
+    # Étendre la liste des titres attendus ne doit pas y glisser un patronyme.
+    for nom in ("MARTIN", "PETIT", "BLANC", "ROUX", "LEROY", "PAGE", "MARIE"):
+        assert nom not in anonymisation.caviarder(f"{nom} Paul")[0], nom
+
+
+# --- passe réelle du 2026-09-02 : en-tête sans étiquette, titres inconnus -------
+
+def test_prenom_en_casse_mixte_suit_le_patronyme_en_capitales():
+    """« DURAND Léa » sur une ligne d'en-tête, sans civilité ni étiquette : le
+    patronyme partait (suite de capitales) mais « Léa » n'était relevé nulle
+    part et restait en clair dans tout le corps du texte."""
+    doc = ("DURAND Léa\nnée le 12/03/2018\n\nANAMNÈSE\n"
+           "Léa est scolarisée en CE2 ; Léa se décourage vite.")
+    noms = anonymisation.noms_du_document(doc)
+    assert {"DURAND", "Léa"} <= noms
+    out, _ = anonymisation.caviarder(doc, noms)
+    assert "Léa" not in out and "DURAND" not in out and "scolarisée en CE2" in out
+    # Ordre inverse, avec l'âge sur la même ligne.
+    out, _ = anonymisation.caviarder("Léa DURAND — 7 ans\n\nLéa lit lentement.")
+    assert "Léa" not in out and "DURAND" not in out and "7 ans" in out
+
+
+def test_titre_en_capitales_voisin_d_un_mot_ne_fabrique_pas_un_prenom():
+    """Un titre connu suivi d'un mot en casse mixte n'est pas une identité :
+    « BILAN Orthophonique », « PLAINTE Aucune » ne doivent rien caviarder, et
+    surtout ne pas faire pourchasser « Orthophonique » dans le document."""
+    for doc in ("BILAN Orthophonique initial", "PLAINTE Aucune plainte particulière.",
+                "ANTÉCÉDENTS Néant", "EXALANG Version 8-11 proposée."):
+        assert anonymisation.noms_du_document(doc) == set(), doc
+        assert anonymisation.caviarder(doc)[0] == doc, doc
+    # Une ligne longue est de la prose, pas une ligne d'identité : le mot en
+    # capitales inconnu y part seul, sans entraîner son voisin.
+    prose = ("Le TROUBLEX Persistant a été discuté avec la famille lors de la "
+             "restitution du bilan ce mardi.")
+    assert "Persistant" not in anonymisation.noms_du_document(prose)
+
+
+def test_titres_de_rubriques_inconnus_conserves():
+    """Les titres en capitales hors du tronc commun (« ANTÉCÉDENTS MÉDICAUX »,
+    « PRÉCONISATIONS ») partaient en [NOM] : rien de confidentiel, mais
+    l'extrait perdait sa structure — ce qu'il doit transmettre. Une suite de
+    capitales suivie d'un deux-points est une étiquette de champ."""
+    doc = ("ANTÉCÉDENTS MÉDICAUX\nRAS.\nPLAINTE :\nlenteur en lecture.\n"
+           "HORAIRES : mardi 17 h.\nREMARQUE DE L'ENSEIGNANTE : fatigable.\n"
+           "PRÉCONISATIONS\nDeux séances par semaine.\nCOMPTE RENDU DES ÉPREUVES\n")
+    out, n = anonymisation.caviarder(doc)
+    assert out == doc and n == 0
+    # …sans rien relâcher : un patronyme seul sur sa ligne part toujours.
+    assert "DURAND" not in anonymisation.caviarder("ANTÉCÉDENTS\nDURAND\nRAS.")[0]
+
+
+def test_adossement_seuil_plus_bas_pour_diagnostic_et_projet():
+    """Diagnostic et projet s'écrivent dans le vocabulaire du clinicien : au
+    seuil général, une conclusion fondée était signalée une fois sur deux."""
+    dictee = ("lecture lente, beaucoup d'erreurs, Alouette au percentile 5, "
+              "orthographe très faible aussi, on prend en charge.")
+    projet = ("Prise en charge orthophonique hebdomadaire centrée sur la lecture : "
+              "renforcement de l'identification des mots écrits, automatisation du "
+              "décodage, consolidation des correspondances graphophonémiques et de "
+              "l'orthographe lexicale ; réévaluation à six mois.")
+    part = verif_texte.adossement(projet, [dictee])
+    assert part is not None and 0.1 <= part < verif_texte.SEUIL  # le cas litigieux
+    assert verif_texte.signalements(projet, [dictee], "projet") == []
+    assert verif_texte.signalements(projet, [dictee], "diagnostic") == []
+    assert verif_texte.signalements(projet, [dictee], "anamnese") != []
+    assert verif_texte.signalements(projet, [dictee]) != []  # sans rubrique : seuil général
+    # Le garde-fou reste en place : une rubrique qui ne doit RIEN à la dictée.
+    invente = ("Le patient présente une dysphonie chronique avec forçage vocal, "
+               "raucité marquée, fatigabilité en fin de journée et gêne sociale "
+               "importante rapportée par l'entourage professionnel.")
+    assert verif_texte.signalements(invente, [dictee], "diagnostic") != []
+
+
+def test_adossement_juge_une_rubrique_de_deux_phrases():
+    """Douze termes significatifs laissaient passer une plainte inventée de
+    deux phrases ; huit suffisent à juger."""
+    dictee = "euh, bonjour, il fait beau aujourd'hui."
+    court = ("Le patient rapporte des difficultés persistantes en lecture et "
+             "une souffrance scolaire importante.")
+    assert 8 <= len(verif_texte._termes(court)) < 12
+    assert verif_texte.signalements(court, [dictee]) != []
+    assert verif_texte.adossement("Audition normale.", ["autre chose"]) is None
 
 
 @pytest.mark.parametrize(

@@ -99,6 +99,52 @@ _CAPITALES_ATTENDUES = {
     "TESTS", "SCORES", "NGAP", "AMO", "RPPS", "ADELI", "SIRET", "ET", "NS",
     "CP", "CE1", "CE2", "CM1", "CM2", "GS", "MS", "PS", "QI", "TDA", "TDAH", "TSA",
     "AVC", "ORL", "IRM", "MDPH", "SESSAD", "CMPP", "CAMSP", "ULIS", "SEGPA",
+    # Titres de rubriques et vocabulaire clinique qu'un compte-rendu écrit en
+    # capitales : ils partaient en [NOM] dès qu'ils sortaient de la liste
+    # ci-dessus (passe réelle du 2026-09-02). Un titre caviardé n'est pas une
+    # fuite, mais l'extrait perd sa structure — ce qu'il doit transmettre.
+    # Aucun de ces mots n'est un patronyme courant.
+    "ANTECEDENTS", "ANTÉCÉDENTS", "MEDICAUX", "MÉDICAUX", "FAMILIAUX", "PERSONNELS",
+    "PLAINTE", "DEMANDE", "ATTENTES", "CONTEXTE", "HISTOIRE", "PARCOURS", "SCOLAIRE",
+    "SCOLARITE", "SCOLARITÉ", "PROFESSIONNEL", "DEVELOPPEMENT", "DÉVELOPPEMENT",
+    "PSYCHOMOTEUR", "LANGAGE", "ORAL", "ECRIT", "ÉCRIT", "LECTURE", "ORTHOGRAPHE",
+    "ECRITURE", "ÉCRITURE", "GRAPHISME", "COMPREHENSION", "COMPRÉHENSION", "EXPRESSION",
+    "PRODUCTION", "RECEPTION", "RÉCEPTION", "PHONOLOGIE", "PHONOLOGIQUE", "ARTICULATION",
+    "PAROLE", "LEXIQUE", "LEXICAL", "SEMANTIQUE", "SÉMANTIQUE", "MORPHOSYNTAXE", "SYNTAXE",
+    "PRAGMATIQUE", "DISCOURS", "RECIT", "RÉCIT", "MEMOIRE", "MÉMOIRE", "ATTENTION",
+    "FONCTIONS", "EXECUTIVES", "EXÉCUTIVES", "COGNITION", "MATHEMATIQUE", "MATHÉMATIQUE",
+    "MATHEMATIQUES", "MATHÉMATIQUES", "NOMBRE", "NUMERATION", "NUMÉRATION", "CALCUL",
+    "RESOLUTION", "RÉSOLUTION", "PROBLEMES", "PROBLÈMES", "LOGIQUE", "RAISONNEMENT",
+    "VOIX", "DEGLUTITION", "DÉGLUTITION", "ORALITE", "ORALITÉ", "FLUENCE", "BEGAIEMENT",
+    "BÉGAIEMENT", "COMMUNICATION", "AUDITION", "SURDITE", "SURDITÉ", "VISION",
+    "EVALUATION", "ÉVALUATION", "EXAMEN", "PASSATION", "ANALYSE", "INTERPRETATION",
+    "INTERPRÉTATION", "HYPOTHESE", "HYPOTHÈSE", "HYPOTHESES", "HYPOTHÈSES", "RESUME",
+    "RÉSUMÉ", "PRECONISATIONS", "PRÉCONISATIONS", "RECOMMANDATIONS", "ORIENTATION",
+    "PROPOSITION", "PROPOSITIONS", "OBJECTIFS", "AXES", "MOYENS", "PRISE", "CHARGE",
+    "REEDUCATION", "RÉÉDUCATION", "SOINS", "SEANCES", "SÉANCES", "FREQUENCE", "FRÉQUENCE",
+    "DUREE", "DURÉE", "SUIVI", "TRAITEMENT", "PRONOSTIC", "CONCLUSIONS", "COMPORTEMENT",
+    "RELATION", "OBSERVATION", "REMARQUE", "REMARQUES", "COMMENTAIRE", "COMMENTAIRES", "SIGNATURE", "CACHET",
+    "LIEU", "ORTHOPHONIE", "CABINET", "RENOUVELLEMENT", "INITIAL", "TABLEAU", "SCORE",
+    "NOTE", "PERCENTILE", "ECART", "ÉCART", "TYPE", "MOYENNE", "NORME", "PATHOLOGIQUE",
+    "DEFICITAIRE", "DÉFICITAIRE", "FRAGILE", "RESULTAT", "RÉSULTAT", "TOTAL", "PARTIE",
+    "VOLET", "ANNEXE", "ANNEXES", "COLLEGE", "COLLÈGE", "LYCEE", "LYCÉE", "MATERNELLE",
+    "PRIMAIRE", "ELEMENTAIRE", "ÉLÉMENTAIRE", "RASED", "PAI", "PAP", "PPS", "PPRE", "AVS",
+    "AESH", "ITEP", "IME", "CMP", "CRTLA", "TSLO", "TSLE", "TDL", "TSLA", "DYS",
+    "DYSLEXIE", "DYSORTHOGRAPHIE", "DYSPHASIE", "DYSCALCULIE", "DYSPRAXIE", "TROUBLE",
+    "TROUBLES", "SPECIFIQUE", "SPÉCIFIQUE", "SPECIFIQUES", "SPÉCIFIQUES", "APPRENTISSAGES",
+    "DEVELOPPEMENTAL", "DÉVELOPPEMENTAL", "RETARD", "DIFFICULTES", "DIFFICULTÉS", "POINTS",
+    "FORTS", "FAIBLES", "FORCES", "FAIBLESSES", "ELEMENTS", "ÉLÉMENTS", "CLINIQUES", "AVIS",
+    "ACCORD", "PARENTS", "FAMILLE", "MERE", "MÈRE", "PERE", "PÈRE", "ENFANT", "PATIENT",
+    "PATIENTE", "ADULTE", "AGE", "ÂGE", "SEXE", "NAISSANCE", "CLASSE", "ECOLE", "ÉCOLE",
+    "ENSEIGNANT", "ENSEIGNANTE", "MEDECIN", "MÉDECIN", "PRESCRIPTEUR", "PRESCRIPTION",
+    "ORDONNANCE", "ADRESSEE", "ADRESSÉE", "NEUROLOGUE", "PEDIATRE", "PÉDIATRE",
+    "PSYCHOLOGUE", "PSYCHOMOTRICIEN", "PSYCHOMOTRICIENNE", "ERGOTHERAPEUTE",
+    "ERGOTHÉRAPEUTE", "ORTHOPTISTE", "PRENOM", "PRÉNOM", "TELEPHONE", "TÉLÉPHONE",
+    "IDENTITE", "IDENTITÉ", "DONNEES", "DONNÉES", "ADMINISTRATIVES", "GENERALES",
+    "GÉNÉRALES", "AUTRES", "DIVERS", "NEANT", "NÉANT", "AUCUN", "AUCUNE", "RAS",
+    # Mots-outils de trois lettres et plus, qui coupent sinon une suite de
+    # capitales par ailleurs légitime (« COMPTE RENDU DES ÉPREUVES »).
+    "DES", "LES", "PAR", "SUR", "POUR", "AVEC", "SANS", "DANS", "AUX", "UNE", "SES",
 }
 
 
@@ -132,20 +178,44 @@ def _caviarder_capitales(texte: str) -> str:
     attendus = _mots_attendus()
 
     def remplacer(m: re.Match[str]) -> str:
-        # Comparaison sans accents : selon la source, le document écrit
-        # « ÉPREUVES » ou « EPREUVES » pour la même rubrique.
-        mots = [x for x in _SEPARATEUR_MOTS.split(_sans_accents(m.group(0)).upper()) if x]
-        # Une lettre isolée n'identifie personne : c'est l'article élidé happé
-        # par l'apostrophe (« L'ALOUETTE-R ») ou l'indice de version d'un test.
-        porteurs = [mot for mot in mots if len(mot) > 1]
-        if porteurs and all(mot in attendus for mot in porteurs):
+        if not _capitales_sont_un_nom(m.group(0), attendus):
             return m.group(0)
-        # Un sigle isolé de 3-4 lettres est plus souvent clinique que nominatif.
-        if len(mots) == 1 and len(mots[0]) <= 4:
+        # Jusqu'au deux-points sur la même ligne, rien que des capitales
+        # (« HORAIRES : », « REMARQUE DE L'ENSEIGNANTE : ») : c'est l'étiquette
+        # d'un champ, pas un nom — celui qui la suit a déjà été traité par les
+        # règles d'étiquette.
+        if _ETIQUETTE_EN_CAPITALES.match(m.string, m.end()):
             return m.group(0)
         return MARQUEUR_NOM
 
     return _CAPITALES.sub(remplacer, texte)
+
+
+# Ce qui peut séparer une suite de capitales du deux-points de son étiquette :
+# d'autres mots en capitales (dont les mots de deux lettres qui ont coupé la
+# suite : « DE », « DU ») et des espaces.
+_ETIQUETTE_EN_CAPITALES = re.compile(r"[ \t]*(?:[A-ZÀ-Ý0-9'’-]+[ \t]+)*:")
+
+
+def _capitales_sont_un_nom(
+    suite: str, attendus: set[str], exempter_sigles: bool = True
+) -> bool:
+    """Vrai si une suite de capitales ne s'explique par aucun titre, sigle ou
+    nom de test connu — c'est alors très probablement un patronyme.
+
+    Comparaison sans accents : selon la source, le document écrit « ÉPREUVES »
+    ou « EPREUVES » pour la même rubrique. Une lettre isolée n'identifie
+    personne (article élidé de « L'ALOUETTE-R », indice de version d'un test).
+    Un sigle isolé de 3-4 lettres est plus souvent clinique que nominatif —
+    sauf accolé à un prénom sur une ligne d'identité (``exempter_sigles``
+    faux) : « ROUX Paul » est un nom."""
+    mots = [x for x in _SEPARATEUR_MOTS.split(_sans_accents(suite).upper()) if x]
+    porteurs = [mot for mot in mots if len(mot) > 1]
+    if not porteurs or all(mot in attendus for mot in porteurs):
+        return False
+    if exempter_sigles and len(mots) == 1 and len(mots[0]) <= 4:
+        return False
+    return True
 
 
 # Repérage des noms *avant* caviardage, pour pouvoir ensuite traquer leurs
@@ -156,12 +226,39 @@ _SOURCES_DE_NOMS = [
     re.compile(rf"\b(?i:{_ETIQUETTES})[ \t]*:[ \t]*"
                rf"({_MOT_PROPRE}(?:[ \t-]{_MOT_PROPRE})?)"),
 ]
+# « DURAND Léa » ou « Léa DURAND » sur une ligne courte d'en-tête, sans
+# civilité ni étiquette : le patronyme en capitales partait bien (suite de
+# capitales), mais le prénom en casse mixte n'était relevé nulle part et
+# restait en clair dans tout le corps du texte (passe réelle du 2026-09-02).
+_PATRONYME_CAPITALES = r"[A-ZÀ-Ý][A-ZÀ-Ý'’-]{2,}"
+_PRENOM_MIXTE = r"[A-ZÀ-Ý][a-zà-ÿ][\w'’-]*"
+_NOM_ET_PRENOM = [
+    re.compile(rf"(?<![\w'’-])({_PATRONYME_CAPITALES})[ \t]+({_PRENOM_MIXTE})\b"),
+    re.compile(rf"\b({_PRENOM_MIXTE})[ \t]+({_PATRONYME_CAPITALES})(?![\w'’-])"),
+]
+# Au-delà, la ligne est de la prose (un titre suivi de son texte), pas une
+# ligne d'identité.
+_LIGNE_IDENTITE_MOTS_MAX = 8
+
 # Mots qui suivent parfois une civilité ou une étiquette sans être des noms.
 _PAS_DES_NOMS = {
     "Le", "La", "Les", "Un", "Une", "Des", "Son", "Sa", "Ses", "Cette", "Ce",
     "Madame", "Monsieur", "Docteur", "Orthophoniste", "Enfant", "Patient",
     "Patiente", "Bilan", "Anamnèse", "Anamnese", "Non", "Oui", "Fictif",
+    # Voisins fréquents d'un titre en capitales sur une ligne courte.
+    "Aucun", "Aucune", "Pas", "Rien", "Voir", "Néant", "Neant", "Sans", "Avec",
+    "Normal", "Normale", "Date", "Nom", "Prénom", "Prenom", "Adresse", "Age", "Âge",
+    "Classe", "École", "Ecole", "Motif", "Objet", "Suite", "Fait", "Note", "Notes",
 }
+
+
+def _retenir_nom(noms: set[str], mot: str) -> None:
+    mot = mot.strip("'’-")
+    # Ceinture et bretelles : un mot qui ne commence pas par une majuscule
+    # n'est pas un nom, et le prendre pour tel le fait remplacer partout
+    # ailleurs dans le document.
+    if mot[:1].isupper() and len(mot) >= 3 and mot not in _PAS_DES_NOMS:
+        noms.add(mot)
 
 
 def noms_du_document(texte: str) -> set[str]:
@@ -169,14 +266,21 @@ def noms_du_document(texte: str) -> set[str]:
     for motif in _SOURCES_DE_NOMS:
         for m in motif.finditer(texte):
             for mot in re.split(r"[\s-]+", m.group(1)):
-                mot = mot.strip("'’-")
-                # Ceinture et bretelles : un mot qui ne commence pas par une
-                # majuscule n'est pas un nom, et le prendre pour tel le fait
-                # remplacer partout ailleurs dans le document.
-                if not mot[:1].isupper():
+                _retenir_nom(noms, mot)
+    attendus = None
+    for ligne in texte.splitlines():
+        if len(ligne.split()) > _LIGNE_IDENTITE_MOTS_MAX:
+            continue
+        for motif in _NOM_ET_PRENOM:
+            for m in motif.finditer(ligne):
+                a, b = m.group(1), m.group(2)
+                capitales, mixte = (a, b) if a.isupper() else (b, a)
+                if attendus is None:
+                    attendus = _mots_attendus()
+                if not _capitales_sont_un_nom(capitales, attendus, exempter_sigles=False):
                     continue
-                if len(mot) >= 3 and mot not in _PAS_DES_NOMS:
-                    noms.add(mot)
+                _retenir_nom(noms, capitales)
+                _retenir_nom(noms, mixte)
     return noms
 
 

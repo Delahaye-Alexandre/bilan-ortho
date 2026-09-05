@@ -1221,8 +1221,9 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
             # exploitable : « chiffres absents : 6, -15 » pour « EVALEO 6-15 ».
             + verif_tests.signalements(clair, sources_claires, noms_tests)
             # Une prose entièrement inventée ne contient aucun chiffre : elle
-            # passait sans un mot.
-            + verif_texte.signalements(clair, sources_claires)
+            # passait sans un mot. Le seuil dépend de la rubrique (diagnostic
+            # et projet s'écrivent dans le vocabulaire du clinicien).
+            + verif_texte.signalements(clair, sources_claires, u["section"])
         )
         if msgs:
             rubriques_a_verifier.append({

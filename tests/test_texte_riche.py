@@ -177,9 +177,11 @@ def test_import_docx_conserve_gras_souligne_et_listes():
     sections = importer.sectionize(texte)
     assert [(c, t) for c, t, _ in sections] == [("anamnese", "ANAMNÈSE"), ("epreuves", "EPREUVES")]
     assert sections[1][2] == "- phonologie\n- lecture\n1. un"
-    # L'anonymisation traverse les marqueurs.
+    # L'anonymisation traverse les marqueurs — prénom compris : « DUPONT Léa »
+    # sans étiquette laissait « Léa » en clair (passe réelle du 2026-09-02).
     caviarde, n = anonymisation.caviarder(texte)
-    assert "**[NOM] Léa**" in caviarde and n >= 1
+    assert "**[NOM] [NOM]**" in caviarde and "Léa" not in caviarde and n >= 2
+    assert "**Alouette**" in caviarde and "<u>Compréhension</u>" in caviarde
 
 
 # --- Chaîne IA : consigne, vérificateurs, réglage -----------------------------------
