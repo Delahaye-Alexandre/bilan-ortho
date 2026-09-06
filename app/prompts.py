@@ -7,6 +7,15 @@ en français, sans invention.
 
 # --- Structuration d'une dictée libre + questions de clarification ----------
 
+# Audit des prompts du 2026-09-05 : les règles dites plusieurs fois (« n'invente
+# rien » quatre fois, « ne repose pas une question » cinq fois entre le prompt
+# système et les en-têtes du message utilisateur, « STRICTEMENT en JSON, sans
+# texte autour » alors que `format:"json"` l'impose) ont été dites une fois.
+# MESURÉ sur qwen2.5:7b, même dictée, cinq passages : 1/1/1/1/7 rubriques
+# remplies avant, 7/2/5/6/7 après (compte-rendu complet 3 fois sur 5 contre 1).
+# Imposer en plus un schéma JSON à Ollama (`format` = schéma) a été essayé et
+# écarté : 3,8 rubriques en moyenne contre 5,4 en JSON libre — le décodage
+# contraint coûte de la complétude à un modèle de cette taille.
 STRUCTURE_SYSTEM = """Tu es un assistant de rédaction pour un·e orthophoniste \
 diplômé·e. On te donne l'état d'un bilan orthophonique en cours (le contenu déjà \
 rédigé de ses rubriques), puis les éléments nouveaux de ce tour : une dictée \
@@ -73,15 +82,12 @@ dictée (enseignant, médecin, parents) sont des tiers, jamais le patient.
 rubrique « diagnostic » uniquement pour reformuler ce que le praticien a \
 explicitement énoncé — jamais pour en déduire un.
 - Si une rubrique n'est pas concernée par les éléments nouveaux, ne l'inclus pas.
-- Préfère poser une question plutôt qu'inventer une donnée manquante.
 - NE REPOSE JAMAIS une question dont la réponse figure déjà dans les rubriques \
-ou dans les éléments de ce tour.
-- NE REPOSE JAMAIS une question listée comme « en attente », « déjà répondue » \
-ou « écartée » — ni à l'identique, ni reformulée. Les questions en attente \
-restent affichées au praticien : inutile de les répéter.
+ou dans les éléments de ce tour, ni une question listée plus bas comme en \
+attente, déjà répondue ou écartée — ni à l'identique, ni reformulée.
 - Si aucune question nouvelle ne s'impose, renvoie une liste "questions" vide.
 
-Réponds STRICTEMENT en JSON valide, sans texte autour, au format :
+Réponds en JSON, au format :
 {{"updates":[{{"section":"<cle>","texte":"<texte proposé>"}}],\
 "questions":[{{"section":"<cle>","question":"<question>","pourquoi":"<raison brève>"}}]}}
 
@@ -99,7 +105,7 @@ _NIVEAU_DETAIL = {
     "phrases complètes, reprenant TOUS les éléments dictés qui la concernent, "
     "sans délayer.",
     "detaille": "Rédige chaque rubrique de façon développée (contexte, nuances), "
-    "toujours sans rien inventer et sans omettre aucun élément dicté.",
+    "sans omettre aucun élément dicté.",
 }
 
 
@@ -263,15 +269,15 @@ def build_structure_user(
             "dans le dossier actuel) :\n" + ex
         )
     dialogue = _bloc_questions(
-        "Questions de clarification EN ATTENTE (déjà affichées au praticien — ne les repose pas, même reformulées) :",
+        "Questions de clarification en attente (déjà affichées au praticien) :",
         questions_en_attente,
     )
     dialogue += _bloc_questions(
-        "Questions DÉJÀ RÉPONDUES précédemment (l'information est dans les rubriques — ne les repose pas) :",
+        "Questions déjà répondues (l'information est dans les rubriques) :",
         questions_repondues,
     )
     dialogue += _bloc_questions(
-        "Questions ÉCARTÉES par le praticien (il ne souhaite pas y répondre — ne les repose JAMAIS) :",
+        "Questions écartées par le praticien (il ne souhaite pas y répondre) :",
         questions_ecartees,
     )
     nouveaux = ""

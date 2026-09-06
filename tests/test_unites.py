@@ -230,9 +230,22 @@ def test_parse_structure_json_valide():
     assert r["questions"][0]["question"] == "Âge ?"
 
 
-def test_parse_structure_json_noye_dans_du_texte():
-    raw = 'Voici :\n{"updates":[{"section":"projet","texte":"x"}],"questions":[]}\nmerci'
-    assert llm._parse_structure(raw)["updates"][0]["section"] == "projet"
+def test_redite_signale_un_texte_deja_present():
+    """« Ne répète pas ce qui figure déjà » n'est garanti par aucune consigne :
+    un second passage réécrivait l'existant à la suite (passe du 2026-09-05)."""
+    existant = ("Objet de la demande : bilan de langage écrit pour un enfant de "
+                "sept ans. Qui l'adresse : le pédiatre, pour des difficultés de "
+                "lecture depuis le CP.")
+    redit = ("Objet de la demande : Bilan de langage écrit pour un enfant de sept "
+             "ans ! Qui l'adresse : pédiatre, pour des difficultés de lecture depuis le CP.")
+    assert verif_texte.redite(redit, existant)
+    assert verif_texte.signalements_redite(redit, existant) != []
+    # Un complément réel n'est pas une redite, une rubrique vide non plus.
+    neuf = ("La famille décrit un découragement devant les devoirs et une lecture "
+            "laborieuse à la maison.")
+    assert not verif_texte.redite(neuf, existant)
+    assert not verif_texte.redite(redit, "")
+    assert verif_texte.signalements_redite(neuf, existant) == []
 
 
 def test_parse_structure_illisible_leve_une_erreur():
@@ -515,9 +528,9 @@ def test_build_structure_user_etat_reel_et_dialogue():
     coupe = msg.split("« ", 1)[1].split(" […]", 1)[0]
     assert len(coupe) <= prompts.MAX_CAR_SECTION
     # mémoire du dialogue : les trois blocs, avec le texte des questions
-    assert "EN ATTENTE" in msg and "Le score est-il étalonné ?" in msg
-    assert "ÉCARTÉES" in msg and "suivi ORL" in msg
-    assert "DÉJÀ RÉPONDUES" in msg and "antécédents familiaux" in msg
+    assert "en attente" in msg and "Le score est-il étalonné ?" in msg
+    assert "écartées" in msg and "suivi ORL" in msg
+    assert "déjà répondues" in msg and "antécédents familiaux" in msg
     # réponse structurée : question + réponse + rubrique visée
     assert "Quel âge ?" in msg and "7 ans" in msg and "rubrique visée : anamnese" in msg
     # pas de dictée ce tour-ci -> pas de bloc transcription

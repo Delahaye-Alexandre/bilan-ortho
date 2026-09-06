@@ -97,23 +97,28 @@ async def chat_json(
             raise ModeleIntrouvable(payload["model"])
         resp.raise_for_status()
         data = resp.json()
+    # Comptes exacts rendus par Ollama : la seule mesure de ce que le prompt
+    # occupe dans la fenêtre de contexte (prompt_depasse_contexte n'en donne
+    # qu'une estimation) et de la longueur réellement générée.
+    logger.info(
+        "Ollama %s : %s tokens de prompt, %s générés, arrêt « %s »",
+        nom, data.get("prompt_eval_count"), data.get("eval_count"),
+        data.get("done_reason"),
+    )
     return data["message"]["content"]
 
 
 def _parse_structure(raw: str) -> dict:
-    """Parse tolérant de la réponse JSON du modèle (récupère le 1er objet).
+    """Lecture de la réponse JSON du modèle (Ollama garantit un JSON valide
+    en mode ``format``, un texte tronqué mis à part).
 
-    Une réponse non vide dont aucune tentative ne donne un objet JSON lève
-    ``ReponseIllisible`` : un succès silencieux avec 0 mise à jour serait
-    indistinguable d'un légitime « rien à ajouter »."""
+    Une réponse non vide qui n'est pas un objet JSON lève ``ReponseIllisible`` :
+    un succès silencieux avec 0 mise à jour serait indistinguable d'un légitime
+    « rien à ajouter »."""
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", raw, re.S)
-        try:
-            data = json.loads(m.group(0)) if m else None
-        except json.JSONDecodeError:
-            data = None
+        data = None
     if not isinstance(data, dict):
         if raw.strip():
             raise ReponseIllisible(

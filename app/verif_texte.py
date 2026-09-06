@@ -81,3 +81,35 @@ def signalements(
         "termes s'y retrouvent) : vérifiez qu'elle n'affirme rien que vous "
         "n'ayez dit"
     ]
+
+
+
+def redite(propose: str, existant: str) -> bool:
+    """Le texte proposé répète-t-il, pour l'essentiel, ce que la rubrique
+    contient déjà ? Jugé phrase par phrase, sur les phrases assez longues pour
+    être signifiantes : une majorité de phrases déjà présentes (à la casse, aux
+    accents, à la ponctuation et aux mots-outils près) signe une redite.
+
+    La consigne « ne répète pas ce qui figure déjà » n'était garantie par rien :
+    un second passage sur la même dictée réécrivait « Objet de la demande : … »
+    à la suite du premier (passe réelle du 2026-09-05). On signale, on ne
+    supprime pas — le praticien tranche."""
+    corpus = " ".join(_termes(existant))
+    phrases = [
+        " ".join(_termes(p)) for p in re.split(r"[.!?\n]+", propose or "")
+    ]
+    candidates = [p for p in phrases if len(p.split()) >= 4]
+    if not candidates or not corpus:
+        return False
+    deja = sum(1 for p in candidates if p in corpus)
+    return deja / len(candidates) >= 0.6
+
+
+def signalements_redite(propose: str, existant: str) -> list[str]:
+    """Message court prêt à afficher quand la proposition redit la rubrique."""
+    if not redite(propose, existant):
+        return []
+    return [
+        "texte déjà présent pour l'essentiel dans la rubrique : vérifiez qu'il "
+        "ne fait pas doublon"
+    ]

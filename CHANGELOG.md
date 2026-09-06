@@ -5,6 +5,30 @@ numéros suivent la [gestion sémantique de version](https://semver.org/lang/fr/
 chaque version correspond à un tag git `v<version>` et, depuis la 1.2.0, à un
 installeur Windows publié dans les releases.
 
+## Non publié
+
+- **Prompt de structuration allégé** : les consignes répétées (« n'invente
+  rien » dite quatre fois, « ne repose pas une question » cinq fois entre le
+  prompt et les en-têtes du message, « strictement en JSON » alors que le
+  format est déjà imposé) sont dites une seule fois. Mesuré sur qwen2.5:7b,
+  même dictée, cinq passages : 1, 1, 1, 1 puis 7 rubriques remplies avant,
+  7, 2, 5, 6, 7 après — un compte-rendu complet trois fois sur cinq contre une.
+  Un schéma JSON imposé à Ollama a été essayé et écarté (moins complet).
+- **Redites signalées** : quand un passage de structuration propose pour une
+  rubrique un texte déjà présent pour l'essentiel (même dictée relancée, ou
+  modèle qui réécrit l'existant à la suite au lieu de le compléter), la
+  rubrique est marquée « à vérifier » avec la mention du doublon. La consigne
+  « ne répète pas ce qui figure déjà » n'était garantie par rien : un second
+  passage sur la même dictée réécrivait l'objet de la demande à la suite du
+  premier (passe réelle du 5 septembre 2026). Rien n'est supprimé : vous
+  tranchez à la relecture.
+- **Journal du serveur** : les comptes exacts rendus par Ollama à chaque
+  structuration (tokens du prompt, tokens générés, motif d'arrêt) sont
+  journalisés, et les messages d'information de l'application apparaissent
+  enfin dans le journal — ils étaient perdus faute de configuration.
+- Nettoyage : le repli qui cherchait un objet JSON « noyé dans du texte » est
+  retiré, Ollama garantit un JSON valide en mode `format`.
+
 ## 1.14.0 — 2026-09-05
 
 - Documents juridiques consolidés, sources vérifiées le 4 septembre 2026 :

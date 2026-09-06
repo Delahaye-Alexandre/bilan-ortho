@@ -959,9 +959,9 @@ def test_structure_reponses_sans_dictee(client, monkeypatch, mock_embed):
     assert "Quel âge a le patient ?" in u and "7 ans" in u
     assert "rubrique visée : anamnese" in u
     # la mémoire du dialogue est transmise au LLM
-    assert "EN ATTENTE" in u and "note standard" in u
-    assert "ÉCARTÉES" in u and "suivi ORL" in u
-    assert "DÉJÀ RÉPONDUES" in u and "antécédents familiaux" in u
+    assert "en attente" in u and "note standard" in u
+    assert "écartées" in u and "suivi ORL" in u
+    assert "déjà répondues" in u and "antécédents familiaux" in u
     # pas de dictée ce tour-ci -> pas de bloc transcription
     assert "Transcription de la dictée" not in u
     # num_ctx par défaut transmis à Ollama (le prompt embarque tout le bilan)

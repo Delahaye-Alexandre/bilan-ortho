@@ -82,6 +82,11 @@ from .models import (
 STATIC_DIR = Path(__file__).parent / "static"
 
 logger = logging.getLogger(__name__)
+# Uvicorn ne configure que ses propres loggers : sans ceci, tout ce que l'app
+# journalise en INFO (comptes de tokens d'Ollama, analyse abandonnée) est perdu.
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+logging.getLogger("app").setLevel(logging.INFO)
 
 app = FastAPI(title="Bilan Ortho", version=__version__)
 
@@ -1203,6 +1208,7 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
     # ne s'interdit pas de citer un test hors du domaine du bilan.
     noms_tests = catalogues.tous_les_noms(cfg)
     titres = {s["cle"]: s["titre"] for s in b["sections"]}
+    contenus = {s["cle"]: s.get("contenu") or "" for s in b["sections"]}
     rubriques_a_verifier = []
     # Le praticien a désactivé la mise en forme par l'IA : ce qu'elle a balisé
     # malgré la consigne est remis en clair ici, de façon déterministe.
@@ -1224,6 +1230,11 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
             # passait sans un mot. Le seuil dépend de la rubrique (diagnostic
             # et projet s'écrivent dans le vocabulaire du clinicien).
             + verif_texte.signalements(clair, sources_claires, u["section"])
+            # « Ne répète pas ce qui figure déjà » n'est garanti par aucune
+            # consigne : un second passage réécrivait l'existant à la suite.
+            + verif_texte.signalements_redite(
+                clair, texte_riche.en_clair(contenus.get(u["section"], ""), numeroter=False)
+            )
         )
         if msgs:
             rubriques_a_verifier.append({

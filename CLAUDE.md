@@ -29,7 +29,7 @@ ruff check .
 
 ## Architecture
 
-Monolithe local-first : un serveur FastAPI (`app/main.py`, ~48 routes) sert un frontend single-page **sans framework ni build** (`app/static/index.html`, JS vanilla). Bind exclusif sur 127.0.0.1 ; aucune donnée ne quitte la machine — c'est l'argument central du produit, pas une préférence technique.
+Monolithe local-first : un serveur FastAPI (`app/main.py`) sert un frontend single-page **sans framework ni build** (`app/static/index.html`, JS vanilla). Bind exclusif sur 127.0.0.1 ; aucune donnée ne quitte la machine — c'est l'argument central du produit, pas une préférence technique.
 
 - **Coffre chiffré** : toutes les données patient/bilan vivent dans une base SQLCipher (AES-256) **hors du dépôt** (`~/.local/share/bilan-ortho` ou `BILAN_ORTHO_DATA_DIR`). `security.py` est le portier : l'app est verrouillée tant que la passphrase n'est pas fournie, et les fonctions métier prennent une connexion chiffrée `con` en paramètre plutôt que d'ouvrir la leur.
 - **Chaîne IA 100 % locale** : `stt.py` (faster-whisper, l'audio est supprimé après transcription) → `prompts.py`/`llm.py` (Ollama) structure la dictée dans la trame réglementaire (arrêté du 25/07/2023) → `rag.py` réinjecte le style de l'orthophoniste (embeddings + sqlite-vec, stockés dans la même base chiffrée) → `bilan.py` persiste → `export.py` (pdf/docx/md/txt).
@@ -43,4 +43,4 @@ Monolithe local-first : un serveur FastAPI (`app/main.py`, ~48 routes) sert un f
 - **Cadre médico-légal** : l'app est une *aide à la rédaction*, jamais un outil de diagnostic. Ne pas introduire de formulation qui suggère que l'IA diagnostique, cote ou décide — l'orthophoniste relit, valide et signe (voir `docs/notice-medico-legale.md`).
 - **Local only** : ne jamais introduire d'appel réseau externe dans le flux de données patient, ni proposer de modèle Ollama `:cloud`. Les tests doivent rester exécutables hors ligne (mocker via les fixtures de `tests/conftest.py`).
 - `docs/business-plan.md` et `docs/audit-2026-07-17.md` sont volontairement hors git (voir `.gitignore`) — ne pas les commiter.
-- **Workflow** : travailler en autonomie (plus de validation préalable de plan exigée depuis le 2026-09-04) ; un commit par lot, vérifié isolément. Définition de « fini » : `pytest` + `ruff check .` + tests UI passent.
+- **Workflow** : autonomie complète — choisir le lot suivant dans le backlog et l'implémenter en entier, sans validation préalable ; un commit par lot, vérifié isolément. Définition de « fini » : `pytest` + `ruff check .` + tests UI passent.
