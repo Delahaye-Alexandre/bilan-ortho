@@ -16,8 +16,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Ruff (config dans pyproject.toml, version épinglée)
@@ -36,8 +36,8 @@ jobs:
             python: "3.12"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -56,7 +56,7 @@ jobs:
   tests-ui:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - name: Tests UI (happy-dom — seule couverture du frontend)
         run: |
@@ -76,8 +76,8 @@ jobs:
       # avant (avertissements SmartScreen au téléchargement manuel).
       SIGNATURE_AZURE: ${{ secrets.AZURE_CLIENT_ID != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -340,7 +340,7 @@ jobs:
           if (-not ($bilans | Where-Object { $_.id -eq $b.id })) { throw "Le bilan créé avant la mise à niveau a disparu." }
           Write-Host "Mise à niveau OK : coffre ouvert, bilan #$($b.id) retrouvé."
           Stop-Process -Name BilanOrtho -Force -ErrorAction SilentlyContinue
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: BilanOrtho-Setup
           path: packaging/windows/Output/*.exe
