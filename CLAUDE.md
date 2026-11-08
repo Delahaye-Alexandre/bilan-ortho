@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Consignes pour Claude Code (claude.ai/code) dans ce dépôt.
 
 ## Commandes
 
@@ -17,9 +17,9 @@ pytest tests/ -q -rs              # -rs affiche les skips (ex. OCR sans tesserac
 pytest tests/test_api.py -q       # un seul fichier
 pytest -k "nom_du_test" -q        # un seul test
 
-# Tests UI (seule couverture du frontend — happy-dom via Bun)
-bun tests/ui/test_questions_ui.mjs
-bun tests/ui/test_robustesse_ui.mjs
+# Tests UI (seule couverture du frontend — happy-dom via Bun ; la CI lance toutes les suites)
+for f in tests/ui/test_*_ui.mjs; do bun "$f" || { echo "ÉCHEC : $f"; break; }; done
+bun tests/ui/test_parametres_ui.mjs   # une seule suite
 
 # Lint (config dans pyproject.toml — les ignores y sont commentés, les respecter)
 ruff check .
@@ -43,4 +43,4 @@ Monolithe local-first : un serveur FastAPI (`app/main.py`) sert un frontend sing
 - **Cadre médico-légal** : l'app est une *aide à la rédaction*, jamais un outil de diagnostic. Ne pas introduire de formulation qui suggère que l'IA diagnostique, cote ou décide — l'orthophoniste relit, valide et signe (voir `docs/notice-medico-legale.md`).
 - **Local only** : ne jamais introduire d'appel réseau externe dans le flux de données patient, ni proposer de modèle Ollama `:cloud`. Les tests doivent rester exécutables hors ligne (mocker via les fixtures de `tests/conftest.py`).
 - `docs/business-plan.md` et `docs/audit-2026-07-17.md` sont volontairement hors git (voir `.gitignore`) — ne pas les commiter.
-- **Workflow** : autonomie complète — choisir le lot suivant dans le backlog et l'implémenter en entier, sans validation préalable ; un commit par lot, vérifié isolément. Définition de « fini » : `pytest` + `ruff check .` + tests UI passent.
+- **Workflow** : autonomie complète — choisir le lot suivant dans le plan en cours (`docs/plan-*.md`, avancement dans `docs/PROGRESS.md`) et l'implémenter en entier, sans validation préalable ; un commit par lot, vérifié isolément. Définition de « fini » : `pytest` + `ruff check .` + toutes les suites UI passent. Push, tag, release et envois de mails restent soumis à l'accord d'Alexandre (décision du 04/09/2026).
