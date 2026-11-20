@@ -7,6 +7,24 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Bibliothèques embarquées : correctifs de sécurité.** Pillow 13 (traitement
+  du logo), pypdf 6.21 (lecture des PDF importés), cryptography 50
+  (vérification des mises à jour), certifi et filelock (téléchargement du
+  modèle de dictée) : GitHub signalait 89 alertes sur les versions figées en
+  septembre. Ces bibliothèques ne lisent que les fichiers que vous importez
+  vous-même et les téléchargements de l'application ; le risque concret
+  restait limité, mais un logiciel qui traite des données de santé ne garde
+  pas de failles connues. Vérifié : même dictée, même texte au mot près avant
+  et après ; téléchargement réel du modèle ; tests sous Python 3.11, 3.12 et
+  3.13 ; chaque version existe pour Windows.
+- **Veille des dépendances remise d'aplomb.** Dependabot s'était mis en pause
+  (aucune proposition traitée en 90 jours) et ne proposait pas les montées
+  majeures, justement celles qu'exigeaient ces correctifs.
+  `scripts/verrouiller-dependances.sh` gagne `--monter <paquet>`, un délai de
+  carence de sept jours après publication (une version piégée est en général
+  retirée avant) et des plafonds datés et motivés
+  (`scripts/plafonds-dependances.txt`) pour les montées majeures que rien
+  n'impose. La mise à jour du verrou devient une étape de chaque version.
 - **Prompt de structuration allégé** : les consignes répétées (« n'invente
   rien » dite quatre fois, « ne repose pas une question » cinq fois entre le
   prompt et les en-têtes du message, « strictement en JSON » alors que le

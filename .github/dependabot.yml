@@ -9,6 +9,18 @@
 # précisément pour que Dependabot le lise : c'est lui que la CI et le build
 # installent, donc lui qui détermine le logiciel réellement construit. Une
 # proposition qui ne toucherait que `requirements.txt` ne changerait rien.
+#
+# Deux limites à connaître (constatées le 2026-11-20 : 89 alertes ouvertes,
+# aucune proposition depuis le 2 novembre) :
+# - Dependabot se met en pause tout seul quand, pendant 90 jours, personne n'a
+#   fusionné ni fermé une de ses propositions, ni modifié ce fichier. Il
+#   reprend à la première interaction. La veille ne tient donc que si
+#   quelqu'un traite les propositions : c'est une étape de chaque release
+#   (voir CLAUDE.md), pas un automatisme.
+# - Ses propositions groupées ne montent que les versions mineures et
+#   correctives. Un correctif de sécurité qui exige une version majeure
+#   (Pillow 13, filelock 4, cryptography 50 en novembre 2026) passe par
+#   scripts/verrouiller-dependances.sh.
 version: 2
 updates:
   # --- Dépendances Python -----------------------------------------------------
@@ -24,6 +36,12 @@ updates:
     # version en sort — les versions épinglées du verrou, elles, sont toujours
     # proposées, et ce sont elles qui déterminent le logiciel construit.
     versioning-strategy: increase-if-necessary
+    # Délai de carence : une version n'est proposée que sept jours après sa
+    # publication (un paquet piégé est en général retiré avant). Même délai
+    # que scripts/verrouiller-dependances.sh. Ne retarde pas les alertes de
+    # sécurité, qui restent immédiates.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "Dépendances"
     groups:
@@ -41,6 +59,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "CI"
     groups:

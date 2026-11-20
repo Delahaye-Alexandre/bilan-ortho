@@ -1,0 +1,35 @@
+# Plafonds volontaires, appliqués à chaque verrouillage
+# (scripts/verrouiller-dependances.sh les passe en contraintes).
+#
+# Une ligne par montée majeure retenue exprès, avec sa date, la raison et ce
+# qui la lèvera. Sans ce fichier, « --tout-mettre-a-jour » prendrait d'un coup
+# toutes les versions majeures sorties depuis le dernier verrouillage, y compris
+# celles que rien n'impose et qu'on ne peut pas éprouver sans Windows.
+#
+# Rangé sous scripts/ et non à la racine : Dependabot ne lit que la racine, il
+# ne proposera donc pas de « relever » ces plafonds à chaque sortie amont.
+# Lever un plafond = supprimer sa ligne, relancer le script avec
+# « --monter <paquet> », puis rejouer les contrôles indiqués ici.
+
+# 2026-11-20 — huggingface-hub 2.x (2.0 en octobre 2026) remplace sa pile
+# réseau : httpx2 à la place de httpx, certificats lus dans le magasin du
+# système (truststore) et non plus dans certifi. Dans l'application, il ne sert
+# qu'à télécharger le modèle de dictée au premier usage ; aucune alerte de
+# sécurité n'impose cette montée.
+# À lever après un essai réel du téléchargement du modèle dans l'application
+# installée sous Windows (poste derrière un proxy ou un antivirus compris).
+huggingface-hub<2
+
+# 2026-11-20 — PyAV 19 (octobre 2026) embarque un FFmpeg plus récent et exige
+# Python 3.12 : c'est lui qui décode chaque dictée (WebM/Opus du navigateur).
+# Aucune alerte ne l'impose, et la matrice de tests couvre encore Python 3.11.
+# À lever après une dictée réelle (micro du navigateur, pas un fichier WAV)
+# dans l'application installée sous Windows.
+av<19
+
+# 2026-11-20 — pypdf 7 est sorti le 2026-11-06 et a reçu quatre versions en
+# douze jours. La 6.21.4 corrige toutes les alertes connues à cette date.
+# À lever dès que la série 7 est stabilisée, ou à la première alerte que la
+# série 6 ne corrige pas (pypdf en publie plusieurs par mois) ; contrôle :
+# l'import d'un PDF natif et d'un PDF scanné (tests/test_api.py, test OCR).
+pypdf<7

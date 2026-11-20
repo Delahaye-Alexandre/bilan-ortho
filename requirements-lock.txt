@@ -7,81 +7,79 @@
 #
 # Ne pas éditer à la main. Régénérer avec scripts/verrouiller-dependances.sh
 # (uv pip compile --universal ; par défaut les versions en place sont gardées,
-# seules les dépendances nouvelles ou manquantes sont résolues ; l'option
-# --tout-mettre-a-jour prend les dernières versions).
+# seules les dépendances nouvelles ou manquantes sont résolues ; « --monter
+# <paquet> » monte les paquets nommés, « --tout-mettre-a-jour » prend les
+# dernières versions admises). Les montées respectent un délai de carence de
+# sept jours après publication et les plafonds, datés et motivés, de
+# scripts/plafonds-dependances.txt.
 #
 # L'extension .txt n'est pas cosmétique : Dependabot ne surveille pas un
 # fichier « .lock » générique. C'est ce fichier-ci qu'il doit proposer de
 # monter, puisque c'est celui qui est installé. L'outillage (tests, lint,
 # build, OCR) est épinglé à part : requirements-dev.txt, requirements-build.txt,
 # requirements-ocr.txt.
-annotated-doc==0.0.5
+annotated-doc==0.0.6
     # via fastapi
 annotated-types==0.8.0
     # via pydantic
-anyio==4.15.0
+anyio==4.16.0
     # via
+    #   fastapi
     #   httpx
     #   starlette
     #   watchfiles
 av==18.1.0
-    # via faster-whisper
-certifi==2026.7.22
+    # via
+    #   -c scripts/plafonds-dependances.txt
+    #   faster-whisper
+certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
 cffi==2.1.1 ; platform_python_implementation != 'PyPy'
     # via cryptography
-charset-normalizer==3.5.1
+charset-normalizer==3.5.2
     # via reportlab
-click==8.5.0
+click==8.5.1
     # via
     #   huggingface-hub
     #   uvicorn
 colorama==0.4.6 ; sys_platform == 'win32'
-    # via
-    #   tqdm
-    #   uvicorn
-cryptography==49.0.0
-    # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
-    #   -r requirements.txt
-ctranslate2==4.8.2
+    # via tqdm
+cryptography==50.0.2
+    # via -r requirements.txt
+ctranslate2==4.9.0
     # via faster-whisper
-fastapi==0.139.0
-    # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
-    #   -r requirements.txt
+fastapi==0.162.7
+    # via -r requirements.txt
 faster-whisper==1.2.1
-    # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
-    #   -r requirements.txt
-filelock==3.32.5
+    # via -r requirements.txt
+filelock==4.2.10
     # via huggingface-hub
 flatbuffers==25.12.19
     # via onnxruntime
-fsspec==2026.7.0
+fsspec==2026.9.0
     # via huggingface-hub
 h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
-hf-xet==1.6.0 ; platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
+hf-xet==1.8.0 ; platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
     # via huggingface-hub
 httpcore==1.0.9
     # via httpx
-httptools==0.8.0
+httptools==0.9.0
     # via uvicorn
 httpx==0.28.1
     # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
     #   -r requirements.txt
     #   huggingface-hub
-huggingface-hub==1.30.0
+huggingface-hub==1.33.0
     # via
+    #   -c scripts/plafonds-dependances.txt
     #   faster-whisper
     #   tokenizers
-idna==3.19
+idna==3.20
     # via
     #   anyio
     #   httpx
@@ -91,72 +89,60 @@ numpy==2.4.6 ; python_full_version < '3.12'
     # via
     #   ctranslate2
     #   onnxruntime
-numpy==2.5.2 ; python_full_version >= '3.12'
+numpy==2.5.4 ; python_full_version >= '3.12'
     # via
     #   ctranslate2
     #   onnxruntime
-onnxruntime==1.29.0
+onnxruntime==1.32.0
     # via faster-whisper
+opentelemetry-api==1.45.2
+    # via fastapi
 packaging==26.3
     # via
     #   huggingface-hub
     #   onnxruntime
-pillow==12.3.0
+pillow==13.0.0
     # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
     #   -r requirements.txt
     #   reportlab
-protobuf==7.36.1
+protobuf==7.36.2
     # via onnxruntime
-pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
-pydantic==2.13.4
+pydantic==2.14.3
     # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
     #   -r requirements.txt
     #   fastapi
-pydantic-core==2.46.4
+pydantic-core==2.50.4
     # via pydantic
-pypdf==6.14.2
+pypdf==6.21.4
     # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
+    #   -c scripts/plafonds-dependances.txt
     #   -r requirements.txt
 python-docx==1.2.0
-    # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
-    #   -r requirements.txt
-python-dotenv==1.2.3
+    # via -r requirements.txt
+python-dotenv==1.2.4
     # via uvicorn
-python-multipart==0.0.32
-    # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
-    #   -r requirements.txt
+python-multipart==0.0.33
+    # via -r requirements.txt
 pyyaml==6.0.3
     # via
     #   ctranslate2
     #   huggingface-hub
     #   uvicorn
-reportlab==5.0.0
-    # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
-    #   -r requirements.txt
-sqlcipher3==0.6.2 ; sys_platform == 'win32'
-    # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
-    #   -r requirements.txt
+reportlab==5.1.0
+    # via -r requirements.txt
+sqlcipher3==0.6.5 ; sys_platform == 'win32'
+    # via -r requirements.txt
 sqlcipher3-binary==0.6.0 ; sys_platform == 'linux'
-    # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
-    #   -r requirements.txt
+    # via -r requirements.txt
 sqlite-vec==0.1.9
-    # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
-    #   -r requirements.txt
-starlette==1.6.0
+    # via -r requirements.txt
+starlette==1.10.0
     # via fastapi
-tokenizers==0.23.2
+tokenizers==0.23.3
     # via faster-whisper
-tqdm==4.70.0
+tqdm==4.70.1
     # via
     #   faster-whisper
     #   huggingface-hub
@@ -165,22 +151,21 @@ typing-extensions==4.16.0
     #   anyio
     #   fastapi
     #   huggingface-hub
+    #   opentelemetry-api
     #   pydantic
     #   pydantic-core
     #   python-docx
     #   starlette
     #   typing-inspection
-typing-inspection==0.4.4
+typing-inspection==0.4.5
     # via
     #   fastapi
     #   pydantic
-uvicorn==0.49.0
-    # via
-    #   -c /tmp/claude-1000/-home-alexandre-delahaye-projects-bilan-ortho/4b2105ad-2b82-4c84-a514-487f37771e4d/scratchpad/contraintes.txt
-    #   -r requirements.txt
-uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
+uvicorn==0.54.0
+    # via -r requirements.txt
+uvloop==0.23.0 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
     # via uvicorn
-watchfiles==1.2.0
+watchfiles==1.3.0
     # via uvicorn
-websockets==17.1
+websockets==17.4
     # via uvicorn

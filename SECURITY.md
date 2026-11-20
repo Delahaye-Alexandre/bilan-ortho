@@ -38,6 +38,7 @@ Chacun peut vérifier la promesse en coupant la connexion : [docs/verifier-que-r
 
 - Les versions sont figées dans `requirements-lock.txt` — toutes les dépendances, directes et transitives, avec leurs marqueurs de plateforme — utilisé par la CI et le build (surveillé par Dependabot) ; l'outillage (tests, lint, PyInstaller, OCR) est épinglé dans `requirements-dev.txt`, `requirements-build.txt` et `requirements-ocr.txt`.
 - La **CI s'exécute sur chaque pull request** (lint, tests Python multi-versions et multi-OS, tests UI).
+- **Avant chaque version**, le verrou est régénéré (`scripts/verrouiller-dependances.sh`) et les alertes de vulnérabilité ouvertes sont traitées. Une version d'une dépendance n'est retenue que sept jours après sa publication, sauf correctif de sécurité urgent ; les montées majeures retenues exprès sont datées et motivées dans `scripts/plafonds-dependances.txt`.
 - **Dependabot est activé** (`.github/dependabot.yml` pour les mises à jour, alertes de vulnérabilité au niveau du dépôt) : ses pull requests passent par la même CI. Le **secret scanning** de GitHub est activé sur le dépôt, avec blocage des pushes qui contiendraient un secret.
 
 ## Remerciements

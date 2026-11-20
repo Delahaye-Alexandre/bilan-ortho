@@ -25,7 +25,7 @@ bun tests/ui/test_parametres_ui.mjs   # une seule suite
 ruff check .
 ```
 
-**Release** : bumper `__version__` dans `app/__init__.py` **et** créer le tag git `v<version>` — la CI refuse le build Windows si les deux divergent.
+**Release** : bumper `__version__` dans `app/__init__.py` **et** créer le tag git `v<version>` — la CI refuse le build Windows si les deux divergent. Avant de bumper, traiter les alertes de dépendances (`gh api repos/{owner}/{repo}/dependabot/alerts`), puis `scripts/verrouiller-dependances.sh --tout-mettre-a-jour` et les tests : Dependabot se met en pause seul et ne propose pas les montées majeures (89 alertes trouvées le 20/11/2026).
 
 ## Architecture
 
