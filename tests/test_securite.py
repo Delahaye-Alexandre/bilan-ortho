@@ -496,3 +496,87 @@ def test_transcription_rendue_meme_si_le_coffre_est_verrouille_a_la_main(client,
     monkeypatch.setattr(stt, "transcribe", transcription_puis_verrou)
     r = client.post("/api/transcribe", files={"audio": ("d.webm", b"x" * 64, "audio/webm")})
     assert r.status_code == 200 and r.json()["text"] == "Texte dicté."
+
+
+# --- relecture du 2026-11-20 : coffre et sauvegardes ---------------------------------
+
+def test_premier_lancement_interrompu_reste_un_premier_lancement(data_dir):
+    """Fichier vide, ou réduit à son en-tête chiffré : l'écran proposait de
+    « déverrouiller », créait le coffre sans contrôle, ou répondait « Passphrase
+    incorrecte » à vie."""
+    from fastapi.testclient import TestClient
+
+    from app import config, db, security
+    from app.main import app
+
+    chemin = config.db_path()
+    for prepare in ("vide", "entete"):
+        security.lock()
+        for f in chemin.parent.glob("bilan.db*"):
+            f.unlink()
+        if prepare == "vide":
+            chemin.write_bytes(b"")
+        else:
+            db.connect(chemin, "autre-passphrase-d-alors").close()  # en-tête seul
+        assert not security.db_exists()
+        with TestClient(app, base_url="http://127.0.0.1") as c:
+            assert c.get("/api/status").json()["first_run"] is True
+            assert c.post("/api/unlock", json={"passphrase": "abc"}).status_code == 400
+            assert c.post("/api/unlock", json={"passphrase": PASSPHRASE}).status_code == 200
+            assert c.get("/api/status").json()["first_run"] is False
+            assert c.get("/api/bilans").status_code == 200
+    security.lock()
+
+
+def test_sauvegarde_abimee_refusee_et_filet_preserve(client):
+    """Une copie abîmée au milieu du fichier remplaçait le coffre sain ; avec
+    une seule copie conservée, le filet d'avant restauration était effacé par
+    la sauvegarde automatique de la réouverture."""
+    from pathlib import Path
+
+    client.put("/api/config", json={"overrides": {"sauvegarde": {"retention": 1}}})
+    for i in range(120):
+        client.post("/api/patients", json={"nom": f"Essai {i}", "notes": "x" * 400})
+    saine = Path(client.post("/api/sauvegarde").json()["fichier"])
+    octets = bytearray(saine.read_bytes())
+    assert len(octets) > 3 * 4096
+    milieu = (len(octets) // 2 // 4096) * 4096 + 512
+    abimee = saine.with_name("bilan-ortho-sauvegarde-20991231-000000.db")
+    octets[milieu:milieu + 64] = b"\\0" * 64
+    abimee.write_bytes(bytes(octets))
+    r = client.post("/api/restauration", json={"fichier": abimee.name, "passphrase": PASSPHRASE})
+    assert r.status_code == 400 and "endommagée" in r.json()["detail"]
+    assert len(client.get("/api/patients").json()) == 120  # coffre intact
+    abimee.unlink()
+    client.post("/api/patients", json={"nom": "Travail du jour"})
+    r = client.post("/api/restauration", json={"fichier": saine.name, "passphrase": PASSPHRASE})
+    assert r.status_code == 200
+    filet = saine.with_name(r.json()["filet"])
+    assert filet.exists()  # plus effacé par la sauvegarde automatique
+
+
+def test_purge_annoncee_avant_et_apres(client):
+    """Réduire la durée de conservation détruisait des bilans au déverrouillage
+    suivant, sans annonce ni trace visible."""
+    from app import security
+
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    with security.transaction() as con:
+        con.execute("UPDATE bilan SET updated_at=datetime('now','-400 days') WHERE id=?", (bid,))
+    assert client.get("/api/rgpd/apercu-purge?jours=365").json() == {"bilans": 1, "patients": 0}
+    assert client.get("/api/rgpd/apercu-purge?jours=0").json() == {"bilans": 0, "patients": 0}
+    client.put("/api/config", json={"overrides": {"rgpd": {"conservation_jours": 365}}})
+    client.post("/api/lock")
+    r = client.post("/api/unlock", json={"passphrase": PASSPHRASE}).json()
+    assert "1 bilan(s) ancien(s)" in r["detail"]
+    assert client.get(f"/api/bilans/{bid}").status_code == 404
+
+
+def test_coffre_d_une_version_plus_recente_message_clair(client):
+    from app import security
+
+    with security.transaction() as con:
+        con.execute("PRAGMA user_version = 999")
+    client.post("/api/lock")
+    r = client.post("/api/unlock", json={"passphrase": PASSPHRASE})
+    assert r.status_code == 409 and "version plus récente" in r.json()["detail"]

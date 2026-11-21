@@ -186,6 +186,10 @@
   <button class="ghost" id="iaBannerRevoir" style="margin-left:8px">Revérifier</button>
   <button class="close" data-close="iaBanner" aria-label="Masquer cet avertissement" style="float:right">✕</button>
 </div>
+<div class="banner" id="ouvertureInfo" role="status" hidden>
+  <span></span>
+  <button class="ghost" type="button" id="ouvertureInfoOk">J'ai compris</button>
+</div>
 <div class="banner" id="majBanner" hidden>
   <div class="row" style="align-items:flex-start;gap:10px;flex-wrap:wrap">
     <div class="grow">
@@ -1031,6 +1035,13 @@ document.getElementById('instPasser').addEventListener('click', () => {
   document.getElementById('installOverlay').hidden = true;
   gateApresInstall();
 });
+function annoncerOuverture(texte) {
+  const zone = document.getElementById('ouvertureInfo');
+  if (!zone) return;
+  zone.hidden = !texte;
+  zone.querySelector('span').textContent = texte || '';
+}
+document.getElementById('ouvertureInfoOk').addEventListener('click', () => annoncerOuverture(''));
 async function doUnlock() {
   lockErr.textContent = '';
   const p = pass.value;
@@ -1042,8 +1053,14 @@ async function doUnlock() {
   const libelle = unlockBtn.textContent;
   unlockBtn.textContent = 'Déverrouillage…';
   try {
-    await api('/api/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: p }) });
+    const rep = await api('/api/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: p }) });
+    let ouverture = {};
+    try { ouverture = await rep.json(); } catch {}
     pass.value = ''; pass2.value = ''; overlay.hidden = true; startApp(); verifierVerrou();
+    // Ce que l'ouverture a fait de notable (bilans purgés par la durée de
+    // conservation, sauvegarde automatique en échec) n'était écrit que dans
+    // le journal d'audit, affiché nulle part.
+    annoncerOuverture(ouverture && ouverture.detail);
   } catch (e) { lockErr.textContent = e.message; }
   finally { unlockBtn.disabled = false; unlockBtn.textContent = libelle; }
 }
@@ -3873,7 +3890,21 @@ function collectSettings() {
 document.getElementById('cfgSave').addEventListener('click', async () => {
   const st = $('cfgStatus'); st.textContent = '…';
   try {
-    const r = await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: collectSettings() }) });
+    const reglages = collectSettings();
+    // Réduire la durée de conservation supprime des bilans au prochain
+    // déverrouillage : le dire, chiffres à l'appui, avant d'enregistrer.
+    const jours = Number(reglages.rgpd && reglages.rgpd.conservation_jours) || 0;
+    if (jours > 0) {
+      const a = await (await api(`/api/rgpd/apercu-purge?jours=${jours}`)).json();
+      if ((a.bilans || a.patients) && !confirm(
+        `Avec cette durée de conservation, ${a.bilans} bilan(s) et ${a.patients} fiche(s) patient `
+        + `seront supprimés définitivement à la prochaine ouverture de l'application.\n\n`
+        + `OK : enregistrer ce réglage.\nAnnuler : ne rien enregistrer.`)) {
+        st.textContent = 'Non enregistré — durée de conservation à revoir.';
+        return;
+      }
+    }
+    const r = await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: reglages }) });
     fillSettings(await r.json()); st.textContent = '✓ enregistré';
     loadLLM(); initDictee();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }

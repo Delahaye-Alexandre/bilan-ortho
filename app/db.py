@@ -321,6 +321,13 @@ def _migrer_v2(con) -> None:
         con.execute("ALTER TABLE section ADD COLUMN signalements TEXT")
 
 
+class CoffreTropRecent(RuntimeError):
+    """Le coffre porte un schéma plus récent que cette version de l'application
+    (retour à un ancien installeur). Mappée en 409 par le serveur : le message
+    écrit pour ce cas n'arrivait jamais, l'interface affichait « erreur serveur
+    (500) » et la personne croyait son coffre perdu."""
+
+
 def migrate(con) -> None:
     """Migrations incrémentales des coffres existants (``PRAGMA user_version``).
 
@@ -338,7 +345,7 @@ def migrate(con) -> None:
         # on estampille simplement.
         v = 1
     if v > SCHEMA_VERSION:
-        raise RuntimeError(
+        raise CoffreTropRecent(
             f"Schéma de coffre version {v} inattendu (application : {SCHEMA_VERSION}). "
             "Ce coffre a été créé par une version plus récente de l'application."
         )

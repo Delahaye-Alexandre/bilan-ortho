@@ -70,8 +70,42 @@ def passphrase_faible(p: str) -> str:
     return ""
 
 
+# Une base SQLCipher qui porte au moins une table occupe deux pages. Un fichier
+# d'une page au plus (4096 octets) est un premier lancement interrompu : vide
+# (le fichier est créé avant toute écriture), ou réduit à son en-tête chiffré
+# (écrit dès le passage en mode WAL, avant le schéma).
+_TAILLE_COFFRE_MIN = 4096
+
+
+def _coffre_absent(chemin: Path) -> bool:
+    """Vrai s'il n'y a pas encore de coffre : aucun fichier, ou le reste d'un
+    premier lancement interrompu. Ce reste était pris pour un coffre : l'écran
+    demandait de « déverrouiller », créait le coffre avec ce qui était tapé
+    (sans confirmation ni contrôle), ou répondait « Passphrase incorrecte » à
+    vie quand l'en-tête avait déjà été écrit."""
+    try:
+        if chemin.stat().st_size > _TAILLE_COFFRE_MIN:
+            return False
+    except OSError:
+        return True
+    # Un coffre tout juste créé tient encore dans son journal (mode WAL) tant
+    # qu'aucun point de contrôle n'a eu lieu : le fichier principal ne fait
+    # alors qu'une page, mais le coffre existe bel et bien.
+    try:
+        return Path(str(chemin) + "-wal").stat().st_size == 0
+    except OSError:
+        return True
+
+
+def _sans_aucune_table(con) -> bool:
+    try:
+        return con.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()[0] == 0
+    except Exception:
+        return False
+
+
 def db_exists() -> bool:
-    return config.db_path().exists()
+    return not _coffre_absent(config.db_path())
 
 
 def is_unlocked() -> bool:
@@ -79,11 +113,26 @@ def is_unlocked() -> bool:
         return _state["con"] is not None
 
 
-def unlock(passphrase: str, purge: bool = True) -> bool:
+# Ce que le dernier déverrouillage a fait de notable (purge de conservation,
+# sauvegarde automatique en échec) : le journal d'audit en était le seul
+# témoin, et il n'est affiché nulle part.
+_bilan_deverrouillage: list[str] = []
+
+
+def bilan_deverrouillage() -> str:
+    """Message à afficher après le déverrouillage ('' s'il n'y a rien à dire)."""
+    with _lock:
+        return " ".join(_bilan_deverrouillage)
+
+
+def unlock(passphrase: str, purge: bool = True, sauvegarde_auto: bool = True) -> bool:
     """Déverrouille (ou crée au 1er lancement) la base. False si passphrase KO.
 
     ``purge=False`` désarme la purge RGPD pour ce seul déverrouillage : c'est
     le cas d'une base qu'on vient de restaurer (cf. :func:`restaurer`).
+    ``sauvegarde_auto=False`` désarme de même la sauvegarde automatique : sa
+    rotation emportait la copie de sécurité prise juste avant la restauration
+    quand une seule copie est conservée.
     """
     with _lock:
         if _state["con"] is not None:
@@ -93,13 +142,24 @@ def unlock(passphrase: str, purge: bool = True) -> bool:
         # coffre : ``sqlcipher3.connect()`` crée le fichier AVANT d'y écrire
         # quoi que ce soit. Le traiter comme une base existante le rendrait
         # définitivement inouvrable maintenant que verify() exige le schéma.
-        first_run = not chemin.exists() or chemin.stat().st_size == 0
+        first_run = _coffre_absent(chemin)
+        if first_run:
+            # Reste d'un premier lancement interrompu : son en-tête est chiffré
+            # avec la passphrase d'alors, on repart d'un fichier neuf.
+            chemin.unlink(missing_ok=True)
+            _supprimer_sidecars(chemin)
+        _bilan_deverrouillage.clear()
         try:
             con = db.connect(chemin, passphrase)
         except Exception:
             # Base illisible : mauvaise passphrase (ou fichier corrompu).
             return False
         try:
+            if not first_run and not db.verify(con) and _sans_aucune_table(con):
+                # Bonne passphrase, aucun schéma : la création du coffre a été
+                # interrompue après l'écriture de l'en-tête. On la termine, au
+                # lieu de répondre « Passphrase incorrecte » à vie.
+                first_run = True
             if first_run:
                 db.init_schema(con)
             elif not db.verify(con):
@@ -134,7 +194,8 @@ def unlock(passphrase: str, purge: bool = True) -> bool:
             raise
         # Hors du bloc protégé, et volontairement : une sauvegarde qui échoue
         # ne doit pas refermer un coffre correctement ouvert.
-        _sauvegarde_auto(con)
+        if sauvegarde_auto:
+            _sauvegarde_auto(con)
         _armer_minuteur()
         return True
 
@@ -241,6 +302,22 @@ def _verifier_copie(chemin: Path, passphrase: str) -> None:
     try:
         if not db.verify(con):
             raise illisible
+        # Toutes les pages, pas seulement la première : une copie abîmée au
+        # milieu (clé USB défaillante, synchronisation corrompue) passait ce
+        # contrôle, remplaçait le coffre sain par un coffre illisible, et le
+        # retour à la copie de sécurité échouait à son tour.
+        try:
+            abime = con.execute("PRAGMA cipher_integrity_check").fetchall() or [
+                r for r in con.execute("PRAGMA quick_check").fetchall() if r[0] != "ok"
+            ]
+        except Exception:
+            abime = [("illisible",)]
+        if abime:
+            raise RestaurationImpossible(
+                "Cette sauvegarde est endommagée : une partie du fichier est "
+                "illisible. Votre coffre actuel n'a pas été touché. Choisissez "
+                "une autre sauvegarde."
+            )
         version = con.execute("PRAGMA user_version").fetchone()[0]
         if version > db.SCHEMA_VERSION:
             raise RestaurationImpossible(
@@ -294,7 +371,16 @@ def restaurer(nom_fichier: str, passphrase: str) -> dict:
             # Filet : la base actuelle reste récupérable depuis le dossier de
             # sauvegarde en cas de regret. (Son journal d'audit part avec elle
             # — l'entrée « restauration » vit dans la base restaurée.)
-            filet = sauvegarde.creer(con, cfg)
+            try:
+                filet = sauvegarde.creer(con, cfg)
+            except (CoffreVerrouille, sauvegarde.SupportIntrouvable):
+                raise
+            except Exception as exc:
+                # Le coffre courant est lui-même abîmé : la copie page à page
+                # échoue. On en garde quand même une copie brute, sans quoi la
+                # restauration d'une copie saine restait impossible.
+                logger.warning("Copie de sécurité page à page impossible (%s) : copie brute", exc)
+                filet = sauvegarde.copie_brute(con, cfg)
             # Fermer la connexion (checkpoint WAL) puis purger d'éventuels
             # fichiers annexes orphelins : sous Windows, os.replace échoue sur
             # un fichier encore ouvert.
@@ -311,7 +397,7 @@ def restaurer(nom_fichier: str, passphrase: str) -> dict:
                     "intactes. Réessayez, ou redémarrez l'application."
                 )
             try:
-                reouvert = unlock(passphrase, purge=False)
+                reouvert = unlock(passphrase, purge=False, sauvegarde_auto=False)
             except Exception as exc:
                 raise RuntimeError(
                     "La sauvegarde a bien été restaurée, mais la réouverture "
@@ -474,6 +560,24 @@ def bilans_a_purger(con) -> list[int]:
     ]
 
 
+def apercu_purge(con, jours: int) -> dict:
+    """Décompte de ce que la purge supprimerait avec ``jours`` de conservation."""
+    if jours <= 0:
+        return {"bilans": 0, "patients": 0}
+    delai = (f"-{int(jours)} days",)
+    bilans = con.execute(
+        "SELECT COUNT(*) FROM bilan WHERE updated_at < datetime('now', ?)", delai
+    ).fetchone()[0]
+    # Fiches qui n'auraient plus aucun bilan une fois ceux-là partis.
+    patients = con.execute(
+        "SELECT COUNT(*) FROM patient p WHERE p.created_at < datetime('now', ?) "
+        "AND NOT EXISTS (SELECT 1 FROM bilan b WHERE b.patient_id = p.id "
+        "AND b.updated_at >= datetime('now', ?))",
+        delai * 2,
+    ).fetchone()[0]
+    return {"bilans": bilans, "patients": patients}
+
+
 def _purge_conservation(con) -> None:
     """Purge RGPD : supprime les bilans inactifs depuis plus de
     ``rgpd.conservation_jours`` jours (0 = conservation illimitée). Les
@@ -535,6 +639,17 @@ def _purge_conservation(con) -> None:
             + ", ".join(str(i) for i in orphelins)
         )
     audit("purge_conservation", "bilan", None, " ; ".join(parts))
+    _bilan_deverrouillage.append(
+        "Conservation limitée à " + str(jours) + " jours : "
+        + " et ".join(
+            x for x in (
+                f"{len(ids)} bilan(s) ancien(s)" if ids else "",
+                f"{len(orphelins)} fiche(s) patient sans bilan" if orphelins else "",
+            ) if x
+        )
+        + " supprimé(s) à l'ouverture (réglage dans ⚙️ Paramètres → Sécurité et "
+        "sauvegardes ; les sauvegardes antérieures les contiennent encore)."
+    )
 
 
 def _sauvegarde_auto(con) -> None:
@@ -552,6 +667,9 @@ def _sauvegarde_auto(con) -> None:
         con.commit()
     except Exception as exc:
         logger.warning("Sauvegarde automatique impossible : %s", exc)
+        _bilan_deverrouillage.append(
+            "⚠️ La sauvegarde automatique n'a pas pu être faite : " + str(exc)[:200]
+        )
         try:
             con.rollback()
             audit("sauvegarde_auto_echec", "app", None, str(exc)[:200])

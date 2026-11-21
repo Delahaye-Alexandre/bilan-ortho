@@ -7,6 +7,23 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Réduire la durée de conservation ne supprime plus rien en silence.**
+  L'écran Paramètres annonce combien de bilans et de fiches partiront à la
+  prochaine ouverture et demande confirmation ; à l'ouverture, un bandeau dit
+  ce qui a été supprimé. Le même bandeau signale une sauvegarde automatique
+  qui échoue (clé USB absente) : elle pouvait échouer des semaines sans que
+  rien ne s'affiche.
+- **Restauration plus sûre.** Une sauvegarde abîmée au milieu du fichier est
+  refusée avant de toucher au coffre (elle le remplaçait par un coffre
+  illisible) ; la copie de sécurité prise avant la restauration n'est plus
+  effacée dans la foulée quand une seule copie est conservée ; un coffre
+  lui-même abîmé n'empêche plus de restaurer une copie saine.
+- **Premier lancement interrompu** (coupure, disque plein, antivirus) :
+  l'application repropose de créer le coffre, avec confirmation de la
+  passphrase, au lieu de « Passphrase incorrecte » à chaque essai.
+- Un coffre ouvert par une version plus récente donne un message clair au
+  lieu de « erreur serveur » ; l'état de l'application répond même pendant un
+  déverrouillage lent (un second clic sur l'icône lançait un second serveur).
 - **Transcription de la dictée presque deux fois plus rapide.** La liste de 41
   mots-clés génériques transmise à la reconnaissance vocale doublait le temps
   de calcul. Elle est remplacée par quelques termes d'étalonnage et les noms

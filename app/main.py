@@ -38,6 +38,7 @@ from . import (
     catalogues,
     config,
     cotation,
+    db,
     export,
     importer,
     llm,
@@ -98,6 +99,16 @@ async def coffre_verrouille_handler(request, exc: security.CoffreVerrouille):
     (course multi-onglets via POST /api/lock) : 423 sur TOUTES les routes,
     plutôt qu'un 500 opaque — l'interface ré-affiche l'écran de verrouillage."""
     return JSONResponse(status_code=423, content={"detail": "Application verrouillée."})
+
+
+@app.exception_handler(db.CoffreTropRecent)
+async def coffre_trop_recent_handler(request, exc: db.CoffreTropRecent):
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "Ce coffre a été ouvert par une version plus récente de "
+                           "l'application : installez la dernière version pour "
+                           "l'ouvrir. Vos données sont intactes."},
+    )
 
 
 @app.exception_handler(sauvegarde.SupportIntrouvable)
@@ -217,13 +228,25 @@ async def status() -> StatusResponse:
 
 
 def _statut() -> StatusResponse:
-    security.enforce_inactivity()
     exists = security.db_exists()
-    return StatusResponse(
-        db_exists=exists, unlocked=security.is_unlocked(), first_run=not exists,
-        version=__version__,
-        verrouillage_dans_s=security.secondes_avant_verrouillage(),
-    )
+    # Pendant un déverrouillage lent (sauvegarde automatique vers une clé USB),
+    # le verrou interne est tenu plusieurs secondes : le lanceur, qui sonde
+    # cette route avec un délai court, concluait « aucune instance » et lançait
+    # un second serveur sur le même coffre. On répond sans attendre.
+    if not security._lock.acquire(timeout=0.2):
+        return StatusResponse(
+            db_exists=exists, unlocked=security._state["con"] is not None,
+            first_run=not exists, version=__version__, verrouillage_dans_s=None,
+        )
+    try:
+        security.enforce_inactivity()
+        return StatusResponse(
+            db_exists=exists, unlocked=security.is_unlocked(), first_run=not exists,
+            version=__version__,
+            verrouillage_dans_s=security.secondes_avant_verrouillage(),
+        )
+    finally:
+        security._lock.release()
 
 
 def _refuser_passphrase_faible(p: str) -> None:
@@ -255,7 +278,9 @@ async def unlock(req: UnlockRequest) -> OkResponse:
     # peuvent prendre plusieurs secondes sur une grosse base — l'event loop
     # (keepalive, dictée) doit rester réactif.
     if await run_in_threadpool(security.unlock, req.passphrase):
-        return OkResponse(ok=True)
+        # Purge de conservation effectuée, sauvegarde automatique en échec :
+        # l'interface l'affiche, le journal d'audit n'étant montré nulle part.
+        return OkResponse(ok=True, detail=security.bilan_deverrouillage())
     raise HTTPException(401, "Passphrase incorrecte.")
 
 
@@ -356,6 +381,17 @@ async def put_config(patch: ConfigPatch) -> dict:
             if msg:
                 raise HTTPException(422, msg)
         return store.set_overrides(overrides)
+
+
+@app.get("/api/rgpd/apercu-purge", dependencies=[Depends(require_unlock)])
+async def apercu_purge(jours: int) -> dict:
+    """Ce qu'une durée de conservation supprimerait au prochain déverrouillage.
+
+    Le réglage ressemble à un filtre d'affichage et détruit des pièces du
+    dossier de soins : l'écran Paramètres annonce le décompte et demande
+    confirmation avant de l'enregistrer."""
+    with security.transaction() as con:
+        return security.apercu_purge(con, jours)
 
 
 @app.delete("/api/config", dependencies=[Depends(require_unlock)])

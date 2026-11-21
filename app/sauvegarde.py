@@ -158,6 +158,20 @@ def creer(con, cfg: dict) -> dict:
     return {"fichier": str(cible), "octets": cible.stat().st_size}
 
 
+def copie_brute(con, cfg: dict) -> dict:
+    """Copie du fichier du coffre tel quel, quand ``VACUUM INTO`` échoue parce
+    que le coffre courant est abîmé : dernier filet avant une restauration."""
+    d = dossier(cfg)
+    try:
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except Exception:
+        pass
+    cible = _nom_libre(d, PREFIXE + datetime.now().strftime("%Y%m%d-%H%M%S") + "-brut")
+    shutil.copyfile(config.db_path(), cible)
+    config.restreindre_acces(cible)
+    return {"fichier": str(cible), "octets": cible.stat().st_size}
+
+
 def _dossier_ou_interne(cfg: dict) -> Path:
     """Dossier de sauvegarde configuré ; à défaut (support débranché), le
     dossier interne — pour un filet de sécurité, mieux vaut le disque interne
