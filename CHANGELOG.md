@@ -7,6 +7,8 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+## 1.15.1 — 2026-11-21
+
 - **L'analyse fonctionne de nouveau avec le modèle compact (qwen3.5:4b)**, celui
   que l'installation propose sur les postes modestes. Ce modèle rend sa réponse
   entre balises de code ; depuis la 1.15.0, elle était rejetée comme
