@@ -198,3 +198,16 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
 
 ## Lancer
 `./run.sh` → http://localhost:8000 (bind 127.0.0.1). Données : `~/.local/share/bilan-ortho/` (surchargeable via `BILAN_ORTHO_DATA_DIR`).
+
+- [x] **Relecture du 2026-11-20 (v1.14.0 + non publié)** *(fait, testé ; non poussé)*
+  - Cinq relectures croisées (chaîne IA, coffre, export/import, interface, API et docs), puis dix lots, un commit chacun.
+  - Dépendances : 89 alertes de sécurité fermées (Pillow 13, pypdf 6.21, cryptography 50, certifi, filelock), verrouillage avec délai de carence et plafonds motivés, actions de la CI en v7.
+  - Document : signe moins des étalonnages (« −2,1 » classé « dans la norme »), bilan validé qui redevient brouillon dès qu'il change, validation d'ensemble attestée, âge du prompt aligné sur l'en-tête.
+  - Temps de rédaction : transcription presque deux fois plus rapide (mots-clés courts + tests du domaine), dictée longue qui aboutit toujours (verrouillage suspendu pendant le calcul), saisie des épreuves en série.
+  - Pertes de saisie : dictée déposée dans le dossier suivant, texte tapé pendant l'analyse, ajout de l'analyse masqué par une correction, passage non rangé.
+  - Coffre : purge annoncée, sauvegarde abîmée refusée, filet préservé, premier lancement interrompu repris ; bilans de référence réindexés au changement de modèle d'embeddings.
+  - Confidentialité : adresse d'Ollama garantie locale à l'appel, modèle de dictée chargé sans appel à Hugging Face.
+  - Export/import, messages en français, documentation recalée sur le code.
+  - **Vérifié** : 469 tests, ruff, sept suites UI ; passe réelle sur coffre jetable (27 contrôles par l'API avec vraie dictée et Ollama, 11 dans Chromium).
+  - **Reste** (détail hors dépôt) : numérotation des listes interrompues, PDF scanné à mince couche de texte, gabarit Word à plusieurs sections, relance d'analyse qui double le contenu, deux onglets sur la même rubrique, fermeture des Paramètres sans confirmation, accessibilité (noms des boutons ✕, focus rendu, contraste des bordures), installeur (dossier supprimé avant copie, à éprouver sur la CI Windows).
+
