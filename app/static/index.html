@@ -69,6 +69,10 @@
   .verif { background: #fef2f2; border-left: 3px solid #b91c1c; color: #7f1d1d;
            font-size: 13px; padding: 8px 10px; border-radius: 4px; margin-bottom: 8px; }
   .verif b { color: #b91c1c; }
+  .relecture { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; position: sticky; top: 0; z-index: 5;
+               background: #fffbeb; border: 1px solid #f59e0b; border-radius: 10px; padding: 8px 14px; margin-bottom: 16px; font-size: 14px; }
+  .relecture.faite { background: #ecfdf5; border-color: #10b981; }
+  .relecture .muted { font-size: 12px; }
   .q { border: 1px solid #fed7aa; background: #fff7ed; border-radius: 10px;
        padding: 10px 12px; margin-bottom: 10px; }
   .q .ans { margin-top: 8px; }
@@ -1490,7 +1494,7 @@ async function loadRecents(ajouter = false) {
     const el = document.getElementById('recents');
     el.innerHTML = (RECENTS.length ? RECENTS.map(b => {
       const pat = b.patient_nom ? `${(b.patient_nom || '').toUpperCase()} ${b.patient_prenom || ''}`.trim() + ' · ' : '';
-      return `<a href="#" data-id="${b.id}">#${b.id} · ${escapeHtml(pat)}${escapeHtml(b.domaine_titres || 'Générique')} <span class="muted">(${escapeHtml(b.statut || '')})</span></a>`;
+      return `<a href="#" data-id="${b.id}">#${b.id} · ${escapeHtml(pat)}${escapeHtml(b.domaine_titres || 'Générique')} <span class="muted">(${escapeHtml(libelleStatut(b.statut))})</span></a>`;
     }).join('') : '—') +
       (page.length === RECENTS_PAGE ? '<a href="#" data-plus>… afficher plus</a>' : '');
     el.querySelectorAll('a[data-id]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); loadBilan(a.dataset.id); }));
@@ -1515,7 +1519,7 @@ function curLabel() {
   suivre('btype', CUR && CUR.type);
   const pat = CUR && CUR.patient ? patLabel(CUR.patient) + ' · ' : '';
   document.getElementById('curBilan').textContent =
-    CUR ? `#${CUR.id} · ${pat}${CUR.domaine_titres || 'Générique'} · ${CUR.statut}` : 'aucun';
+    CUR ? `#${CUR.id} · ${pat}${CUR.domaine_titres || 'Générique'} · ${libelleStatut(CUR.statut)}` : 'aucun';
 }
 // Un bilan validé ou envoyé dont le contenu change redevient un brouillon
 // (décidé par le serveur) : le dire, sinon le changement de statut passe
@@ -1938,12 +1942,64 @@ function rtColler(ed, e) {
     const r = sel.getRangeAt(0); r.deleteContents(); r.insertNode(frag); r.collapse(false);
   } else ed.appendChild(frag);
 }
+// ---------- Relecture guidée ----------
+// Après l'analyse, l'orthophoniste relit et valide rubrique par rubrique : la
+// barre dit ce qui reste et y mène, Ctrl+Entrée valide la rubrique en cours et
+// passe à la suivante. Sans elle, il fallait parcourir toute la page à la
+// recherche des badges « à valider ».
+function rubriquesARelire() {
+  if (!CUR) return [];
+  return (CUR.sections || []).filter(s => (s.contenu || '').trim() && (
+    s.statut === 'propose_ia' || (s.signalements || []).length
+    || (VERIF_BILAN === CUR.id && (VERIF[s.cle] || []).length)));
+}
+function majRelecture() {
+  const barre = document.getElementById('relectureBarre');
+  if (!barre || !CUR) return;
+  const remplies = (CUR.sections || []).filter(s => (s.contenu || '').trim());
+  const reste = rubriquesARelire();
+  barre.hidden = !remplies.length;
+  barre.classList.toggle('faite', !reste.length);
+  if (!reste.length) {
+    barre.textContent = CUR.statut === 'brouillon'
+      ? '✓ Toutes les rubriques remplies sont validées — il reste à marquer le bilan validé, en bas de page.'
+      : '✓ Bilan ' + libelleStatut(CUR.statut) + '.';
+    return;
+  }
+  const signalees = reste.filter(s => (s.signalements || []).length || (VERIF_BILAN === CUR.id && (VERIF[s.cle] || []).length)).length;
+  barre.innerHTML = `<span><b>${reste.length} rubrique(s) à relire</b>`
+    + (signalees ? ` dont ${signalees} avec un point à vérifier` : '') + '</span>'
+    + '<button class="ghost" id="relectureSuivante" type="button">Aller à la suivante</button>'
+    + '<span class="muted">Ctrl+Entrée dans une rubrique : la valider et passer à la suivante</span>';
+  document.getElementById('relectureSuivante').addEventListener('click', () => allerARelire(null));
+}
+// Mène à la première rubrique à relire après `apresCle` (ou depuis le haut).
+function allerARelire(apresCle) {
+  const reste = rubriquesARelire();
+  if (!reste.length) return false;
+  const ordre = (CUR.sections || []).map(s => s.cle);
+  const depuis = apresCle ? ordre.indexOf(apresCle) : -1;
+  const cible = reste.find(s => ordre.indexOf(s.cle) > depuis) || reste[0];
+  const sec = [...document.querySelectorAll('#bilanView .sec[data-cle]')].find(x => x.dataset.cle === cible.cle);
+  if (!sec) return false;
+  if (sec.scrollIntoView) sec.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  const ed = sec.querySelector('.secText'); if (ed) ed.focus({ preventScroll: true });
+  return true;
+}
+const libelleStatut = (st) => ({ brouillon: 'brouillon', valide: 'validé', envoye: 'envoyé' }[st] || st || '');
 function activerEditeur(sec, ed) {
   sec.querySelectorAll('.rt-bar button').forEach(b => {
     b.addEventListener('mousedown', e => e.preventDefault()); // garde la sélection dans l'éditeur
     b.addEventListener('click', () => { ed.focus(); if (document.execCommand) document.execCommand(b.dataset.cmd, false, null); });
   });
   ed.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      // Valider la rubrique telle qu'elle est à l'écran, puis la suivante à relire.
+      e.preventDefault();
+      const cle = sec.dataset.cle;
+      saveSection(cle, rtVersMd(ed), 'valide', sec).then(() => { allerARelire(cle); });
+      return;
+    }
     const cmd = (e.ctrlKey || e.metaKey) && !e.altKey && RT_RACCOURCIS[e.key.toLowerCase()];
     if (cmd) { e.preventDefault(); if (document.execCommand) document.execCommand(cmd, false, null); }
   });
@@ -2001,7 +2057,8 @@ function renderBilan() {
         <div class="row" style="margin-top:8px"><button class="ghost save">Enregistrer</button><span class="status savest"></span></div>
       </div>
     </div>`).join('');
-  root.innerHTML = sectionsHtml + epreuvesCardHtml();
+  root.innerHTML = '<div class="relecture" id="relectureBarre" role="status" hidden></div>' + sectionsHtml + epreuvesCardHtml();
+  majRelecture();
   root.querySelectorAll('.sec[data-cle]').forEach(sec => {
     const cle = sec.dataset.cle;
     const ta = sec.querySelector('.secText');
@@ -2208,6 +2265,7 @@ async function saveSection(cle, contenu, statut, sec) {
     delete VERIF[cle];
     const av = sec.querySelector('.verif'); if (av) av.remove();
     st.textContent = '✓';
+    majRelecture();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }
 // ---------- « Ce qui est à l'écran est ce qui part » ----------

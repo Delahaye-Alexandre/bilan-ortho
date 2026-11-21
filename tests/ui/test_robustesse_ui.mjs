@@ -1466,5 +1466,29 @@ check("fin d'analyse : un bilan validé redevenu brouillon est annoncé",
   document.getElementById("coteInfo").textContent.includes("redevient un brouillon"));
 document.getElementById("dicteeText").value = "";
 
+// === Relecture guidée : ce qui reste à relire, et Ctrl+Entrée pour enchaîner ===
+{
+  const b = structuredClone(CUR0);
+  b.sections = [
+    { cle: "anamnese", titre: "Anamnèse", statut: "propose_ia", contenu: "Texte A.", signalements: ["chiffre(s) absent(s) : 42"] },
+    { cle: "diagnostic", titre: "Diagnostic", statut: "propose_ia", contenu: "Texte D.", signalements: [] },
+  ];
+  __t.CUR = b; __t.renderBilan();
+  const barre = () => document.getElementById("relectureBarre");
+  check("relecture : la barre annonce 2 rubriques, dont 1 avec un point à vérifier",
+    !barre().hidden && barre().textContent.includes("2 rubrique(s) à relire") && barre().textContent.includes("dont 1"));
+  sectionPuts = [];
+  secTa("anamnese").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }));
+  await settle();
+  check("relecture : Ctrl+Entrée valide la rubrique",
+    sectionPuts.length === 1 && sectionPuts[0].body.statut === "valide");
+  check("relecture : la barre passe à 1 rubrique", barre().textContent.includes("1 rubrique(s) à relire"));
+  check("relecture : le curseur passe à la rubrique suivante", document.activeElement === secTa("diagnostic"));
+  secTa("diagnostic").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }));
+  await settle();
+  check("relecture : tout est validé, la barre invite à marquer le bilan validé",
+    barre().classList.contains("faite") && barre().textContent.includes("marquer le bilan validé"));
+}
+
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

@@ -7,6 +7,12 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Relecture guidée.** Une barre, toujours visible en haut du compte-rendu,
+  dit combien de rubriques restent à relire et lesquelles portent un point à
+  vérifier ; « Aller à la suivante » y mène, et Ctrl+Entrée dans une rubrique
+  la valide et passe à la suivante. Il fallait parcourir la page à la
+  recherche des badges « à valider ». Les statuts s'affichent en clair
+  (« validé », « envoyé »).
 - **Import de vos bilans de référence** : un PDF numérisé qui porte une mince
   couche de texte (« Numérisé avec… ») passe bien à la reconnaissance de
   caractères au lieu d'être importé vide ; le texte d'un lien dans un document
