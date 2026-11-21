@@ -993,6 +993,15 @@ async def transcribe(
     return result
 
 
+@app.post("/api/llm/prechauffe", dependencies=[Depends(require_unlock)])
+async def prechauffer_modele() -> OkResponse:
+    """Charge le modèle d'analyse pendant que la dictée est relue (au mieux)."""
+    with security.transaction() as con:
+        cfg = config.ConfigStore(con).effective()
+    asyncio.get_running_loop().create_task(llm.prechauffer(cfg))
+    return OkResponse(ok=True)
+
+
 # --- Patients -----------------------------------------------------------------
 
 @app.get("/api/patients", dependencies=[Depends(require_unlock)])

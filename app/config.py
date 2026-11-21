@@ -213,6 +213,11 @@ DEFAULTS: dict[str, Any] = {
         # transmis que partiellement au modèle (début conservé) ; la réponse
         # de /structure signale les rubriques concernées.
         "max_car_section": 1500,
+        # Minutes pendant lesquelles Ollama garde le modèle en mémoire après un
+        # appel. Son défaut (5 min) le déchargeait pendant chaque dictée : la
+        # première analyse qui suivait payait un rechargement (10 s mesurées
+        # ici sur disque rapide, davantage ailleurs). 0 = défaut d'Ollama.
+        "garder_en_memoire_min": 20,
     },
     "stt": {
         # "auto" -> stt.py détecte GPU/VRAM et choisit le modèle adapté.

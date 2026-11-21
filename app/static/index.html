@@ -2626,6 +2626,9 @@ async function transcrire(blob) {
     dicteeText.value += (dicteeText.value ? ' ' : '') + res.text;
     DERNIER_AUDIO = null;
     recStatus.textContent = '✓ transcrit';
+    // Le modèle d'analyse se charge pendant la relecture de la dictée, au lieu
+    // de faire attendre au moment de « Structurer » (au mieux, sans message).
+    api('/api/llm/prechauffe', { method: 'POST' }).catch(() => {});
   } catch (e) {
     DERNIER_AUDIO = blob;
     recStatus.textContent = `Erreur : ${e.message} — votre enregistrement est conservé en mémoire, rien à redicter. `;

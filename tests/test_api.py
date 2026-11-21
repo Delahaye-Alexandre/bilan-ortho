@@ -1891,3 +1891,19 @@ def test_relance_sur_la_meme_dictee_remplace_au_lieu_de_doubler(client, monkeypa
     r3 = client.post(f"/api/bilans/{bid}/structure", json=dictee).json()
     assert {s["cle"]: s["contenu"] for s in r3["bilan"]["sections"]}["anamnese"] == (
         "Version relue à la main.\n\nTroisième formulation.")
+
+
+def test_modele_garde_en_memoire_et_prechauffe(client, monkeypatch):
+    """Ollama déchargeait le modèle au bout de 5 minutes, donc pendant chaque
+    dictée : l'analyse suivante payait un rechargement."""
+    assert llm._garder(20) == {"keep_alive": "20m"}
+    assert llm._garder(0) == llm._garder(None) == llm._garder("x") == {}
+    assert config.DEFAULTS["llm"]["garder_en_memoire_min"] == 20
+    vus = []
+
+    async def faux(cfg):
+        vus.append(cfg["llm"]["model"])
+        return True
+
+    monkeypatch.setattr(llm, "prechauffer", faux)
+    assert client.post("/api/llm/prechauffe").json()["ok"] is True

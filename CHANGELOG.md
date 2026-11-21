@@ -7,6 +7,16 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+## 1.15.0 — 2026-11-21
+
+Une relecture complète de l'application, du point de vue de l'orthophoniste :
+moins d'attente, aucune saisie perdue, un compte-rendu qui dit exactement ce
+qui a été validé.
+
+- **L'analyse démarre plus vite.** Le modèle d'IA était déchargé de la mémoire
+  pendant chaque dictée et rechargé au moment de « Structurer » (une dizaine de
+  secondes, davantage sur un disque lent). Il reste en mémoire vingt minutes
+  et se recharge, s'il le faut, pendant que vous relisez votre dictée.
 - **Relancer l'analyse ne double plus le texte.** Quand l'application invite à
   relancer (analyse incomplète, passage non rangé), la nouvelle proposition
   remplace celle du passage précédent au lieu de s'y ajouter ; une rubrique

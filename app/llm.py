@@ -55,6 +55,7 @@ async def chat_json(
     host: str | None = None,
     num_ctx: int | None = None,
     timeout_s: float | None = 600,
+    garder_min: int | None = None,
 ) -> str:
     """Appel Ollama /api/chat en mode JSON forcé (non streamé). Retourne le texte.
 
@@ -70,6 +71,47 @@ async def chat_json(
     options = {"temperature": temperature}
     if num_ctx:
         options["num_ctx"] = int(num_ctx)
+    return await _appel_chat(nom, system, user, options, host, timeout_s, garder_min)
+
+
+def _garder(minutes) -> dict:
+    try:
+        m = int(minutes or 0)
+    except (TypeError, ValueError):
+        m = 0
+    return {"keep_alive": f"{m}m"} if m > 0 else {}
+
+
+async def prechauffer(cfg: dict) -> bool:
+    """Charge le modèle d'analyse en mémoire, sans rien lui faire rédiger.
+
+    Appelé quand une dictée vient d'être transcrite : le chargement (plusieurs
+    secondes à chaque fois que le modèle a été déchargé) se fait pendant que
+    l'orthophoniste relit sa dictée, plus pendant qu'elle attend l'analyse.
+    Mêmes options que l'analyse — une autre fenêtre de contexte ferait
+    recharger le modèle. Au mieux : un échec est sans conséquence."""
+    llmcfg = cfg["llm"]
+    nom = llmcfg.get("model") or OLLAMA_MODEL
+    if systeme.nom_modele_cloud(nom):
+        return False
+    options = {}
+    if llmcfg.get("num_ctx"):
+        options["num_ctx"] = int(llmcfg["num_ctx"])
+    payload = {"model": nom, "messages": [], "stream": False, "options": options,
+               **_garder(llmcfg.get("garder_en_memoire_min"))}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=5)) as client:
+            hote = hote_ollama(llmcfg.get("host")) if llmcfg.get("host") else OLLAMA_HOST
+            resp = await client.post(f"{hote}/api/chat", json=payload)
+            return resp.status_code == 200
+    except httpx.HTTPError:
+        return False
+
+
+async def _appel_chat(
+    nom: str, system: str, user: str, options: dict, host: str | None,
+    timeout_s: float | None, garder_min=None,
+) -> str:
     payload = {
         "model": nom,
         "messages": [
@@ -82,6 +124,7 @@ async def chat_json(
         # Modèles à raisonnement (qwen3.5…) : réponse directe exigée, sinon
         # des minutes de « réflexion » sur CPU avant le JSON.
         "think": False,
+        **_garder(garder_min),
     }
     timeout = httpx.Timeout(timeout_s or 600, connect=10)
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -383,6 +426,7 @@ async def structure(
         host=llmcfg.get("host"),
         num_ctx=llmcfg.get("num_ctx"),
         timeout_s=llmcfg.get("timeout_s"),
+        garder_min=llmcfg.get("garder_en_memoire_min"),
     )
     result = _parse_structure(raw)
     # Rattachement des clés rendues par le modèle. Ce qui ne se rattache à
