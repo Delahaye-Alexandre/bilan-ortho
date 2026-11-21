@@ -7,6 +7,21 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Saisie des épreuves en série** : après « Ajouter », le nom du test et
+  l'échelle restent, le curseur revient sur « Sous-épreuve », et Entrée ajoute
+  l'épreuve — il fallait retaper le nom du test et recliquer pour chacune des
+  sous-épreuves d'une batterie.
+- **Le sélecteur « Patient » suit le dossier ouvert** : resté sur le patient
+  précédent, il faisait créer le « + Nouveau bilan » pour quelqu'un d'autre.
+- **Enregistrer les Paramètres ne fige plus les valeurs recommandées.**
+  Renseigner son nom enregistrait du même coup la valeur AMO, les seuils et le
+  vocabulaire intégré comme « personnalisés » : les valeurs des versions
+  suivantes n'arrivaient plus.
+- Écran de verrouillage : il ne propose plus « Créer le coffre » au premier
+  verrouillage de la journée d'installation. Première installation : l'écran
+  est utilisable au clavier et ne revient plus toutes les trois secondes après
+  « Passer cette étape ». Export : « Préparation du document… » puis
+  confirmation du téléchargement.
 - **Changer de modèle d'embeddings n'efface plus vos bilans de référence.**
   Le style cessait de s'appliquer sans explication, puis le premier import
   supprimait toute la base. Les références sont désormais réindexées avec le

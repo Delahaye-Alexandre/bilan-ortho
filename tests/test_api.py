@@ -1838,3 +1838,21 @@ def test_erreurs_de_saisie_en_francais(client):
     r = client.put("/api/config", json={"overrides": {"seuils": {"severe_et": -1.0, "pathologique_et": -1.5}}})
     assert r.status_code == 422 and "Value error" not in r.json()["detail"]
     assert "Input should" not in r.json()["detail"] and "overrides" not in r.json()["detail"]
+
+
+def test_enregistrer_les_parametres_ne_fige_pas_les_valeurs_par_defaut(client):
+    """L'écran renvoie tous les réglages affichés : une valeur égale au défaut
+    n'est pas une personnalisation, et ne doit pas bloquer les valeurs
+    recommandées des versions suivantes."""
+    d = config.DEFAULTS
+    client.put("/api/config", json={"overrides": {
+        "praticien": {"nom": "Martin"},
+        "cotation": {"valeur_amo": d["cotation"]["valeur_amo"]},
+        "seuils": {"fragilite_et": d["seuils"]["fragilite_et"], "severe_et": -2.5},
+        "stt": {"hotwords": d["stt"]["hotwords"]},
+    }})
+    ov = client.get("/api/config/overrides").json()
+    assert ov == {"praticien": {"nom": "Martin"}, "seuils": {"severe_et": -2.5}}
+    # Une valeur remise au défaut redevient « suit les mises à jour ».
+    client.put("/api/config", json={"overrides": {"seuils": {"severe_et": d["seuils"]["severe_et"]}}})
+    assert client.get("/api/config/overrides").json() == {"praticien": {"nom": "Martin"}}

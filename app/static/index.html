@@ -835,9 +835,24 @@ document.getElementById('iaBannerRevoir').addEventListener('click', async e => a
   } catch {}
 }));
 let INST = null;
-function showInstall(inst) {
+// `ouvrir` : seuls l'arrivée sur l'écran et les gestes de la personne
+// l'affichent. Le suivi d'un téléchargement ne fait que le mettre à jour —
+// il le rouvrait toutes les 3 secondes par-dessus la création du coffre
+// après « Passer cette étape ».
+let INSTALL_ECARTE = false;
+function showInstall(inst, ouvrir = true) {
   INST = inst;
-  const ov = document.getElementById('installOverlay'); ov.hidden = false;
+  const ov = document.getElementById('installOverlay');
+  if (ouvrir && !INSTALL_ECARTE && ov.hidden) {
+    ov.hidden = false;
+    // L'écran de verrouillage, visible dessous dès le premier rendu, gardait
+    // le focus : l'installation était inutilisable au clavier.
+    overlay.hidden = true;
+    setTimeout(() => {
+      const premier = [...ov.querySelectorAll('button')].find(b => !b.hidden && !b.disabled);
+      if (premier) premier.focus();
+    }, 0);
+  }
   document.getElementById('instOllama').innerHTML = inst.ollama
     ? '✅ Ollama est installé et démarré.'
     : '❌ Ollama n\'est pas détecté. Téléchargez-le (bouton ci-dessous), installez-le, puis « Revérifier ».';
@@ -909,12 +924,13 @@ async function recheckInstall() {
     const choisi = INST && INST.modele_choisi ? '?modele=' + encodeURIComponent(INST.modele_choisi) : '';
     const inst = await (await api('/api/installation' + choisi)).json();
     if (INST && INST.modele_choisi) inst.modele_choisi = INST.modele_choisi;
-    if (inst.pret) { INST = inst; showInstall(inst); }
-    else showInstall(inst);
+    showInstall(inst, false);
   } catch {}
 }
 document.getElementById('instOllamaLien').addEventListener('click', () => window.open('https://ollama.com/download', '_blank'));
 document.getElementById('instRecheck').addEventListener('click', recheckInstall);
+['instContinuer', 'instPasser'].forEach(id =>
+  document.getElementById(id).addEventListener('click', () => { INSTALL_ECARTE = true; }));
 document.getElementById('instContinuer').addEventListener('click', () => {
   const m = (INST && INST.proposition || {}).modele;
   if (m && INST && !INST.llm_present) localStorage.setItem('bilan_ortho_modele', m);
@@ -1050,19 +1066,22 @@ async function doUnlock() {
   unlockBtn.disabled = true;
   // Le déverrouillage (dérivation de clé + sauvegarde auto) peut durer
   // plusieurs secondes : l'attente est signalée sur le bouton lui-même.
-  const libelle = unlockBtn.textContent;
+  let libelleDeverrouiller = unlockBtn.textContent;
   unlockBtn.textContent = 'Déverrouillage…';
   try {
     const rep = await api('/api/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: p }) });
     let ouverture = {};
     try { ouverture = await rep.json(); } catch {}
     pass.value = ''; pass2.value = ''; overlay.hidden = true; startApp(); verifierVerrou();
+    // Le coffre existe désormais : au prochain verrouillage, l'écran ne doit
+    // plus proposer « Créer le coffre » ni exiger la confirmation.
+    pass2.hidden = true; libelleDeverrouiller = 'Déverrouiller';
     // Ce que l'ouverture a fait de notable (bilans purgés par la durée de
     // conservation, sauvegarde automatique en échec) n'était écrit que dans
     // le journal d'audit, affiché nulle part.
     annoncerOuverture(ouverture && ouverture.detail);
   } catch (e) { lockErr.textContent = e.message; }
-  finally { unlockBtn.disabled = false; unlockBtn.textContent = libelle; }
+  finally { unlockBtn.disabled = false; unlockBtn.textContent = libelleDeverrouiller; }
 }
 unlockBtn.addEventListener('click', doUnlock);
 document.getElementById('passEye').addEventListener('click', () => {
@@ -1480,6 +1499,12 @@ async function loadRecents(ajouter = false) {
   } catch {}
 }
 function curLabel() {
+  // Le sélecteur « Patient » suit le dossier ouvert : resté sur le patient
+  // précédent, il faisait créer le « + Nouveau bilan » pour quelqu'un d'autre.
+  const selPat = document.getElementById('patientSel');
+  if (CUR && selPat && [...selPat.options].some(o => o.value === String(CUR.patient_id || ''))) {
+    selPat.value = String(CUR.patient_id || '');
+  }
   const pat = CUR && CUR.patient ? patLabel(CUR.patient) + ' · ' : '';
   document.getElementById('curBilan').textContent =
     CUR ? `#${CUR.id} · ${pat}${CUR.domaine_titres || 'Générique'} · ${CUR.statut}` : 'aucun';
@@ -1978,6 +2003,13 @@ function renderBilan() {
     sec.querySelector('.valider').addEventListener('click', e => avecBouton(e.target, () => saveSection(cle, rtVersMd(ta), 'valide', sec)));
   });
   document.getElementById('epAdd').addEventListener('click', e => avecBouton(e.target, addEpreuve));
+  // Entrée dans un champ de la ligne ajoute l'épreuve.
+  ['epTest', 'epSub', 'epScore', 'epVal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('epAdd').click(); }
+    });
+  });
   root.querySelectorAll('[data-ep-del]').forEach(b =>
     b.addEventListener('click', () => supprimerEpreuve(b.dataset.epDel)));
   ecrireChampsEpreuve(epSaisie);
@@ -2099,8 +2131,12 @@ async function addEpreuve() {
     const b = await resp.json();
     const avert = b.avertissements || [];
     CUR = b;
-    EP_CHAMPS.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    // Saisie en série des sous-épreuves d'une batterie : le nom du test et
+    // l'échelle restent, seuls sous-épreuve, score et valeur se vident, et le
+    // curseur revient sur « Sous-épreuve » (il retombait en haut de page).
+    ['epSub', 'epScore', 'epVal'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     renderBilan();
+    const suivant = document.getElementById('epSub'); if (suivant) suivant.focus();
     // Le serveur borne la plausibilité de l'étalonnage (percentile 0-100,
     // écart-type ±6, notes standard) : il signale, il ne corrige pas.
     const st = document.getElementById('epStatus');
@@ -2235,9 +2271,13 @@ async function telechargerExport(format) {
     st.textContent = 'Export interrompu — vos corrections ne sont pas enregistrées.';
     return;
   }
+  statutOccupe(st, 'Préparation du document…');
   try {
     const r = await api(`/api/bilans/${CUR.id}/export?format=${format}`);
     telechargerBlob(await r.blob(), `bilan-${CUR.id}.${format}`);
+    st.textContent = `✓ bilan-${CUR.id}.${format} téléchargé`;
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => { st.textContent = ''; }, 6000);
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 }
 function telechargerBlob(blob, nom) {

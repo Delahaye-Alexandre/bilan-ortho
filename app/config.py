@@ -329,6 +329,29 @@ def fusionner(base: dict, override: dict) -> dict:
     return _deep_merge(base, override)
 
 
+def _elaguer(surcharges: dict, defauts: dict) -> dict:
+    """Surcharges privées de ce qui est égal à la valeur par défaut.
+
+    L'écran Paramètres renvoie tous les réglages affichés, modifiés ou non :
+    enregistrer son nom figeait du même coup la valeur AMO, les seuils, le
+    modèle et le vocabulaire intégré en « réglages personnalisés » — les
+    valeurs recommandées des versions suivantes n'arrivaient plus sur ce poste,
+    et l'écran marquait « modifié » des réglages jamais touchés. Une valeur
+    égale au défaut n'est pas une personnalisation : elle n'est pas gardée."""
+    out: dict = {}
+    for cle, valeur in surcharges.items():
+        defaut = defauts.get(cle) if isinstance(defauts, dict) else None
+        if isinstance(valeur, dict) and isinstance(defaut, dict):
+            sous = _elaguer(valeur, defaut)
+            if sous:
+                out[cle] = sous
+        elif cle in (defauts or {}) and valeur == defaut:
+            continue
+        else:
+            out[cle] = valeur
+    return out
+
+
 def _hotes_locaux(cfg: dict) -> dict:
     """Config effective dont les hôtes du modèle et des embeddings sont
     garantis locaux (cf. :func:`hote_ollama`) : une surcharge enregistrée avant
@@ -363,7 +386,7 @@ class ConfigStore:
 
     def set_overrides(self, override: dict) -> dict:
         """Fusionne de nouvelles surcharges et persiste. Retourne l'effectif."""
-        merged = _deep_merge(self.overrides(), override)
+        merged = _elaguer(_deep_merge(self.overrides(), override), DEFAULTS)
         self._ecrire(merged)
         return _hotes_locaux(_deep_merge(DEFAULTS, merged))
 

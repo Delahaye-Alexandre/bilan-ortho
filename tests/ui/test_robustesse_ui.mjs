@@ -995,9 +995,15 @@ document.getElementById("epAdd").click();
 await settle();
 check("épreuve ajoutée : l'avertissement de plausibilité est affiché",
   epStatus().includes("sort des valeurs possibles"));
-check("épreuve ajoutée : les champs de saisie sont vidés",
-  document.getElementById("epTest").value === ""
+// Saisie en série (relecture du 2026-11-20) : le nom du test et l'échelle
+// restent, le curseur revient sur « Sous-épreuve ».
+check("épreuve ajoutée : sous-épreuve, score et valeur vidés, nom du test et échelle gardés",
+  document.getElementById("epTest").value !== ""
+  && document.getElementById("epType").value === "percentile"
+  && document.getElementById("epSub").value === ""
   && document.getElementById("epVal").value === "");
+check("épreuve ajoutée : le curseur revient sur « Sous-épreuve »",
+  document.activeElement === document.getElementById("epSub"));
 check("épreuve ajoutée : elle apparaît avec son ✕ de retrait",
   document.querySelector("[data-ep-del]") !== null);
 check("épreuve : l'alerte de plausibilité est affichée sous l'épreuve, pas seulement dans le statut",
