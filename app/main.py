@@ -1199,8 +1199,16 @@ async def structure_bilan(bilan_id: int, req: StructureRequest, request: Request
     with security.transaction() as con:
         b = bilan.get(con, bilan_id)
         cfg = config.ConfigStore(con).effective()
+        # Relance sur la même dictée : le modèle repart de l'état d'avant le
+        # passage précédent, dont la proposition sera remplacée (et non doublée).
+        a_remplacer = bilan.tour_a_remplacer(con, bilan_id, req.transcription) if b else {}
     if not b:
         raise HTTPException(404, "Bilan introuvable.")
+    for s in b["sections"]:
+        if s["cle"] in a_remplacer:
+            r = a_remplacer[s["cle"]]
+            s["contenu"] = r.get("avant") or ""
+            s["signalements"] = bilan._lire_signalements(r.get("signalements_avant"))
     with _analyses_lock:
         if bilan_id in _analyses_en_cours:
             raise HTTPException(409, "Une analyse est déjà en cours pour ce bilan.")
@@ -1212,7 +1220,7 @@ async def structure_bilan(bilan_id: int, req: StructureRequest, request: Request
         # temps n'était vu qu'après — la place restait prise et la relance
         # recevait 409.
         return await _jusqu_au_depart_du_client(
-            request, _structurer(bilan_id, req, b, cfg)
+            request, _structurer(bilan_id, req, b, cfg, a_remplacer)
         )
     except AnalyseAbandonnee:
         # Personne n'écoute plus la réponse : on journalise l'abandon et on
@@ -1224,7 +1232,10 @@ async def structure_bilan(bilan_id: int, req: StructureRequest, request: Request
             _analyses_en_cours.discard(bilan_id)
 
 
-async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) -> dict:
+async def _structurer(
+    bilan_id: int, req: StructureRequest, b: dict, cfg: dict,
+    a_remplacer: dict | None = None,
+) -> dict:
     # Texte de ce tour (dictée + réponses) : sert à retrouver des extraits proches.
     texte_tour = " ".join(
         [req.transcription.strip()]
@@ -1395,7 +1406,13 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
                 "Ce bilan a été supprimé pendant l'analyse : rien n'a été "
                 "enregistré, votre dictée est conservée.",
             )
+        # Relance : la proposition du passage précédent est retirée d'abord,
+        # dans la même transaction (un échec ne fait rien perdre).
+        if a_remplacer:
+            bilan.retirer_tour(con, bilan_id, a_remplacer)
+        avant_tour = bilan.etat_rubriques(con, bilan_id)
         bilan.apply_updates(con, bilan_id, result["updates"])
+        bilan.noter_tour(con, bilan_id, req.transcription, avant_tour)
         # Les avertissements suivent le texte qu'ils concernent, dans le coffre :
         # ils doivent survivre à un F5, à un verrouillage d'inactivité et à un
         # changement de dossier — c'est là qu'on revient relire « à valider ».
@@ -1418,6 +1435,8 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
         "redevenu_brouillon": bool(
             b2 and b.get("statut") in ("valide", "envoye") and b2["statut"] == "brouillon"
         ),
+        # Relance sur la même dictée : la proposition précédente a été remplacée.
+        "relance_remplacee": bool(a_remplacer),
         "questions": result["questions"],
         # Rubriques trop longues, transmises seulement en partie au modèle :
         # l'interface le signale discrètement (l'anti-répétition en pâtit).

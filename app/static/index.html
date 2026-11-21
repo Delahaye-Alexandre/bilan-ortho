@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='11' fill='%232f6f4e'/%3E%3Crect x='13' y='10' width='38' height='44' rx='4' fill='white'/%3E%3Crect x='19' y='22' width='26' height='4' rx='2' fill='%232f6f4e'/%3E%3Crect x='19' y='30' width='26' height='4' rx='2' fill='%232f6f4e'/%3E%3Crect x='19' y='38' width='18' height='4' rx='2' fill='%232f6f4e'/%3E%3C/svg%3E" />
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --border: #e2e5ea; --text: #1f2430;
+    --bg: #f6f7f9; --panel: #ffffff; --border: #e2e5ea; --champ: #8b94a3; --text: #1f2430;
     --muted: #6b7280; --accent: #2f6f4e; --accent-d: #245a3f; --warn: #b45309;
   }
   * { box-sizing: border-box; }
@@ -27,7 +27,7 @@
           padding: 16px; overflow-y: auto; }
   .content { padding: 20px; overflow-y: auto; }
   label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 4px; }
-  textarea, select, input { width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+  textarea, select, input { width: 100%; padding: 8px 10px; border: 1px solid var(--champ);
             border-radius: 8px; font: inherit; background: #fff; color: var(--text); }
   textarea { resize: vertical; }
   .row { display: flex; gap: 10px; align-items: center; }
@@ -48,7 +48,7 @@
   /* Zone éditable des rubriques (texte riche) : même allure qu'un textarea. */
   .rt-bar { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
   .rt-bar button { padding: 2px 9px; font-size: 13px; min-width: 34px; }
-  .rt-edit { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  .rt-edit { width: 100%; padding: 8px 10px; border: 1px solid var(--champ); border-radius: 8px;
              background: #fff; color: var(--text); overflow-wrap: anywhere; }
   .rt-edit:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .rt-edit:empty::before { content: attr(data-placeholder); color: var(--muted); }
@@ -314,7 +314,7 @@
 
 <div class="modal-overlay" id="settingsOverlay" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-    <div class="mhead"><h2 id="settingsTitle">⚙️ Paramètres</h2><button class="close" data-close="settingsOverlay">✕</button></div>
+    <div class="mhead"><h2 id="settingsTitle">⚙️ Paramètres</h2><button class="close" data-close="settingsOverlay" aria-label="Fermer les paramètres">✕</button></div>
     <nav class="sommaire" aria-label="Sections des paramètres">
       <a href="#secCabinet">🪪 Mon cabinet</a>
       <a href="#secRedaction">📝 Mes comptes-rendus</a>
@@ -620,7 +620,7 @@
 
 <div class="modal-overlay" id="patientsOverlay" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="patientsTitle">
-    <div class="mhead"><h2 id="patientsTitle">👤 Patients</h2><button class="close" data-close="patientsOverlay">✕</button></div>
+    <div class="mhead"><h2 id="patientsTitle">👤 Patients</h2><button class="close" data-close="patientsOverlay" aria-label="Fermer la fenêtre des patients">✕</button></div>
     <div class="mbody">
       <fieldset>
         <legend id="patFormTitle">Nouveau patient</legend>
@@ -653,7 +653,7 @@
 
 <div class="modal-overlay" id="helpOverlay" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
-    <div class="mhead"><h2 id="helpTitle">❓ Comment ça marche</h2><button class="close" data-close="helpOverlay">✕</button></div>
+    <div class="mhead"><h2 id="helpTitle">❓ Comment ça marche</h2><button class="close" data-close="helpOverlay" aria-label="Fermer l'aide">✕</button></div>
     <div class="mbody help-body">
       <h3>1. Créez le patient puis le bilan</h3>
       <p>Bouton 👤 : enregistrez le patient (nom, date de naissance — elle permet à l'assistant de calculer l'âge et d'interpréter les étalonnages sans vous le redemander). Sélectionnez-le, choisissez le domaine et le type, puis « + Nouveau bilan ». La trame réglementaire (tronc commun) est créée automatiquement.</p>
@@ -1505,6 +1505,14 @@ function curLabel() {
   if (CUR && selPat && [...selPat.options].some(o => o.value === String(CUR.patient_id || ''))) {
     selPat.value = String(CUR.patient_id || '');
   }
+  // Même règle pour le domaine et le type : un renouvellement se crée depuis
+  // le dossier ouvert, pas depuis les choix du bilan précédent.
+  const suivre = (id, v) => {
+    const el = document.getElementById(id);
+    if (CUR && el && v && [...el.options].some(o => o.value === v)) el.value = v;
+  };
+  suivre('domaine', (CUR && CUR.domaines || [])[0]);
+  suivre('btype', CUR && CUR.type);
   const pat = CUR && CUR.patient ? patLabel(CUR.patient) + ' · ' : '';
   document.getElementById('curBilan').textContent =
     CUR ? `#${CUR.id} · ${pat}${CUR.domaine_titres || 'Générique'} · ${CUR.statut}` : 'aucun';
@@ -2411,7 +2419,7 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     // important de l'écran.
     const nbVerif = (res.rubriques_a_verifier || []).length;
     const verif = nbVerif
-      ? ` — ⚠️ ${nbVerif} rubrique(s) à vérifier : elles contiennent des éléments absents de votre dictée`
+      ? ` — ⚠️ ${nbVerif} rubrique(s) à vérifier (${res.rubriques_a_verifier.map(c => c.titre || c.section).join(', ')}) : elles contiennent des éléments absents de votre dictée`
       : '';
     // Le modèle a rendu un nom de rubrique inconnu : le texte n'a pas pu être
     // placé. Le dire, plutôt que de laisser disparaître un passage clinique.
@@ -2432,9 +2440,12 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     const tropLong = res.prompt_trop_long
       ? ' — ⚠️ la dictée et le bilan dépassent ce que le modèle lit d\'un coup : ses consignes ont pu être tronquées. Relisez ce passage avec soin, et structurez les prochaines dictées en plusieurs fois'
       : '';
+    const relance = res.relance_remplacee
+      ? ' — relance : la proposition du passage précédent a été remplacée, pas doublée'
+      : '';
     majStatut((answeredIds.length
       ? `✓ réponse(s) intégrée(s)${fresh.length ? ` — ${fresh.length} nouvelle(s) question(s)` : ''}`
-      : `✓ ${fresh.length} question(s) de clarification`) + verif + perdues + incomplete + tropLong + tronque + style);
+      : `✓ ${fresh.length} question(s) de clarification`) + relance + verif + perdues + incomplete + tropLong + tronque + style);
     // La dictée n'est effacée que si l'analyse paraît complète ET que tout a
     // trouvé sa rubrique : le message ci-dessus invite à relancer l'analyse,
     // or `dicteeText` en est la seule copie — la vider ici rendrait la consigne
@@ -2723,17 +2734,52 @@ document.addEventListener('keydown', e => {
   // Une bulle d'aide épinglée se ferme d'abord ; la boîte de dialogue au second appui.
   if (document.querySelector('.bulle.ouverte')) { fermerBulles(); return; }
   document.querySelectorAll('.modal-overlay:not([hidden])').forEach(o => {
-    if (o.id !== 'installOverlay') o.hidden = true;
+    if (o.id !== 'installOverlay') fermerFenetre(o);
   });
 });
 
 // ---------- Paramètres & aide ----------
+// Fermer une fenêtre : jamais en abandonnant une saisie sans le dire (Échap,
+// ✕ ou clic à côté fermaient les Paramètres et tout ce qui n'y était pas
+// enregistré), et en rendant le focus au bouton qui l'avait ouverte.
+const OUVREURS = { settingsOverlay: 'settingsBtn', patientsOverlay: 'patientsBtn', helpOverlay: 'helpBtn' };
+let CFG_INSTANTANE = null;  // réglages tels qu'affichés à l'ouverture ou au dernier enregistrement
+function editeursModifies() {
+  const l = [];
+  try { if (JSON.stringify(TRAME_EDIT) !== TRAME_CHARGEE) l.push('la trame'); } catch {}
+  try { if (catInstantane() !== CAT_CHARGE) l.push('le catalogue de tests'); } catch {}
+  try { if ($('promptTexte').value !== PROMPT_CHARGE) l.push('la consigne'); } catch {}
+  return l;
+}
+function parametresNonEnregistres() {
+  const l = editeursModifies();
+  try { if (CFG_INSTANTANE !== null && JSON.stringify(collectSettings()) !== CFG_INSTANTANE) l.unshift('des réglages'); } catch {}
+  return l;
+}
+function fermerFenetre(o) {
+  if (o.hidden) return;
+  if (o.id === 'settingsOverlay') {
+    const quoi = parametresNonEnregistres();
+    if (quoi.length && !confirm(`Vous avez modifié ${quoi.join(', ')} sans enregistrer.\n\n`
+      + `OK : fermer et abandonner ces modifications.\nAnnuler : rester dans les Paramètres.`)) return;
+  }
+  o.hidden = true;
+  const ouvreur = document.getElementById(OUVREURS[o.id] || '');
+  if (ouvreur) ouvreur.focus();
+}
 document.querySelectorAll('.close').forEach(b => b.addEventListener('click', () => {
-  document.getElementById(b.dataset.close).hidden = true;
+  const cible = document.getElementById(b.dataset.close);
+  if (cible.classList.contains('modal-overlay')) fermerFenetre(cible); else cible.hidden = true;
 }));
-document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => {
-  if (e.target === o) o.hidden = true;
-}));
+// Clic à côté : seulement s'il a commencé ET fini sur le fond (une sélection
+// de texte relâchée hors de la boîte fermait la fenêtre).
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  let depuisLeFond = false;
+  o.addEventListener('mousedown', e => { depuisLeFond = e.target === o; });
+  o.addEventListener('click', e => {
+    if (e.target === o && depuisLeFond && o.id !== 'installOverlay') fermerFenetre(o);
+  });
+});
 document.getElementById('helpBtn').addEventListener('click', () => {
   document.getElementById('helpOverlay').hidden = false;
   document.querySelector('#helpOverlay .close').focus();
@@ -3870,6 +3916,7 @@ document.getElementById('settingsBtn').addEventListener('click', async () => {
   } catch { return; }
   $('cfgStatus').textContent = ''; fermerBulles(); ouvrirTech(false);
   $('settingsOverlay').hidden = false;
+  try { CFG_INSTANTANE = JSON.stringify(collectSettings()); } catch { CFG_INSTANTANE = null; }
   document.querySelector('#settingsOverlay .mbody').scrollTop = 0;
   $('cfgPratPrenom').focus();
 });
@@ -3945,7 +3992,14 @@ document.getElementById('cfgSave').addEventListener('click', async () => {
       }
     }
     const r = await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: reglages }) });
-    fillSettings(await r.json()); st.textContent = '✓ enregistré';
+    fillSettings(await r.json());
+    try { CFG_INSTANTANE = JSON.stringify(collectSettings()); } catch {}
+    // « Enregistrer » ne porte pas sur la trame, le catalogue ni la consigne,
+    // qui ont chacun leur bouton : le dire plutôt qu'afficher un « ✓ » trompeur.
+    const reste = editeursModifies();
+    st.textContent = reste.length
+      ? `✓ réglages enregistrés — ⚠️ ${reste.join(', ')} : modification non enregistrée (bouton « Enregistrer » de sa propre section)`
+      : '✓ enregistré';
     loadLLM(); initDictee();
   } catch (e) { st.textContent = 'Erreur : ' + e.message; }
 });

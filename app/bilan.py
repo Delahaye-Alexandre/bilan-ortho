@@ -396,6 +396,86 @@ def nettoyer_prefixe_titre(texte: str, titre: str, cle: str = "") -> str:
     return texte
 
 
+def _empreinte(transcription: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(" ".join(transcription.split()).encode("utf-8")).hexdigest()
+
+
+def tour_a_remplacer(con, bilan_id: int, transcription: str) -> dict[str, dict]:
+    """Rubriques que le passage précédent a remplies à partir de CETTE dictée et
+    que personne n'a retouchées depuis : ``{clé: {"avant": …, "apres": …}}``.
+
+    « Relancez l'analyse » (analyse incomplète, passage non rangé) repartait de
+    la même dictée et **ajoutait** sa proposition à la précédente : chaque
+    rubrique déjà remplie était doublée, parfois avec deux formulations
+    contradictoires, à nettoyer à la main. Une relance remplace désormais ce
+    que le passage précédent avait proposé. Une rubrique corrigée entre-temps
+    n'est pas touchée."""
+    if not transcription.strip():
+        return {}
+    row = con.execute(
+        "SELECT empreinte, rubriques FROM tour_analyse WHERE bilan_id=?", (bilan_id,)
+    ).fetchone()
+    if not row or row[0] != _empreinte(transcription):
+        return {}
+    try:
+        rubriques = json.loads(row[1])
+    except (TypeError, ValueError):
+        return {}
+    actuels = dict(con.execute(
+        "SELECT cle, COALESCE(contenu,'') FROM section WHERE bilan_id=?", (bilan_id,)
+    ).fetchall())
+    return {
+        cle: r for cle, r in rubriques.items()
+        if isinstance(r, dict) and actuels.get(cle) == r.get("apres")
+    }
+
+
+def retirer_tour(con, bilan_id: int, a_remplacer: dict[str, dict]) -> None:
+    """Remet les rubriques dans l'état d'avant le passage précédent."""
+    for cle, r in a_remplacer.items():
+        con.execute(
+            "UPDATE section SET contenu=?, statut=?, signalements=? WHERE bilan_id=? AND cle=?",
+            (r.get("avant") or "", r.get("statut_avant") or "vide",
+             r.get("signalements_avant"), bilan_id, cle),
+        )
+
+
+def noter_tour(con, bilan_id: int, transcription: str, avant: dict[str, dict]) -> None:
+    """Mémorise ce que ce passage a changé (cf. :func:`tour_a_remplacer`).
+    ``avant`` : état des rubriques juste avant l'application des propositions."""
+    if not transcription.strip():
+        return
+    rubriques = {}
+    for cle, contenu in con.execute(
+        "SELECT cle, COALESCE(contenu,'') FROM section WHERE bilan_id=?", (bilan_id,)
+    ).fetchall():
+        a = avant.get(cle) or {}
+        if contenu != (a.get("contenu") or ""):
+            rubriques[cle] = {
+                "avant": a.get("contenu") or "", "apres": contenu,
+                "statut_avant": a.get("statut") or "vide",
+                "signalements_avant": a.get("signalements"),
+            }
+    con.execute(
+        "INSERT INTO tour_analyse(bilan_id, empreinte, rubriques) VALUES(?,?,?) "
+        "ON CONFLICT(bilan_id) DO UPDATE SET empreinte=excluded.empreinte, "
+        "rubriques=excluded.rubriques, created_at=datetime('now')",
+        (bilan_id, _empreinte(transcription), json.dumps(rubriques, ensure_ascii=False)),
+    )
+
+
+def etat_rubriques(con, bilan_id: int) -> dict[str, dict]:
+    return {
+        r[0]: {"contenu": r[1] or "", "statut": r[2], "signalements": r[3]}
+        for r in con.execute(
+            "SELECT cle, contenu, statut, signalements FROM section WHERE bilan_id=?",
+            (bilan_id,),
+        )
+    }
+
+
 def apply_updates(
     con, bilan_id: int, updates: list[dict], source: str = "dictee",
 ) -> int:

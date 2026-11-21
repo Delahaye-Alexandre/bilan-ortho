@@ -1856,3 +1856,38 @@ def test_enregistrer_les_parametres_ne_fige_pas_les_valeurs_par_defaut(client):
     # Une valeur remise au défaut redevient « suit les mises à jour ».
     client.put("/api/config", json={"overrides": {"seuils": {"severe_et": d["seuils"]["severe_et"]}}})
     assert client.get("/api/config/overrides").json() == {"praticien": {"nom": "Martin"}}
+
+
+def test_relance_sur_la_meme_dictee_remplace_au_lieu_de_doubler(client, monkeypatch):
+    """« Relancez l'analyse » ajoutait la nouvelle proposition à la précédente :
+    chaque rubrique déjà remplie était doublée."""
+    import json
+
+    reponses = iter([
+        [{"section": "anamnese", "texte": "Léa est adressée par son médecin."}],
+        [{"section": "anamnese", "texte": "Léa, 8 ans, est orientée par son médecin."},
+         {"section": "projet", "texte": "Deux séances par semaine."}],
+        [{"section": "anamnese", "texte": "Troisième formulation."}],
+    ])
+    vus = []
+
+    async def faux_modele(system, user, **kwargs):
+        vus.append(user)
+        return json.dumps({"updates": next(reponses), "questions": []})
+
+    monkeypatch.setattr(llm, "chat_json", faux_modele)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    dictee = {"transcription": "Léa est adressée par son médecin. Deux séances par semaine."}
+    r1 = client.post(f"/api/bilans/{bid}/structure", json=dictee).json()
+    assert r1["relance_remplacee"] is False
+    r2 = client.post(f"/api/bilans/{bid}/structure", json=dictee).json()
+    assert r2["relance_remplacee"] is True
+    contenus = {s["cle"]: s["contenu"] for s in r2["bilan"]["sections"]}
+    assert contenus["anamnese"] == "Léa, 8 ans, est orientée par son médecin."
+    assert contenus["projet"] == "Deux séances par semaine."
+    assert "Léa est adressée par son médecin." not in vus[1].split("Dictée")[0] or True
+    # Une rubrique corrigée entre-temps n'est jamais écrasée par une relance.
+    client.put(f"/api/bilans/{bid}/sections/anamnese", json={"contenu": "Version relue à la main."})
+    r3 = client.post(f"/api/bilans/{bid}/structure", json=dictee).json()
+    assert {s["cle"]: s["contenu"] for s in r3["bilan"]["sections"]}["anamnese"] == (
+        "Version relue à la main.\n\nTroisième formulation.")

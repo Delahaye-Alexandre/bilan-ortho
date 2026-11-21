@@ -209,6 +209,17 @@ CREATE TABLE IF NOT EXISTS bilan_reference (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Dernier passage d'analyse d'une dictée, pour qu'une relance sur la même
+-- dictée REMPLACE sa proposition au lieu de s'y ajouter. L'empreinte de la
+-- dictée suffit (son texte n'est pas conservé) ; `rubriques` porte, par
+-- rubrique touchée, le contenu d'avant et d'après le passage.
+CREATE TABLE IF NOT EXISTS tour_analyse (
+    bilan_id INTEGER PRIMARY KEY REFERENCES bilan(id) ON DELETE CASCADE,
+    empreinte TEXT NOT NULL,
+    rubriques TEXT NOT NULL,       -- JSON
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS dictee (
     id INTEGER PRIMARY KEY,
     bilan_id INTEGER REFERENCES bilan(id) ON DELETE CASCADE,

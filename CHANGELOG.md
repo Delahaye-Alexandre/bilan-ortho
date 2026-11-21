@@ -7,6 +7,18 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Relancer l'analyse ne double plus le texte.** Quand l'application invite à
+  relancer (analyse incomplète, passage non rangé), la nouvelle proposition
+  remplace celle du passage précédent au lieu de s'y ajouter ; une rubrique
+  que vous avez corrigée entre-temps n'est jamais touchée.
+- **Paramètres** : fermer la fenêtre (Échap, ✕, clic à côté) avec des
+  modifications non enregistrées demande confirmation ; « Enregistrer »
+  signale une trame, un catalogue ou une consigne modifiés qui ont leur propre
+  bouton.
+- Les rubriques « à vérifier » sont nommées en fin d'analyse ; le domaine et le
+  type suivent le dossier ouvert ; les champs ont une bordure nettement plus
+  lisible ; les boutons de fermeture ont un nom pour les lecteurs d'écran et
+  rendent le focus.
 - **Saisie des épreuves en série** : après « Ajouter », le nom du test et
   l'échelle restent, le curseur revient sur « Sous-épreuve », et Entrée ajoute
   l'épreuve — il fallait retaper le nom du test et recliquer pour chacune des
