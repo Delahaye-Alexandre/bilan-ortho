@@ -57,6 +57,10 @@ class Paragraphe:
 class Liste:
     ordonnee: bool
     items: list[list[Segment]] = field(default_factory=list)
+    # Numéro du premier élément : une liste numérotée interrompue (commentaire,
+    # sous-liste à puces) reprend là où elle s'était arrêtée, au lieu de
+    # repartir à 1 — « 1. Lexique », puis plus bas « 1. Phonologie ».
+    debut: int = 1
 
 
 Bloc = Paragraphe | Liste
@@ -80,7 +84,7 @@ _MARQUEURS = (
 
 # --- Lignes de bloc -----------------------------------------------------------
 _PUCE = re.compile(r"^[-*•]\s+(.*)$")
-_NUMERO = re.compile(r"^\d{1,3}[.)]\s+(.*)$")
+_NUMERO = re.compile(r"^(\d{1,3})[.)]\s+(.*)$")
 _CONTINUATION = re.compile(r"^\s{2,}(\S.*)$")
 
 
@@ -129,7 +133,11 @@ def analyser(texte: str | None) -> list[Bloc]:
     """Texte d'une rubrique -> blocs (paragraphes et listes) de segments."""
     blocs: list[Bloc] = []
     para: list[str] = []
-    liste: tuple[bool, list[str]] | None = None  # (ordonnée, items bruts)
+    liste: tuple[bool, list[str], int] | None = None  # (ordonnée, items bruts, début)
+    # Une ligne vide ne clôt pas tout de suite une liste numérotée : le modèle
+    # écrit volontiers « 1. …⏎⏎2. …⏎⏎3. … », qui devenait trois listes d'un
+    # élément, toutes numérotées 1.
+    en_suspens = False
 
     def clore_para() -> None:
         if para:
@@ -139,16 +147,25 @@ def analyser(texte: str | None) -> list[Bloc]:
     def clore_liste() -> None:
         nonlocal liste
         if liste is not None:
-            ordonnee, items = liste
-            blocs.append(Liste(ordonnee, [_inline(i) for i in items]))
+            ordonnee, items, debut = liste
+            blocs.append(Liste(ordonnee, [_inline(i) for i in items], debut))
             liste = None
 
     lignes = (texte or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
     for ligne in lignes:
         if not ligne.strip():
             clore_para()
-            clore_liste()
+            if liste is not None and liste[0]:
+                en_suspens = True
+            else:
+                clore_liste()
             continue
+        if en_suspens:
+            en_suspens = False
+            suivant = _NUMERO.match(ligne.strip())
+            if not (suivant and liste is not None
+                    and int(suivant.group(1)) == liste[2] + len(liste[1])):
+                clore_liste()
         if liste is not None:
             suite = _CONTINUATION.match(ligne)
             if suite:
@@ -161,16 +178,18 @@ def analyser(texte: str | None) -> list[Bloc]:
             para.append(propre[1:])
             continue
         item = _PUCE.match(propre)
-        ordonnee = False
+        ordonnee, numero, texte_item = False, 1, item.group(1) if item else ""
         if not item:
             item = _NUMERO.match(propre)
             ordonnee = bool(item)
+            if item:
+                numero, texte_item = int(item.group(1)), item.group(2)
         if item:
             clore_para()
             if liste is None or liste[0] != ordonnee:
                 clore_liste()
-                liste = (ordonnee, [])
-            liste[1].append(item.group(1).strip())
+                liste = (ordonnee, [], numero if ordonnee else 1)
+            liste[1].append(texte_item.strip())
         else:
             clore_liste()
             para.append(propre)
@@ -218,7 +237,7 @@ def serialiser(blocs: list[Bloc]) -> str:
             ))
         else:
             lignes = []
-            for i, item in enumerate(b.items, 1):
+            for i, item in enumerate(b.items, b.debut):
                 prefixe = f"{i}. " if b.ordonnee else "- "
                 corps = [x.strip() for x in serialiser_segments(item).split("\n") if x.strip()]
                 lignes.append(prefixe + "\n  ".join(corps))
@@ -243,7 +262,7 @@ def en_clair(texte: str | None, numeroter: bool = True) -> str:
             out.append("".join(s.texte for s in b.segments))
         else:
             lignes = []
-            for i, item in enumerate(b.items, 1):
+            for i, item in enumerate(b.items, b.debut):
                 prefixe = f"{i}. " if (b.ordonnee and numeroter) else "- "
                 lignes.append(prefixe + "".join(s.texte for s in item).replace("\n", "\n  "))
             out.append("\n".join(lignes))

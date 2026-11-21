@@ -228,3 +228,34 @@ def test_structure_verifie_en_clair_et_respecte_le_reglage(client, monkeypatch):
                       json={"transcription": "Alouette moins deux virgule un écart-type, axes phonologie et lecture."}).json()
     projet = next(s for s in res["bilan"]["sections"] if s["cle"] == "projet")
     assert projet["contenu"] == "Score -2,1 ET à l'Alouette.\n\n1. phonologie\n2. lecture"
+
+
+def test_numerotation_d_une_liste_interrompue_reprend_ou_elle_s_arretait():
+    """« 1. Lexique », ligne vide, « 2. Phonologie » devenait trois listes
+    numérotées 1 ; une sous-liste à puces faisait repartir la suite à 1."""
+    import io
+
+    from docx import Document
+    from docx.oxml.ns import qn
+
+    from app import config, export, texte_riche
+
+    assert texte_riche.canonique("1. Lexique\n\n2. Phonologie\n\n3. Réévaluation") == (
+        "1. Lexique\n2. Phonologie\n3. Réévaluation")
+    interrompue = "1. Lexique\n\n- dénomination\n- fluence\n\n2. Phonologie\n3. Réévaluation"
+    assert texte_riche.canonique(interrompue) == interrompue
+    assert texte_riche.en_clair(interrompue).endswith("2. Phonologie\n3. Réévaluation")
+    assert [b.debut for b in texte_riche.analyser(interrompue)] == [1, 1, 2]
+    # Une vraie nouvelle liste repart bien à 1.
+    assert texte_riche.canonique("1. a\n2. b\n\nTexte.\n\n1. c") == "1. a\n2. b\n\nTexte.\n\n1. c"
+    b = export.bilan_exemple(config.DEFAULTS)
+    b["sections"][0]["contenu"] = interrompue
+    for sortie in (export.to_markdown(b, config.DEFAULTS), export.to_txt(b, config.DEFAULTS)):
+        assert "2. Phonologie" in sortie and "3. Réévaluation" in sortie
+    doc = Document(io.BytesIO(export.to_docx(b, config.DEFAULTS)))
+    # Dans le Word, le numéro est produit par la numérotation : la seconde
+    # liste doit démarrer à 2 (startOverride), pas à 1.
+    departs = [int(e.get(qn("w:val"))) for e in
+               doc.part.numbering_part.element.iter(qn("w:startOverride"))]
+    assert 2 in departs and "Phonologie" in "\n".join(p.text for p in doc.paragraphs)
+    assert export.to_pdf(b, config.DEFAULTS).startswith(b"%PDF")

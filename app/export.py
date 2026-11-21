@@ -627,7 +627,7 @@ def _docx_runs(paragraphe, segments: list[texte_riche.Segment]) -> None:
                 run.underline = True
 
 
-def _docx_numerotation_neuve(doc, nom_style: str):
+def _docx_numerotation_neuve(doc, nom_style: str, debut: int = 1):
     """Nouvelle instance de numérotation repartant à 1, calquée sur le style.
 
     python-docx fait partager à tous les paragraphes « List Number » une même
@@ -643,7 +643,7 @@ def _docx_numerotation_neuve(doc, nom_style: str):
         numbering = doc.part.numbering_part.element
         origine = numbering.num_having_numId(num_id)
         neuf = numbering.add_num(origine.abstractNumId.val)
-        neuf.add_lvlOverride(ilvl=0).add_startOverride(1)
+        neuf.add_lvlOverride(ilvl=0).add_startOverride(debut)
         qn("w:numId")  # import utilisé : garde le linter tranquille
         return neuf.numId
     except Exception:
@@ -656,8 +656,12 @@ def _docx_liste(doc, bloc: texte_riche.Liste) -> None:
     # crée le paragraphe puis échoue sur le style, ce qui laissait un
     # paragraphe vide devant chaque élément.
     style = nom_style if _docx_a_style(doc, nom_style) else None
-    num_id = _docx_numerotation_neuve(doc, nom_style) if style and bloc.ordonnee else None
-    for i, item in enumerate(bloc.items, 1):
+    num_id = (
+        _docx_numerotation_neuve(doc, nom_style, bloc.debut)
+        if style and bloc.ordonnee else None
+    )
+    dernier = bloc.debut + len(bloc.items) - 1
+    for i, item in enumerate(bloc.items, bloc.debut):
         if style is None:
             # Style absent — le cas d'un document Word neuf, donc de la plupart
             # des gabarits : le marqueur devient du texte, avec le retrait
@@ -667,7 +671,7 @@ def _docx_liste(doc, bloc: texte_riche.Liste) -> None:
             p = doc.add_paragraph(f"{i}. " if bloc.ordonnee else "• ")
             p.paragraph_format.left_indent = Mm(6)
             p.paragraph_format.first_line_indent = Mm(-4)
-            p.paragraph_format.space_after = Pt(6 if i == len(bloc.items) else 2)
+            p.paragraph_format.space_after = Pt(6 if i == dernier else 2)
         else:
             p = doc.add_paragraph(style=style)
             if num_id is not None:
@@ -1119,7 +1123,7 @@ def to_pdf(b: dict, cfg: dict | None = None) -> bytes:
             items = [ListItem(Paragraph(balise(i), corps), leftIndent=16) for i in bloc.items]
             flow.append(ListFlowable(
                 items, bulletType="1" if bloc.ordonnee else "bullet",
-                start=1 if bloc.ordonnee else "•", leftIndent=16,
+                start=bloc.debut if bloc.ordonnee else "•", leftIndent=16,
                 bulletFontName=polices["normal"], bulletFontSize=taille,
                 bulletFormat="%s." if bloc.ordonnee else None,
                 spaceBefore=2, spaceAfter=2,

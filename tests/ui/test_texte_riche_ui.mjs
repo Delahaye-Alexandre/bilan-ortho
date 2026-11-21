@@ -145,5 +145,19 @@ check("copie : HTML avec gras et liste", !!clipHtml && clipHtml.includes("<b>Alo
 check("Paramètres : case à cocher présente", !!document.getElementById("cfgStyleForme"));
 check("rtEnClair : listes numérotées lisibles", __t.rtEnClair("1. a\n2. b") === "1. a\n2. b");
 
+// Relecture du 2026-11-20 : la numérotation d'une liste interrompue reprend où
+// elle s'était arrêtée, dans l'éditeur comme à l'export (même règle que le serveur).
+for (const [entree, attendu] of [
+  ["1. Lexique\n\n2. Phonologie\n\n3. Réévaluation", "1. Lexique\n2. Phonologie\n3. Réévaluation"],
+  ["1. Lexique\n\n- dénomination\n- fluence\n\n2. Phonologie\n3. Réévaluation",
+   "1. Lexique\n\n- dénomination\n- fluence\n\n2. Phonologie\n3. Réévaluation"],
+  ["1. a\n2. b\n\nTexte.\n\n1. c", "1. a\n2. b\n\nTexte.\n\n1. c"],
+]) {
+  check(`numérotation : ${JSON.stringify(entree).slice(0, 34)}`, __t.rtSerialiser(__t.rtAnalyser(entree)) === attendu);
+  const ed = document.createElement("div");
+  __t.remplirEditeur(ed, entree);
+  check("  … identique après passage par l'éditeur", __t.rtVersMd(ed) === attendu);
+}
+
 console.log(failures ? `\n${failures} scénario(s) en échec.` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

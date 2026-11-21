@@ -13,6 +13,10 @@ Une relecture complète de l'application, du point de vue de l'orthophoniste :
 moins d'attente, aucune saisie perdue, un compte-rendu qui dit exactement ce
 qui a été validé.
 
+- **Listes numérotées** : une liste interrompue par une ligne vide, un
+  commentaire ou une sous-liste à puces reprend sa numérotation (« 2. », « 3. »)
+  au lieu de repartir à « 1. », dans l'éditeur comme dans le Word, le PDF et
+  le Markdown.
 - **L'analyse démarre plus vite.** Le modèle d'IA était déchargé de la mémoire
   pendant chaque dictée et rechargé au moment de « Structurer » (une dizaine de
   secondes, davantage sur un disque lent). Il reste en mémoire vingt minutes
