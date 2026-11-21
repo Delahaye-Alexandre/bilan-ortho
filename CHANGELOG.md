@@ -7,6 +7,13 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Import de vos bilans de référence** : un PDF numérisé qui porte une mince
+  couche de texte (« Numérisé avec… ») passe bien à la reconnaissance de
+  caractères au lieu d'être importé vide ; le texte d'un lien dans un document
+  Word n'est plus perdu ; les commentaires et notes de bas de page d'un
+  document LibreOffice ne se mêlent plus au texte ; les titres d'un fichier
+  Markdown sont reconnus sans leurs dièses.
+
 ## 1.15.0 — 2026-11-21
 
 Une relecture complète de l'application, du point de vue de l'orthophoniste :

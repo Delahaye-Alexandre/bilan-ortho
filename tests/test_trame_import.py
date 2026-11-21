@@ -226,3 +226,65 @@ def test_api_import_reference_propose_la_trame(client, mock_embed):
                     files={"file": ("prose.txt", b"De la prose, sans aucun titre.", "text/plain")},
                     data={"domaine": ""})
     assert r.status_code == 200 and r.json()["trame_proposee"] is None
+
+
+# --- relecture du 2026-11-20 : import des bilans de référence -------------------------
+
+def test_import_markdown_liens_word_et_notes_odt():
+    import io
+    import zipfile
+
+    from docx import Document
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    from app import importer
+
+    # Titres Markdown : sans dièses, « ### » reconnu.
+    lignes = importer.extraire_lignes("## Anamnèse\nTexte.\n### Épreuves\nScore.".encode(), "b.md")
+    assert [(li.texte, li.niveau) for li in lignes if li.niveau] == [("Anamnèse", 2), ("Épreuves", 3)]
+    # Lien hypertexte dans un paragraphe Word : son texte n'est plus perdu.
+    doc = Document()
+    p = doc.add_paragraph("Suivi antérieur au ")
+    lien = OxmlElement("w:hyperlink")
+    run = OxmlElement("w:r")
+    t = OxmlElement("w:t")
+    t.text = "CMP de Lille"
+    run.append(t)
+    lien.append(run)
+    p._p.append(lien)
+    p.add_run(" pendant deux ans.")
+    assert qn("w:hyperlink")
+    tampon = io.BytesIO()
+    doc.save(tampon)
+    assert "Suivi antérieur au CMP de Lille pendant deux ans." in importer.extract_text(
+        tampon.getvalue(), "b.docx")
+    # .odt : commentaire et note de bas de page hors du texte, phrase intacte.
+    contenu = (
+        '<?xml version="1.0"?><office:document-content '
+        'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+        'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body><office:text>'
+        '<text:p>Marche à 13 mois<text:note><text:note-citation>1</text:note-citation>'
+        '<text:note-body><text:p>Selon le carnet.</text:p></text:note-body></text:note>, propreté acquise.'
+        '<office:annotation><text:p>À vérifier avec la mère</text:p></office:annotation></text:p>'
+        '</office:text></office:body></office:document-content>'
+    )
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, "w") as z:
+        z.writestr("content.xml", contenu)
+    assert importer.extract_text(tampon.getvalue(), "b.odt").strip() == "Marche à 13 mois, propreté acquise."
+
+
+def test_pdf_scanne_a_mince_couche_de_texte_passe_a_l_ocr(monkeypatch):
+    """« Numérisé avec… — page 1 » suffisait à éviter l'OCR : l'import
+    « réussissait » avec ce seul filigrane."""
+    from app import importer
+
+    monkeypatch.setattr(importer, "_pdf_text", lambda d: "Numérisé avec une application — page 1")
+    monkeypatch.setattr(importer, "_pdf_pages", lambda d: 3)
+    monkeypatch.setattr(importer, "_ocr_available", lambda: True)
+    monkeypatch.setattr(importer, "_ocr_pdf", lambda d: "Texte lu par OCR.")
+    assert importer.extract_text(b"%PDF", "scan.pdf") == "Texte lu par OCR."
+    # Un PDF natif (texte abondant) ne passe pas par l'OCR.
+    monkeypatch.setattr(importer, "_pdf_text", lambda d: "Compte-rendu. " * 80)
+    assert importer.extract_text(b"%PDF", "natif.pdf").startswith("Compte-rendu.")

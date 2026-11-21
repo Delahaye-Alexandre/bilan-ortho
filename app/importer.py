@@ -124,6 +124,19 @@ _PDF_ILLISIBLE = (
 )
 
 
+# En deçà de ce nombre de caractères par page, un PDF est tenu pour numérisé.
+_TEXTE_MIN_PAR_PAGE = 100
+
+
+def _pdf_pages(data: bytes) -> int:
+    from pypdf import PdfReader
+
+    try:
+        return max(1, len(PdfReader(io.BytesIO(data)).pages))
+    except Exception:
+        return 1
+
+
 def _pdf_text(data: bytes) -> str:
     from pypdf import PdfReader
 
@@ -207,6 +220,12 @@ def _docx_lignes(data: bytes) -> list[Ligne]:
             texte_riche.Segment(r.text, bool(r.bold), bool(r.italic), bool(r.underline))
             for r in p.runs if r.text
         ]
+        # Le texte d'un lien hypertexte (adresse, courriel que Word transforme
+        # seul en lien) n'est pas dans les « runs » directs du paragraphe : il
+        # disparaissait de l'extrait (« Suivi antérieur au  pendant deux ans »).
+        # Le paragraphe est alors repris en entier, sans sa mise en forme.
+        if "".join(s.texte for s in segments) != p.text:
+            segments = [texte_riche.Segment(p.text)] if p.text else []
         ligne = texte_riche.serialiser_segments(segments)
         liste = _docx_format_liste(doc, p)
         if liste is not None and ligne.strip():
@@ -233,6 +252,26 @@ def _odt_lignes(data: bytes) -> list[Ligne]:
     # L'ODF encode tabulations, espaces multiples et sauts de ligne en éléments
     # vides, invisibles pour itertext() : sans traduction, « EVALO⇥-2,1 »
     # ressortirait collé (« EVALO-2,1 ») dans les extraits de style.
+    # Commentaires de relecture et notes de bas de page : leur texte était versé
+    # au milieu de la phrase qui les porte, puis répété en lignes séparées — une
+    # remarque privée (auteur compris) entrait dans les extraits de style.
+    office = "{urn:oasis:names:tc:opendocument:xmlns:office:1.0}"
+    a_retirer = {office + "annotation", office + "annotation-end", ns + "note"}
+    for parent in list(racine.iter()):
+        for enfant in list(parent):
+            if enfant.tag in a_retirer:
+                # Le texte qui suit la note dans la phrase est porté par `tail`.
+                precedent = None
+                for frere in parent:
+                    if frere is enfant:
+                        break
+                    precedent = frere
+                if enfant.tail:
+                    if precedent is not None:
+                        precedent.tail = (precedent.tail or "") + enfant.tail
+                    else:
+                        parent.text = (parent.text or "") + enfant.tail
+                parent.remove(enfant)
     for el in racine.iter():
         if el.tag in (ns + "s", ns + "tab"):
             el.text = " "
@@ -288,7 +327,11 @@ def extract_text(data: bytes, filename: str) -> str:
     ext = os.path.splitext(filename or "")[1].lower()
     if ext == ".pdf":
         text = _pdf_text(data)
-        if len(text.strip()) < 20 and _ocr_available():
+        # Un PDF numérisé porte souvent une mince couche de texte (« Numérisé
+        # avec… — page 1 », en-tête de fax) : au-dessus de 20 caractères, l'OCR
+        # n'était pas lancé et l'import « réussissait » avec ce seul filigrane.
+        # Le seuil suit le nombre de pages.
+        if len(text.strip()) < max(20, _TEXTE_MIN_PAR_PAGE * _pdf_pages(data)) and _ocr_available():
             try:
                 text = _ocr_pdf(data)  # PDF scanné
             except ValueError:
@@ -320,6 +363,9 @@ def _is_heading(s: str) -> str | None:
     return None
 
 
+_TITRE_MD = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
+
+
 def extraire_lignes(data: bytes, filename: str) -> list[Ligne]:
     """Lignes du document avec leur nature (titre stylé, gras) quand le format
     la connaît (.docx, .odt) ; texte nu sinon. Lève ValueError si aucun texte
@@ -331,6 +377,14 @@ def extraire_lignes(data: bytes, filename: str) -> list[Ligne]:
         lignes = _odt_lignes(data)
     else:
         lignes = [Ligne(ligne) for ligne in extract_text(data, filename).splitlines()]
+        if ext in (".md", ".markdown"):
+            # Titres Markdown : « ## Anamnèse » gardait ses dièses dans
+            # l'intitulé de la rubrique (donc dans chaque compte-rendu), et
+            # « ### Épreuves » n'était pas reconnu comme un titre.
+            lignes = [
+                Ligne(m.group(2).strip(), len(m.group(1))) if (m := _TITRE_MD.match(li.texte)) else li
+                for li in lignes
+            ]
     if not any(ligne.texte.strip() for ligne in lignes):
         if sys.platform == "win32":
             aide = ("Installez Tesseract pour Windows (installeur UB-Mannheim : "
