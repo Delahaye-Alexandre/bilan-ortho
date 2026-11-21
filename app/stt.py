@@ -236,6 +236,36 @@ def _verifier_duree(duree_s: float | None, cfg: dict) -> None:
         raise DicteeTropLongue(duree_s, max_minutes)
 
 
+# Liste générique livrée jusqu'à la 1.14.0 : 41 termes, qui doublaient le
+# temps de transcription. Une configuration qui la porte encore à l'identique
+# (l'écran Paramètres enregistrait tous les réglages affichés) est traitée
+# comme la liste par défaut.
+ANCIENS_MOTS_CLES = frozenset({'orthophonie', 'orthophonique', 'bilan', 'anamnèse', 'phonologie', 'phonologique', 'praxies', 'articulation', 'morphosyntaxe', 'lexique', 'dénomination', 'conscience phonologique', 'métaphonologie', 'dyslexie', 'dysorthographie', 'dyscalculie', 'dysphasie', 'trouble développemental du langage', 'logico-mathématique', 'écart-type', 'percentile', 'note standard', 'âge de lecture', 'Alouette', 'EVALEO', 'EXALANG', 'ELO', 'BALE', 'ODEDYS', 'TEDI-MATH', 'MBLF', 'N-EEL', 'L2MA', 'ZAREKI', 'déglutition', 'oralité', 'dysphonie', 'aphasie', 'dysarthrie', 'bégaiement', 'fluence'})
+# Longueur maximale de la liste transmise (caractères) : en deçà, le surcoût
+# est resté dans le bruit de mesure ; à 493 caractères, il doublait l'attente.
+_MOTS_CLES_MAX_CAR = 220
+
+
+def mots_cles(cfg: dict) -> str | None:
+    """Vocabulaire transmis à Whisper pour cette dictée : la liste de
+    l'orthophoniste, puis les noms des tests du domaine du bilan
+    (``stt.tests_bilan``, posé par la route de transcription) tant que
+    l'ensemble reste court (cf. ``config.DEFAULTS``)."""
+    from . import config as _config
+
+    liste = [str(m).strip() for m in (cfg["stt"].get("hotwords") or []) if str(m).strip()]
+    if set(liste) == ANCIENS_MOTS_CLES:
+        liste = list(_config.DEFAULTS["stt"]["hotwords"])
+    retenus: list[str] = []
+    for mot in [*liste, *(cfg["stt"].get("tests_bilan") or [])]:
+        if mot in retenus:
+            continue
+        if retenus and len(", ".join([*retenus, mot])) > _MOTS_CLES_MAX_CAR:
+            break
+        retenus.append(mot)
+    return ", ".join(retenus) or None
+
+
 def transcribe(audio_bytes: bytes, filename: str, cfg: dict) -> dict:
     """Transcrit un audio (bytes) et supprime le fichier temporaire ensuite.
 
@@ -247,7 +277,7 @@ def transcribe(audio_bytes: bytes, filename: str, cfg: dict) -> dict:
     spec = resolved(cfg)
     model = _get_model(spec)
 
-    hotwords = ", ".join(stt.get("hotwords", [])) or None
+    hotwords = mots_cles(cfg)
     suffix = os.path.splitext(filename or "")[1] or ".webm"
 
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)

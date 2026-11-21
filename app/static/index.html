@@ -2359,7 +2359,10 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     // Le modèle a rendu un nom de rubrique inconnu : le texte n'a pas pu être
     // placé. Le dire, plutôt que de laisser disparaître un passage clinique.
     const perdues = (res.updates_non_placees || []).length
-      ? ` — ⚠️ un passage n'a pas pu être rangé (rubrique « ${res.updates_non_placees.join('», «')} » inconnue) : relancez l'analyse`
+      ? ` — ⚠️ un passage n'a pas pu être rangé (rubrique « ${res.updates_non_placees.join('», «')} » inconnue)`
+        + ((res.textes_non_places || []).length
+          ? ` — le voici, à copier dans la rubrique voulue : ${res.textes_non_places.map(t => `« ${t} »`).join(' ; ')}`
+          : ' : relancez l\'analyse')
       : '';
     // Le modèle local s'arrête parfois avant d'avoir traité toute la dictée :
     // le compte-rendu partirait sans son diagnostic sans que rien ne le dise.
@@ -2548,6 +2551,8 @@ async function transcrire(blob) {
   TRANSCRIPTION_EN_COURS = true;
   try {
     const fd = new FormData(); fd.append('audio', blob, 'dictee.webm');
+    // Le bilan ouvert donne son domaine : ses noms de tests guident la dictée.
+    if (CUR) fd.append('bilan_id', CUR.id);
     const r = await api('/api/transcribe', { method: 'POST', body: fd });
     const res = await r.json();
     dicteeText.value += (dicteeText.value ? ' ' : '') + res.text;
@@ -2763,7 +2768,7 @@ const CHAMPS = {
   mepApercuLib: { aide: "Un compte-rendu fictif (patient et résultats inventés) mis en page avec les réglages de cet écran, même non enregistrés, et votre identité. Il se met à jour à chaque changement." },
   trameLib: { aide: "Rubriques créées pour chaque nouveau bilan, dans cet ordre. La trame intégrée suit l'arrêté du 25 juillet 2023 et les mises à jour de l'application ; une trame personnalisée ne bouge plus tant que vous n'y revenez pas. « Reprendre la trame d'un de mes bilans » reprend les intitulés d'un de vos documents." },
   cfgSttHotwords: { chemin: 'stt.hotwords',
-    aide: "Termes que la reconnaissance vocale écorche : noms de tests, termes techniques, prénoms fréquents. Un par ligne. Elle les privilégie quand elle hésite. Quelques dizaines suffisent.",
+    aide: "Termes que la reconnaissance vocale écorche : noms de tests, termes techniques, prénoms fréquents. Un par ligne. Elle les privilégie quand elle hésite. Les tests du domaine du bilan ouvert s'y ajoutent d'eux-mêmes. Gardez la liste courte : au-delà d'une vingtaine de termes, chaque dictée met nettement plus de temps à être transcrite.",
     format: v => `la liste intégrée (${v.length} termes)` },
   cfgSttCorr: { chemin: 'stt.corrections',
     aide: "Remplacements appliqués au texte dicté, une ligne par correction : ce que la dictée écrit, la flèche =>, ce que vous voulez. Exemple : ortofonie => orthophonie. Le mot entier est remplacé, avec ou sans majuscule.",

@@ -107,3 +107,26 @@ def test_modele_charge_depuis_le_cache_sans_reseau(monkeypatch):
     monkeypatch.setattr(stt, "_cache", {"model": None, "spec": None})
     stt._get_model(spec)
     assert appels == [True, True, False]  # absent : téléchargement, comme avant
+
+
+def test_mots_cles_courts_et_tests_du_domaine():
+    """Les 41 termes génériques doublaient le temps de transcription (mesuré) :
+    la liste transmise reste courte et porte les tests du domaine du bilan."""
+    import copy
+
+    from app import config, stt
+
+    cfg = copy.deepcopy(config.DEFAULTS)
+    assert len(stt.mots_cles(cfg)) < 80
+    cfg["stt"]["tests_bilan"] = ["Alouette-R", "BALE", "écart-type"]
+    assert stt.mots_cles(cfg).endswith("Alouette-R, BALE")  # sans doublon
+    # Une configuration qui porte encore l'ancienne liste générique suit le défaut.
+    cfg["stt"]["hotwords"] = sorted(stt.ANCIENS_MOTS_CLES)
+    assert stt.mots_cles(cfg).startswith("écart-type, percentile")
+    # La liste de l'orthophoniste passe d'abord ; l'ensemble est borné.
+    cfg["stt"]["hotwords"] = ["Batelem"]
+    cfg["stt"]["tests_bilan"] = [f"Test numéro {i}" for i in range(60)]
+    mots = stt.mots_cles(cfg)
+    assert mots.startswith("Batelem, Test numéro 0") and len(mots) <= 220
+    cfg["stt"]["hotwords"], cfg["stt"]["tests_bilan"] = [], []
+    assert stt.mots_cles(cfg) is None

@@ -1436,3 +1436,36 @@ def test_corrections_dictee_prefixe_regex_et_motifs_invalides():
     assert stt._apply_corrections("test ELO passé, VELO", corr) == "test ELO (Khomsi) passé, VELO"
     # expression invalide ou motif vide : ignorés, la dictée n'échoue pas
     assert stt._apply_corrections("abc", {"re:(": "x", "  ": "y"}) == "abc"
+
+
+# --- relecture du 2026-11-20 : tirets des noms de tests et des intervalles ----------
+
+def _signalements_chiffres_et_tests(propose, sources, epreuves=()):
+    from app import catalogues, verif_tests
+
+    noms = catalogues.tous_les_noms(config.DEFAULTS)
+    a_chiffres = [*noms, *epreuves]
+    return verif_chiffres.signalements(
+        verif_tests.sans_noms_de_tests(propose, a_chiffres),
+        [verif_tests.sans_noms_de_tests(s, a_chiffres) for s in sources],
+    ) + verif_tests.signalements(propose, sources, noms)
+
+
+def test_tirets_de_noms_de_tests_et_d_intervalles_ne_sont_pas_des_signes():
+    f = _signalements_chiffres_et_tests
+    # Faux positifs : rédactions fidèles qui étaient signalées « -2 », « -4 », « -10 ».
+    assert f("ODEDYS-2 : lecture de mots à -1,5 ET",
+             ["à l'Odédys, moins un virgule cinq écart-type"]) == []
+    assert f("3-4 séances, 8-10 mois",
+             ["trois ou quatre séances pendant huit à dix mois"]) == []
+    # Transcription réelle de « l'Évaléo six quinze », et « N-EEL » dicté « NEEL ».
+    assert f("EVALEO 6-15 : lecture à -2 ET",
+             ["à l'EVALEO 615, moins deux écarts-types"]) == []
+    assert f("N-EEL : trois items réussis", ["au NEEL, trois items réussis"]) == []
+    # Faux négatif : le « 2 » d'un nom de test ne légitime plus un « -2 ET » inventé.
+    assert f("Lecture à -2 ET", ["ODEDYS-2 : faible, je n'ai pas encore l'étalonnage"],
+             ["ODEDYS-2"]) == ["chiffre(s) absent(s) de la dictée : -2"]
+    # Le vrai signe moins vaut celui du clavier ; une substitution de test reste vue.
+    assert f("score de \u22123 ET", ["trois items"]) == ["chiffre(s) absent(s) de la dictée : -3"]
+    assert f("EXALANG 8-11 : 12 points", ["douze points à la BALE"]) == [
+        "test(s) cité(s) mais absent(s) de votre dictée : EXALANG 8-11"]

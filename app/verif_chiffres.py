@@ -204,12 +204,22 @@ def _nombres_en_mots(texte: str) -> set[str]:
     return valeurs
 
 
-_NOMBRE_CHIFFRES = re.compile(r"(-|moins\s+)?(\d+(?:[.,]\d+)?)")
+# Un tiret n'est un signe que s'il ne suit ni un chiffre ni une lettre :
+# « 3-4 séances », « 8-10 mois », « ODEDYS-2 » ne contiennent aucun nombre
+# négatif. Sans cette borne, « 3-4 séances » était signalé « chiffre absent :
+# -4 », et « ODEDYS-2 » dans la dictée faisait passer pour dicté un « -2 ET »
+# inventé — la valeur clinique la plus courante d'un compte-rendu.
+_NOMBRE_CHIFFRES = re.compile(r"((?<![^\W_])-|moins\s+)?(\d+(?:[.,]\d+)?)")
+
+
+def _moins_clavier(texte: str) -> str:
+    """Le vrai signe moins (U+2212, « −2,1 ET ») vaut celui du clavier."""
+    return texte.replace("\u2212", "-")
 
 
 def _nombres_en_chiffres(texte: str) -> set[str]:
     valeurs: set[str] = set()
-    bas = _sans_accents(texte.lower())
+    bas = _moins_clavier(_sans_accents(texte.lower()))
     for m in _NOMBRE_CHIFFRES.finditer(bas):
         brut = float(m.group(2).replace(",", "."))
         valeurs.add(_canonique(brut))
@@ -238,7 +248,9 @@ def chiffres_non_sources(propose: str, sources: Iterable[str]) -> list[str]:
     for s in sources:
         connues |= valeurs_numeriques(s or "")
     suspects: list[str] = []
-    for m in _NOMBRE_CHIFFRES.finditer(_sans_dates(_sans_accents(propose.lower()))):
+    for m in _NOMBRE_CHIFFRES.finditer(
+        _moins_clavier(_sans_dates(_sans_accents(propose.lower())))
+    ):
         brut = float(m.group(2).replace(",", "."))
         # Contrôle au signe près : un « -3 » proposé alors que la dictée ne
         # contenait qu'un « trois » (dans « trois minutes ») est précisément le
@@ -269,6 +281,7 @@ def percentiles_hors_bornes(texte: str) -> list[str]:
     transposé un écart-type en percentile. Erreur détectable sans connaître la
     dictée, donc vérifiée séparément."""
     hors: list[str] = []
+    texte = _moins_clavier(texte)
     for motif in _PERCENTILE_VALEUR:
         for v in motif.finditer(texte):
             try:

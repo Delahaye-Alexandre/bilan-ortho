@@ -7,6 +7,22 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Transcription de la dictée presque deux fois plus rapide.** La liste de 41
+  mots-clés génériques transmise à la reconnaissance vocale doublait le temps
+  de calcul. Elle est remplacée par quelques termes d'étalonnage et les noms
+  des tests du domaine du bilan ouvert. Mesuré sur une dictée de 88 secondes,
+  sans carte graphique : 80 à 100 secondes avant, 45 après, pour un texte aussi
+  juste (« l'Alouette », « la BALE », « écart-type »). Votre propre liste
+  (⚙️ Paramètres → Ma dictée) passe toujours en premier ; gardez-la courte.
+- **Moins de fausses alertes « chiffre absent de la dictée », et une vraie de
+  plus.** Les tirets de « ODEDYS-2 », « EVALEO 6-15 », « 3-4 séances » étaient
+  lus comme des signes moins : la rédaction fidèle était signalée, et à
+  l'inverse un « -2 ET » inventé passait pour dicté dès que « ODEDYS-2 »
+  figurait dans la dictée ou au tableau. Un test transcrit d'un seul bloc
+  (« EVALEO 615 », « NEEL ») est reconnu comme dicté.
+- **Un passage que le modèle range sous une rubrique inconnue n'est plus
+  perdu** : son texte est affiché, à copier dans la rubrique voulue. Une
+  dictée dont rien n'a été rangé n'est plus effacée comme après un succès.
 - **Une dictée longue aboutit toujours.** Sur un poste sans carte graphique,
   transcrire une dictée prend à peu près le temps de la dictée : au-delà du
   délai de verrouillage (15 minutes par défaut), le coffre se verrouillait en

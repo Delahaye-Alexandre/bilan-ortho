@@ -841,12 +841,22 @@ async def stt_info() -> dict:
 
 
 @app.post("/api/transcribe", dependencies=[Depends(require_unlock), Depends(operation_longue)])
-async def transcribe(audio: UploadFile = File(...)) -> dict:
+async def transcribe(
+    audio: UploadFile = File(...), bilan_id: int | None = Form(None),
+) -> dict:
     data = await _lire_borne(audio, TAILLE_MAX_AUDIO, "Enregistrement audio")
     if not data:
         raise HTTPException(400, "Audio vide.")
     with security.transaction() as con:
         cfg = config.ConfigStore(con).effective()
+        # Les tests du domaine du bilan ouvert orientent la reconnaissance des
+        # noms propres (« l'Alouette », « la BALE ») sans la liste générique,
+        # deux fois plus lente.
+        b = bilan.get(con, bilan_id) if bilan_id is not None else None
+    if b and b["domaines"]:
+        cfg = {**cfg, "stt": {
+            **cfg["stt"], "tests_bilan": catalogues.tests_noms(b["domaines"], cfg),
+        }}
     try:
         result = await run_in_threadpool(stt.transcribe, data, audio.filename or "", cfg)
     except stt.STTUnavailable as exc:
@@ -1237,8 +1247,15 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
         # valeurs cliniques à retrouver dans la dictée).
         clair = texte_riche.en_clair(u["texte"], numeroter=False)
         sources_claires = [texte_riche.en_clair(s, numeroter=False) for s in sources]
+        # Les noms de tests à chiffre (« EVALEO 6-15 », « ODEDYS-2 ») ne sont
+        # pas des mesures : retirés avant le contrôle des chiffres, côté texte
+        # proposé comme côté sources (verif_tests contrôle les noms eux-mêmes).
+        noms_a_chiffres = [*noms_tests, *(e.get("test_nom") or "" for e in b.get("epreuves") or [])]
         msgs = (
-            verif_chiffres.signalements(clair, sources_claires)
+            verif_chiffres.signalements(
+                verif_tests.sans_noms_de_tests(clair, noms_a_chiffres),
+                [verif_tests.sans_noms_de_tests(s, noms_a_chiffres) for s in sources_claires],
+            )
             # Un nom de test substitué ne portait jusqu'ici aucun signalement
             # exploitable : « chiffres absents : 6, -15 » pour « EVALEO 6-15 ».
             + verif_tests.signalements(clair, sources_claires, noms_tests)
@@ -1303,9 +1320,14 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
         # Rubriques rendues par le modèle sous un nom inconnu : le texte n'a pas
         # pu être placé. Signalé plutôt que perdu en silence.
         "updates_non_placees": result.get("updates_non_placees", []),
+        # Leur texte, pour que l'orthophoniste le range à la main sans relancer.
+        "textes_non_places": result.get("textes_non_places", []),
         # Le modèle s'est vraisemblablement arrêté en cours de route : le
         # praticien doit le savoir avant de relire un compte-rendu amputé.
-        "analyse_incomplete": llm.couverture_suspecte(texte_tour, result["updates"]),
+        # Une dictée dont rien n'a été rangé n'est pas un succès non plus,
+        # quelle que soit sa longueur : elle était effacée sans un mot.
+        "analyse_incomplete": llm.couverture_suspecte(texte_tour, result["updates"])
+        or bool(req.transcription.strip() and not result["updates"]),
         # Le prompt approche la fenêtre de contexte : Ollama tronque alors le
         # DÉBUT du prompt, donc les consignes système, sans que rien ne le dise.
         "prompt_trop_long": result.get("prompt_trop_long", False),

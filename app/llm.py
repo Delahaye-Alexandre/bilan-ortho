@@ -389,19 +389,24 @@ async def structure(
     # aucune rubrique n'est plus jeté en silence : la liste remonte à
     # l'interface, qui le dit au praticien — un texte clinique perdu sans un
     # mot est le pire des deux maux.
-    placees, non_placees = [], []
+    placees, non_placees, textes_non_places = [], [], []
     for u in result["updates"]:
         cle = resoudre_cle(u["section"], sections)
         if cle:
             placees.append({**u, "section": cle})
         else:
             non_placees.append(u["section"] or "rubrique non précisée")
+            # Le texte lui-même est rendu : seul le nom de la rubrique
+            # remontait, le passage clinique n'existait plus nulle part et le
+            # seul recours était de relancer toute l'analyse.
+            textes_non_places.append(u["texte"])
             logger.warning(
                 "Rubrique inconnue rendue par le modèle : %r — texte non placé (%d car.)",
                 u["section"], len(u["texte"]),
             )
     result["updates"] = placees
     result["updates_non_placees"] = non_placees
+    result["textes_non_places"] = textes_non_places
     result["prompt_trop_long"] = prompt_depasse_contexte(
         system, user, llmcfg.get("num_ctx")
     )

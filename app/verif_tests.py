@@ -97,6 +97,61 @@ def formes_source(nom: str) -> list[str]:
     return formes
 
 
+# Forme compactée minimale pour une comparaison sans espaces : en deçà, le
+# risque de retrouver le nom par hasard dans un texte collé devient réel.
+_COMPACT_MIN = 5
+
+
+def _dicte(src: str, nom: str) -> bool:
+    """Le test figure-t-il dans la dictée (normalisée) ?
+
+    Outre les formes bornées aux mots, la forme **compactée** est admise :
+    la dictée « l'Évaléo six quinze » est transcrite « EVALEO 615 », « N-EEL »
+    devient « NEEL » — et le test fidèlement dicté était signalé « absent de
+    votre dictée », le faux positif exact que ce garde-fou devait éviter."""
+    if any(_contient(src, f) for f in formes_source(nom)):
+        return True
+    compact = src.replace(" ", "")
+    for f in variantes(nom):
+        colle = f.replace(" ", "")
+        # « NEEL » écrit d'un seul mot dans la dictée ; ou « EVALEO 615 », que
+        # seule la comparaison sans espaces retrouve (noms assez longs).
+        if _contient(src, colle) or (len(colle) >= _COMPACT_MIN and colle in compact):
+            return True
+    return False
+
+
+def sans_noms_de_tests(texte: str, noms: Iterable[str]) -> str:
+    """Le texte, privé des noms de tests qui portent un chiffre.
+
+    Sert au contrôle des chiffres : « EVALEO 6-15 », « ODEDYS-2 », « EAT-10 »
+    ne sont pas des mesures. Leurs chiffres étaient signalés « absents de la
+    dictée » quand le modèle écrivait le nom complet, et — plus grave —
+    tenaient lieu de source quand le nom figurait dans la dictée ou au tableau
+    des épreuves : un « -2 ET » inventé passait alors sans un mot. Les noms
+    eux-mêmes restent contrôlés par :func:`tests_non_sources`."""
+    motifs = set()
+    for nom in noms:
+        for forme in variantes(nom or ""):
+            if any(c.isdigit() for c in forme):
+                motifs.add(forme)
+    if not motifs:
+        return texte
+    bas = _sans_accents(texte.lower())
+    if len(bas) != len(texte):  # normalisation qui décale les positions : rare
+        texte = bas
+    # Les plus longs d'abord : « EXALANG 3-6 (phono) » avant « EXALANG 3-6 ».
+    for forme in sorted(motifs, key=len, reverse=True):
+        motif = re.compile(
+            r"(?<![a-z0-9])" + r"[^a-z0-9]{0,3}".join(map(re.escape, forme.split()))
+            + r"(?![a-z0-9])"
+        )
+        coupes = [m.span() for m in motif.finditer(_sans_accents(texte.lower()))]
+        for debut, fin in reversed(coupes):
+            texte = texte[:debut] + " " + texte[fin:]
+    return texte
+
+
 def tests_non_sources(
     propose: str, sources: Iterable[str], noms_connus: Iterable[str],
 ) -> list[str]:
@@ -118,7 +173,7 @@ def tests_non_sources(
         cite = next((f for f in variantes(nom) if _contient(p, f)), None)
         if cite is None:
             continue
-        if any(_contient(src, f) for f in formes_source(nom)):
+        if _dicte(src, nom):
             continue
         # À citation égale, on nomme le test sous son libellé le plus court :
         # c'est celui que le praticien a sous les yeux dans le compte-rendu.

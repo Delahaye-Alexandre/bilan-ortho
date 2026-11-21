@@ -1753,3 +1753,25 @@ def test_bilan_supprime_pendant_son_analyse(client, monkeypatch):
     bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
     r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
     assert r.status_code == 404 and "dictée est conservée" in r.json()["detail"]
+
+
+def test_passage_non_range_rendu_et_dictee_sans_rien_range_signalee(client, monkeypatch):
+    """Le texte d'un passage que le modèle range sous une rubrique inconnue
+    n'existait plus nulle part ; une dictée courte dont rien n'était rangé
+    passait pour un succès et était effacée."""
+    import json
+
+    reponse = {"updates": [{"section": "rubrique_inconnue_xyz", "texte": "Le profil évoque un trouble."}],
+               "questions": []}
+
+    async def faux_modele(*args, **kwargs):
+        return json.dumps(reponse)
+
+    monkeypatch.setattr(llm, "chat_json", faux_modele)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    res = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Dictée courte."}).json()
+    assert res["updates_non_placees"] == ["rubrique_inconnue_xyz"]
+    assert res["textes_non_places"] == ["Le profil évoque un trouble."]
+    reponse["updates"] = []
+    res = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Dictée courte."}).json()
+    assert res["analyse_incomplete"] is True

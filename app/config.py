@@ -187,18 +187,15 @@ DEFAULTS: dict[str, Any] = {
         "language": "fr",
         "vad": True,               # coupe les silences (VAD Silero)
         "beam_size": 5,
-        # Biais de vocabulaire métier (faster-whisper `hotwords`).
-        "hotwords": [
-            "orthophonie", "orthophonique", "bilan", "anamnèse", "phonologie",
-            "phonologique", "praxies", "articulation", "morphosyntaxe", "lexique",
-            "dénomination", "conscience phonologique", "métaphonologie",
-            "dyslexie", "dysorthographie", "dyscalculie", "dysphasie",
-            "trouble développemental du langage", "logico-mathématique",
-            "écart-type", "percentile", "note standard", "âge de lecture",
-            "Alouette", "EVALEO", "EXALANG", "ELO", "BALE", "ODEDYS", "TEDI-MATH",
-            "MBLF", "N-EEL", "L2MA", "ZAREKI", "déglutition", "oralité", "dysphonie",
-            "aphasie", "dysarthrie", "bégaiement", "fluence",
-        ],
+        # Vocabulaire à reconnaître (faster-whisper `hotwords`), ajouté au
+        # contexte de chaque fenêtre de 30 s : sa longueur se paie en temps de
+        # calcul. Mesuré le 2026-11-21 (dictée de 88 s, Whisper medium sur
+        # processeur) : 80 s avec les 41 termes d'origine, 42 s sans aucun, 43 s
+        # avec les tests du domaine et deux termes d'étalonnage — pour un texte
+        # aussi juste (« l'Alouette », « la BALE », « écart-type »). La liste
+        # par défaut ne garde donc que les termes d'étalonnage ; les noms des
+        # tests du domaine du bilan s'y ajoutent à chaque dictée (stt.mots_cles).
+        "hotwords": ["écart-type", "percentile", "note standard", "âge de lecture"],
         # Corrections déterministes appliquées après transcription : mot entier,
         # casse ignorée (clé -> remplacement) ; préfixe « re: » pour une regex
         # (voir stt._apply_corrections).
