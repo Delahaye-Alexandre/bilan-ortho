@@ -22,6 +22,19 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+# Caractères interdits en XML 1.0 (donc dans un .docx) : un seul d'entre eux,
+# collé depuis Word (tabulation verticale d'un retour à la ligne manuel) ou
+# depuis un PDF (saut de page), faisait échouer tout l'export Word du bilan.
+_CONTROLES = re.compile("[\x00-\x08\x0e-\x1f\x7f\ufffe\uffff]")
+
+
+def sans_controles(texte: str | None) -> str:
+    """Le texte sans caractères de contrôle : les retours à la ligne manuels
+    (``\\x0b``) et sauts de page (``\\x0c``) deviennent des retours à la ligne."""
+    if not texte:
+        return texte or ""
+    return _CONTROLES.sub("", texte.replace("\x0b", "\n").replace("\x0c", "\n"))
+
 
 @dataclass
 class Segment:

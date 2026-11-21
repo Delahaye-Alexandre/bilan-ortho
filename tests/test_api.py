@@ -1775,3 +1775,22 @@ def test_passage_non_range_rendu_et_dictee_sans_rien_range_signalee(client, monk
     reponse["updates"] = []
     res = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Dictée courte."}).json()
     assert res["analyse_incomplete"] is True
+
+
+def test_rubrique_a_cle_inhabituelle_enregistrable_et_controles_filtres(client):
+    """Une clé de trame « analyse / synthèse » rendait la rubrique impossible à
+    enregistrer (404) ; un caractère de contrôle bloquait l'export Word."""
+    from urllib.parse import quote
+
+    client.put("/api/config/trame", json={"sections": [
+        {"cle": "analyse / synthèse", "titre": "Analyse / synthèse"},
+        {"cle": "axe?1", "titre": "Axe 1"},
+    ]})
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    for cle in ("analyse / synthèse", "axe?1"):
+        r = client.put(f"/api/bilans/{bid}/sections/{quote(cle, safe='')}",
+                       json={"contenu": "Ligne 1\x0bLigne 2\x0c"})
+        assert r.status_code == 200, cle
+    b = client.get(f"/api/bilans/{bid}").json()
+    assert all(s["contenu"] == "Ligne 1\nLigne 2\n" for s in b["sections"])
+    assert client.get(f"/api/bilans/{bid}/export?format=docx").status_code == 200

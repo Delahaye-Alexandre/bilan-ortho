@@ -35,6 +35,7 @@ from pathlib import Path
 from . import config, cotation, texte_riche
 from .bilan import DRAPEAU_LIBELLE, etalonnage_texte
 from .patient import age_texte, date_fr
+from .texte_riche import sans_controles
 
 DISCLAIMER = (
     "Document généré comme aide à la rédaction, relu et validé par l'orthophoniste : "
@@ -59,7 +60,14 @@ _TYPE_LBL = {
 _COLONNES = ["Test", "Épreuve", "Score brut", "Étalonnage", "Interprétation"]
 
 # Titres déjà porteurs de civilité : n'en ajoutons pas une seconde.
-_CIVILITES = ("dr", "dr.", "docteur", "pr", "pr.", "professeur", "mme", "m.", "mr")
+_CIVILITES = re.compile(
+    r"^(dr|dre|docteure?|pr|pre|professeure?|mme|madame|m|mr|monsieur|mlle)\b\.?", re.I
+)
+# Un service ou un établissement n'est pas « le Dr … ».
+_ETABLISSEMENT = re.compile(
+    r"\b(cmp|cmpp|camsp|chu|chr|ch|hôpital|hopital|clinique|service|centre|cabinet|"
+    r"maison de santé|sessad|ime|pmi|école|ecole|collège|college)\b", re.I
+)
 
 
 def _naissance(p: dict) -> str:
@@ -144,8 +152,11 @@ def _destinataire(b: dict) -> str:
     nom = ((b.get("prescripteur") or {}).get("nom") or "").strip()
     if not nom:
         return ""
-    premier = nom.split()[0].lower()
-    if premier in _CIVILITES:
+    # « Madame Durand », « Docteure Lefèvre », « Dr.Martin » portent déjà leur
+    # civilité ; « CMP de Lille » n'en veut pas : tous recevaient un « Dr ».
+    if _ETABLISSEMENT.search(nom):
+        return f"Destinataire : {nom}"
+    if _CIVILITES.match(nom):
         return f"À l'attention de {nom}"
     return f"À l'attention du Dr {nom}"
 
@@ -159,7 +170,14 @@ def _signature(b: dict, prat: dict) -> list[str]:
     quand = date_fr(_date_reference(b)[:10]) if _date_reference(b) else ""
     formule = ", le ".join(x for x in [f"Fait à {lieu}" if lieu else "Fait", quand] if x)
     titre = (prat.get("titre") or "").strip()
-    return [formule, f"{nom}, {titre.lower()}" if titre else nom]
+    if titre:
+        # Seule l'initiale du premier mot passe en minuscule (« Orthophoniste »
+        # → « orthophoniste »), jamais un sigle : « D.E. », « DU », « (Lyon) »
+        # étaient écrasés en « d.e. — du neuropsychologie (lyon) ».
+        premier = titre.split()[0]
+        if not (premier.isupper() and len(premier) > 1):
+            titre = titre[:1].lower() + titre[1:]
+    return [formule, f"{nom}, {titre}" if titre else nom]
 
 
 def _table_epreuves(b: dict) -> list[list[str]] | None:
@@ -167,7 +185,7 @@ def _table_epreuves(b: dict) -> list[list[str]] | None:
     lignes: list[list[str]] = []
     for e in b.get("epreuves") or []:
         for r in e.get("resultats") or []:
-            interpretation = " ".join(
+            interpretation = " — ".join(
                 x for x in [
                     DRAPEAU_LIBELLE.get(r.get("drapeau_seuil") or "", ""),
                     (r.get("interpretation") or "").strip(),
@@ -600,7 +618,7 @@ def _docx_runs(paragraphe, segments: list[texte_riche.Segment]) -> None:
                 paragraphe.add_run().add_break()
             if not morceau:
                 continue
-            run = paragraphe.add_run(morceau)
+            run = paragraphe.add_run(sans_controles(morceau))
             if s.gras:
                 run.bold = True
             if s.italique:
@@ -719,6 +737,9 @@ def _docx_mise_en_page(doc, mp: dict) -> None:
         st.font.color.rgb = couleur
     marge = Mm(float(mp["marges_mm"]))
     for section in doc.sections:
+        # Le modèle intégré de python-docx est au format US Letter : le Word
+        # sortait en 215,9 × 279,4 mm quand le PDF est en A4.
+        section.page_width, section.page_height = Mm(210), Mm(297)
         section.left_margin = section.right_margin = marge
         section.top_margin = section.bottom_margin = marge
         if mp.get("numeros_de_page"):
@@ -838,7 +859,14 @@ def to_docx(b: dict, cfg: dict | None = None, gabarit: bytes | None = None) -> b
             p.add_run(t).bold = True
         elif k == "logo":
             try:
-                doc.add_picture(io.BytesIO(t["donnees"]), height=Mm(t["hauteur_mm"]))
+                # Un logo en bandeau, à la hauteur demandée, débordait de la
+                # page : comme dans le PDF, il est borné à la largeur utile.
+                section = doc.sections[-1]
+                utile = section.page_width - section.left_margin - section.right_margin
+                image = doc.add_picture(io.BytesIO(t["donnees"]), height=Mm(t["hauteur_mm"]))
+                if image.width > utile:
+                    image.height = int(image.height * utile / image.width)
+                    image.width = utile
             except Exception:
                 continue  # image inattendue : le document sort sans logo
             doc.paragraphs[-1].alignment = getattr(WD_ALIGN_PARAGRAPH, _ALIGNEMENTS[t["position"]])
@@ -870,7 +898,7 @@ def to_docx(b: dict, cfg: dict | None = None, gabarit: bytes | None = None) -> b
             for ligne in t:
                 cells = table.add_row().cells
                 for i, val in enumerate(ligne):
-                    cells[i].text = val or "—"
+                    cells[i].text = sans_controles(val) or "—"
         elif k == "sign":
             doc.add_paragraph()
             for ligne in t:

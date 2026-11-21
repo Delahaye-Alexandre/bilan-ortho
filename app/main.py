@@ -1371,7 +1371,10 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
 
 
 @app.put(
-    "/api/bilans/{bilan_id}/sections/{cle}", dependencies=[Depends(require_unlock)]
+    # `:path` : une clé de rubrique personnalisée peut contenir « / »
+    # (« analyse / synthèse ») ; elle rendait la rubrique impossible à
+    # enregistrer (404).
+    "/api/bilans/{bilan_id}/sections/{cle:path}", dependencies=[Depends(require_unlock)]
 )
 async def put_section(bilan_id: int, cle: str, req: SectionPut) -> SectionReponse:
     statut = req.statut.value if req.statut else None

@@ -282,3 +282,32 @@ def test_api_apercu_de_mise_en_page(client):
     assert b"/Image" in client.post("/api/config/mise_en_page/apercu", json={}).content
     # Rien n'a été enregistré par les aperçus.
     assert client.get("/api/config").json()["mise_en_page"]["police"] == "Calibri"
+
+
+# --- relecture du 2026-11-20 ----------------------------------------------------------
+
+def test_word_sans_gabarit_en_a4_et_logo_borne_a_la_largeur_utile():
+    """Le Word sortait au format US Letter, et un logo en bandeau débordait de
+    la page (le PDF, lui, le bornait)."""
+    cfg = cfg_avec(logo=export.preparer_logo(png(2000, 200)), logo_hauteur_mm=30)
+    doc = Document(io.BytesIO(export.to_docx(BILAN, cfg)))
+    section = doc.sections[0]
+    assert round(section.page_width.mm) == 210 and round(section.page_height.mm) == 297
+    utile = section.page_width - section.left_margin - section.right_margin
+    image = doc.inline_shapes[0]
+    assert image.width <= utile and round(image.width / image.height) == 10
+
+
+def test_export_word_resiste_aux_caracteres_de_controle():
+    """Un retour à la ligne manuel de Word (\\x0b) ou un saut de page (\\x0c)
+    collé dans une rubrique ou une cellule bloquait tout l'export Word."""
+    import copy
+
+    b = copy.deepcopy(BILAN)
+    b["sections"][0]["contenu"] = "Ligne 1\x0bLigne 2\x0cfin\x00\x1b"
+    b["epreuves"] = [{"test_nom": "BALE\x0b", "resultats": [
+        {"sous_epreuve": "Mots\x0c", "score_brut": "12", "interpretation": "Lent\x01"}]}]
+    doc = Document(io.BytesIO(export.to_docx(b, cfg_avec())))
+    texte = "\n".join(p.text for p in doc.paragraphs)
+    assert "Ligne 1" in texte and "Ligne 2" in texte and "fin" in texte
+    assert export.to_pdf(b, cfg_avec()).startswith(b"%PDF")

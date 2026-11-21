@@ -261,6 +261,29 @@ def _odt_text(data: bytes) -> str:
 _FORMATS_ACCEPTES = ".pdf, .docx, .odt, .txt, .md"
 
 
+def _decoder_texte(data: bytes) -> str:
+    """Texte d'un fichier .txt / .md, quel que soit l'encodage du Bloc-notes.
+
+    Le décodage UTF-8 « en ignorant les erreurs » supprimait chaque lettre
+    accentuée d'un fichier « ANSI » (Windows-1252) sans un mot — « Anamnse »,
+    rubriques non reconnues —, refusait l'UTF-16 comme « binaire » et laissait
+    la marque d'ordre des octets en tête du premier titre."""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        try:
+            return data.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+    # Un binaire décodé tant bien que mal polluait la base de références : rejet.
+    if b"\x00" in data:
+        raise ValueError(
+            f"Fichier binaire non pris en charge. Formats acceptés : {_FORMATS_ACCEPTES}."
+        )
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")
+
+
 def extract_text(data: bytes, filename: str) -> str:
     ext = os.path.splitext(filename or "")[1].lower()
     if ext == ".pdf":
@@ -279,11 +302,7 @@ def extract_text(data: bytes, filename: str) -> str:
         return _odt_text(data)
     if ext in ("", ".txt", ".md", ".markdown"):
         # Un binaire décodé en errors="ignore" polluait la base RAG : rejet.
-        if b"\x00" in data:
-            raise ValueError(
-                f"Fichier binaire non pris en charge. Formats acceptés : {_FORMATS_ACCEPTES}."
-            )
-        return data.decode("utf-8", errors="ignore")
+        return _decoder_texte(data)
     raise ValueError(
         f"Format « {ext} » non pris en charge. Formats acceptés : {_FORMATS_ACCEPTES}."
     )

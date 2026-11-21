@@ -12,6 +12,7 @@ import unicodedata
 
 from . import config, db
 from .db import dicts as _dicts
+from .texte_riche import sans_controles
 
 
 def domaine_titres(domaines: list[str]) -> str:
@@ -408,7 +409,7 @@ def apply_updates(
         if not row:
             continue
         sid, contenu = row[0], (row[1] or "")
-        texte = nettoyer_prefixe_titre(u["texte"], row[2] or "", u["section"])
+        texte = nettoyer_prefixe_titre(sans_controles(u["texte"]), row[2] or "", u["section"])
         if not texte.strip():
             continue
         nouveau = (contenu + ("\n\n" if contenu else "") + texte).strip()
@@ -431,6 +432,7 @@ def update_section(
 ) -> bool:
     # Enregistrer une rubrique, c'est l'avoir relue : l'avertissement de
     # traçabilité a joué son rôle et disparaît (même règle que dans l'interface).
+    contenu = sans_controles(contenu)
     avant = con.execute(
         "SELECT contenu FROM section WHERE bilan_id=? AND cle=?", (bilan_id, cle)
     ).fetchone()
@@ -619,10 +621,18 @@ def etalonnage_effectif(r: dict) -> tuple[str | None, str | None]:
     return None, None
 
 
+_PERCENTILE_SAISI = re.compile(r"^\s*[Pp]?\s*(\d+(?:[.,]\d+)?)\s*(?:er|e|ème|eme|ᵉ)?\s*$")
+
+
 def _valeur_texte(t: str | None, v) -> str:
     if t == "percentile":
-        # collé à la valeur : « 25e percentile », pas « 25 e percentile »
-        return f"{v}e percentile"
+        # collé à la valeur : « 25e percentile », pas « 25 e percentile ». Une
+        # valeur saisie « 10e », « 10ème » ou « P10 » ne reçoit pas un second
+        # suffixe (« 10ee percentile »), et le premier s'écrit « 1er ».
+        m = _PERCENTILE_SAISI.match(str(v))
+        if m:
+            v = m.group(1)
+        return f"{v}er percentile" if str(v) == "1" else f"{v}e percentile"
     return f"{v} {_ET_LBL.get(t, '')}".strip()
 
 
@@ -681,6 +691,7 @@ def add_epreuve(
     ).lastrowid
     stored = []
     for r in resultats:
+        r = {k: sans_controles(v) if isinstance(v, str) else v for k, v in r.items()}
         drap = r.get("drapeau_seuil") or interpret_drapeau(*etalonnage_effectif(r), cfg)
         con.execute(
             "INSERT INTO resultat(epreuve_id, sous_epreuve, score_brut, etalonnage_type, "

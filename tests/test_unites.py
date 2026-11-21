@@ -1469,3 +1469,39 @@ def test_tirets_de_noms_de_tests_et_d_intervalles_ne_sont_pas_des_signes():
     assert f("score de \u22123 ET", ["trois items"]) == ["chiffre(s) absent(s) de la dictée : -3"]
     assert f("EXALANG 8-11 : 12 points", ["douze points à la BALE"]) == [
         "test(s) cité(s) mais absent(s) de votre dictée : EXALANG 8-11"]
+
+
+def test_destinataire_signature_et_percentiles_bien_ecrits():
+    from app import bilan as _bilan
+    from app import export
+
+    d = lambda nom: export._destinataire({"prescripteur": {"nom": nom}})  # noqa: E731
+    assert d("Martin") == "À l'attention du Dr Martin"
+    assert d("Madame Durand") == "À l'attention de Madame Durand"
+    assert d("Docteure Lefèvre") == "À l'attention de Docteure Lefèvre"
+    assert d("Dr.Martin") == "À l'attention de Dr.Martin"
+    assert d("CMP de Lille") == "Destinataire : CMP de Lille"
+    prat = {"nom": "Martin", "prenom": "Camille", "titre": "Orthophoniste D.E. — DU Neuropsychologie (Lyon)"}
+    assert export._signature({}, prat)[-1].endswith(
+        ", orthophoniste D.E. — DU Neuropsychologie (Lyon)")
+    t = lambda v: _bilan.etalonnage_texte(  # noqa: E731
+        {"etalonnage_type": "percentile", "etalonnage_valeur": v})
+    assert [t("1"), t("10e"), t("10ème"), t("P10"), t("25")] == [
+        "1er percentile", "10e percentile", "10e percentile", "10e percentile", "25e percentile"]
+    lignes = export._table_epreuves({"epreuves": [{"test_nom": "EVALEO", "resultats": [
+        {"sous_epreuve": "Dénomination", "drapeau_seuil": "severe", "interpretation": "Manque du mot"}]}]})
+    assert lignes[0][-1] == "déficit sévère — Manque du mot"
+
+
+def test_import_texte_quel_que_soit_l_encodage():
+    """Un .txt « ANSI » perdait ses accents sans un mot, l'UTF-16 était refusé
+    comme « binaire », la marque d'ordre des octets restait dans le premier titre."""
+    import pytest
+
+    from app import importer
+
+    texte = "Anamnèse\nEnfant né à terme.\n"
+    for encodage in ("utf-8", "utf-8-sig", "cp1252", "utf-16"):
+        assert importer.extract_text(texte.encode(encodage), "bilan.txt") == texte, encodage
+    with pytest.raises(ValueError):
+        importer.extract_text(b"PK\x03\x04\x00\x00binaire", "bilan.txt")

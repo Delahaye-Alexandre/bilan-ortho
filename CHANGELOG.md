@@ -7,6 +7,19 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Export Word** : format A4 (il sortait au format américain « Letter », le
+  PDF en A4) ; un logo en bandeau ne déborde plus de la page ; un caractère
+  invisible collé depuis Word ou un PDF (retour à la ligne manuel, saut de
+  page) ne bloque plus l'export.
+- **Document** : « À l'attention de Madame Durand » ou « Destinataire : CMP de
+  Lille » au lieu de « du Dr Madame Durand » ; le titre professionnel garde ses
+  sigles sous la signature (« orthophoniste D.E. ») ; « 1er percentile », plus
+  de « 10ee percentile » ; drapeau et interprétation séparés par un tiret dans
+  le tableau des résultats.
+- **Import** d'un fichier texte enregistré par le Bloc-notes : les accents ne
+  sont plus supprimés (« Anamnse »), l'UTF-16 est accepté.
+- Une rubrique dont la clé de trame contient « / », « ? » ou « # » peut de
+  nouveau être enregistrée.
 - **L'adresse du moteur d'IA est garantie locale au moment de l'appel.** La
   variable d'environnement `OLLAMA_HOST` était reprise telle quelle : réglée
   sur une autre machine, elle y envoyait la dictée sans aucun refus ; réglée
