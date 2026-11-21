@@ -10,11 +10,13 @@ formulations que l'orthophoniste **relit, corrige, complète et valide**.
 ## Responsabilité
 
 - Le **diagnostic orthophonique relève exclusivement de l'orthophoniste**, qui
-  l'établit en autonomie et en reste **seul responsable** (art. L4341-9 CSP).
+  l'établit en autonomie et en reste **entièrement responsable** (art. L4341-9 CSP).
 - Toute production de l'IA est étiquetée « proposition à valider » tant que
   l'orthophoniste ne l'a pas validée. Rien n'est diffusé sans validation humaine.
-- Les scores et cotations sont saisis/validés par l'orthophoniste ; l'app ne
-  recalcule ni n'invente aucun chiffre.
+- Les scores sont saisis par l'orthophoniste ; la cotation est calculée
+  d'après sa configuration NGAP, jamais par le modèle ; l'app ne recalcule ni
+  n'invente aucun score. Marquer un bilan « validé » exige que ses rubriques
+  aient été relues ; un bilan modifié après validation redevient un brouillon.
 
 ## Cadre réglementaire (repères, France — juillet 2026)
 

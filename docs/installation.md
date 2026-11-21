@@ -12,7 +12,7 @@ rien ne sort de l'ordinateur, `verifier-que-rien-ne-sort.md`.
 - Windows 10 ou 11
 - 8 Go de RAM minimum (16 Go recommandés : l'assistant sera plus pertinent)
 - ~10 Go d'espace disque libre
-- Une connexion internet **pour l'installation et la toute première dictée**
+- Une connexion internet **pour l'installation**
   (téléchargement des modèles d'IA ; ensuite tout fonctionne hors ligne)
 - Un micro (celui du portable suffit) pour la dictée
 
@@ -48,21 +48,22 @@ Au premier double-clic, la fenêtre Bilan Ortho s'ouvre sur l'écran
 2. **Modèles d'IA** : l'application propose automatiquement le modèle adapté
    à votre machine. Cliquez « ⬇ Télécharger les modèles » et patientez
    (3 à 6 Go — la barre de progression vous accompagne).
-3. Cliquez « Continuer → ».
+3. **Modèle de dictée** : cliquez « ⬇ Télécharger le modèle de dictée »
+   (environ 1,5 Go, 3 Go avec une carte graphique). Sans lui, « Continuer → »
+   reste grisé ; « Passer cette étape » ouvre l'application sans la dictée.
+4. Cliquez « Continuer → ».
 
 Ensuite, créez la **passphrase de votre coffre** (12 caractères minimum) :
 elle chiffre toutes vos données. **Notez-la précieusement : elle est
 irrécupérable** (personne ne peut la retrouver, l'auteur du logiciel
 non plus).
 
-À noter : à la **première dictée**, le modèle de reconnaissance vocale
-(~1,5 Go) se télécharge aussi — une seule fois.
-
 ## Mettre à jour
 
 L'application vérifie d'elle-même, au plus une fois par jour, si une nouvelle
 version existe (elle vous le dit la première fois, et vous pouvez désactiver ce
-comportement dans ⚙️ Paramètres → Mises à jour). Quand un bandeau annonce une
+comportement dans ⚙️ Paramètres → Sécurité et sauvegardes → Mises à jour de
+l'application). Quand un bandeau annonce une
 version, dépliez « Ce qui change » puis cliquez **« Installer maintenant »** :
 une sauvegarde de votre coffre est créée, l'installeur est téléchargé et
 vérifié (signature de l'éditeur, empreinte), l'application se ferme, s'installe

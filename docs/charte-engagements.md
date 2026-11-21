@@ -1,7 +1,7 @@
 # Charte d'engagements
 
 **Bilan Ortho** — assistant local de rédaction de bilans orthophoniques
-Version 1.12.0 · 18 juillet 2026, révisée le 4 septembre 2026
+18 juillet 2026, révisée le 21 novembre 2026
 Titulaire : Alexandre Delahaye · alexandre-delahaye@outlook.fr
 
 Cette charte énonce les engagements que prend Bilan Ortho envers les
@@ -13,8 +13,10 @@ fonctionnement réel de l'application, vérifiable dans le code source.
 Pas de cloud, pas de compte en ligne, pas de télémétrie. Toutes les données
 (patients, bilans, dictées) sont stockées dans une base unique chiffrée
 (SQLCipher) sur votre machine, et le serveur de l'application n'écoute que sur
-l'adresse locale (127.0.0.1). Ses seuls échanges réseau se font avec le moteur
-d'IA Ollama, lui aussi installé sur votre machine. C'est vérifiable : le code
+l'adresse locale (127.0.0.1). Pendant un bilan, ses seuls échanges se font
+avec le moteur d'IA Ollama, lui aussi installé sur votre machine ; hors de
+tout bilan, elle ne contacte que GitHub, pour vérifier s'il existe une
+nouvelle version. C'est vérifiable : le code
 est public et, une fois les modèles installés, l'application fonctionne
 entièrement débranchée.
 

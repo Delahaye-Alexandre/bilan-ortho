@@ -47,7 +47,14 @@
   temporaire du système : un arrêt brutal en pleine transcription peut y
   laisser un enregistrement — d'où l'intérêt d'un disque chiffré (§ 4).
 - **Sauvegardes chiffrées du coffre** : un dossier supprimé y subsiste jusqu'à
-  la rotation des copies (`sauvegarde.retention`, 10 par défaut). Effacement
+  la rotation des copies (`sauvegarde.retention`, 10 par défaut ; une copie
+  automatique par semaine d'utilisation au plus, soit dix semaines au moins et
+  davantage si l'application est ouverte moins souvent). La rotation ne porte
+  que sur le dossier de sauvegarde en cours : après un changement de dossier,
+  les copies laissées dans l'ancien sont à supprimer à la main. Après un
+  changement de passphrase, les copies antérieures s'ouvrent encore avec
+  l'ancienne : si elle a été divulguée, les supprimer une fois la nouvelle
+  sauvegarde faite. Effacement
   différé admis pour les jeux de sauvegarde, à condition de le mentionner ici —
   l'app le rappelle au moment de la suppression. La copie prise avant une
   migration du coffre (changement de version de l'application) est une
@@ -66,8 +73,9 @@
   traitement des données. Seules exceptions, hors traitement et toujours vers
   GitHub (`app/maj.py`) : la vérification de mise à jour — un GET vers l'API
   GitHub Releases, au plus une fois par jour au démarrage (réglage activé par
-  défaut, annoncé une fois à l'utilisateur, désactivable) ou à la demande — et,
-  uniquement quand l'utilisateur clique « Installer maintenant », le
+  défaut, annoncé une fois à la personne qui utilise l'application, désactivable)
+  ou à la demande — et, uniquement quand l'orthophoniste clique « Installer
+  maintenant », le
   téléchargement de l'installeur et de ses empreintes signées. Aucune donnée
   personnelle n'est transmise ; comme pour toute connexion, l'adresse IP du
   poste est visible de GitHub. Avant l'installation, une sauvegarde chiffrée du

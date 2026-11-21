@@ -68,7 +68,7 @@ celui du rendement.
 
 Les avertissements sont décrits pas à pas dans `docs/installation.md` et
 dans les notes de release ; une fois installée, l'application se met à jour
-d'elle-même sans les redéclencher. Pour un cercle d'amies orthophonistes qui
+d'elle-même sans les redéclencher. Pour un petit cercle d'orthophonistes qui
 reçoivent le lien de la main du responsable du projet, c'est acceptable.
 Revoir la question si les avertissements font renoncer quelqu'un.
 
@@ -105,8 +105,8 @@ conditions (signpath.org/terms.html) précisent : « we cannot sign binaries
 based on source code that nobody knows. For executable programs that may be
 downloaded and executed based on our signature, we require a certain
 verifiable reputation », et la décision reste la leur, sans recours. Un
-projet sans utilisateurs connus n'y a pas sa place aujourd'hui. À retenter
-quand Bilan Ortho aura des utilisatrices visibles (retours publics, étoiles,
+projet sans personnes utilisatrices connues n'y a pas sa place aujourd'hui. À
+retenter quand Bilan Ortho sera visiblement utilisé (retours publics, étoiles,
 téléchargements) ; le reste des conditions est déjà rempli (AGPL, build
 automatisé par GitHub Actions) ou facile (double authentification, politique
 de signature publiée sur le README, approbation manuelle par version, action

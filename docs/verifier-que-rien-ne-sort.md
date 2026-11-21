@@ -16,7 +16,7 @@ Voici comment, ce que vous pouvez observer, et ce que le code garantit.
    épreuve, cotez, exportez en Word et en PDF, validez.
 4. Tout fonctionne. Les seules actions qui échouent hors ligne : télécharger
    un modèle, et vérifier s'il existe une nouvelle version (annoncée une
-   fois, désactivable dans ⚙️ Paramètres → Mises à jour).
+   fois, désactivable dans ⚙️ Paramètres → Sécurité et sauvegardes).
 5. Rallumez la connexion : rien n'est « envoyé en différé ». L'application
    n'a ni file d'attente réseau, ni compte, ni télémétrie.
 

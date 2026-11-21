@@ -59,7 +59,9 @@ en charge.
 
 **Combien de temps.** [Durée retenue par le cabinet pour les dossiers de
 soins — à préciser ; les sauvegardes chiffrées de l'ordinateur peuvent
-conserver un dossier quelques semaines après sa suppression.]
+conserver un dossier plusieurs mois après sa suppression : dix copies sont
+gardées, une par semaine d'utilisation au plus, la plus ancienne étant
+remplacée par la plus récente.]
 
 **Vos droits.** Accès, rectification, effacement (dans les limites des
 obligations de conservation), limitation, opposition pour un motif tenant à

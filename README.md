@@ -48,8 +48,9 @@ Rien ne sort de l'ordinateur, et vous pouvez le vérifier vous-même :
   verrouillage automatique après inactivité ; passphrase modifiable (le
   coffre est re-chiffré sur place) ; journal d'audit ;
   **sauvegardes chiffrées** automatiques (au déverrouillage, cadence
-  configurable) et manuelles, avec rotation — la copie s'ouvre avec la même
-  passphrase.
+  configurable) et manuelles, avec rotation — la copie s'ouvre avec la
+  passphrase en vigueur quand elle a été faite (après un changement de
+  passphrase, les copies antérieures gardent l'ancienne).
 - **Patients** : fiche minimale (nom, prénom, date de naissance, sexe, notes),
   bilans rattachés, **âge calculé automatiquement** (transmis à l'IA pour les
   étalonnages — jamais l'identité) et porté sur les exports ; suppression d'un
@@ -102,9 +103,9 @@ Rien ne sort de l'ordinateur, et vous pouvez le vérifier vous-même :
   ces signalements restent attachés au bilan tant que vous n'avez pas relu la
   rubrique. L'app ne corrige jamais un chiffre d'elle-même : à vous de trancher.
 - **Tout est configurable** depuis l'écran ⚙️ Paramètres, pensé pour des
-  orthophonistes et non des informaticiens : six sections dans les mots du
-  cabinet (Mon cabinet, Mes comptes-rendus, Ma dictée, Mes tests et seuils,
-  Cotation NGAP, Sécurité et sauvegardes), une bulle d'aide par réglage avec
+  orthophonistes et non des informaticiens : sept sections dans les mots du
+  cabinet (Mon cabinet, Mes comptes-rendus, Mise en page de mes documents, Ma
+  dictée, Mes tests et seuils, Cotation NGAP, Sécurité et sauvegardes), une bulle d'aide par réglage avec
   la valeur recommandée, l'effet montré en direct (montant coté, score classé,
   signature) et un retour aux valeurs recommandées section par section. Les
   modèles d'IA et de dictée, la consigne de structuration et les autres
@@ -206,8 +207,8 @@ relancez et déverrouillez avec la même passphrase.
 ## Dictée : choix du modèle
 
 Par défaut (`auto`), l'app choisit selon votre matériel : GPU ≥ 6 Go VRAM →
-`large-v3`, sinon CPU + `medium` (int8). Le modèle se télécharge au premier
-usage (~1,5 Go pour `medium`). Pour la meilleure qualité FR, pointez
+`large-v3`, sinon CPU + `medium` (int8). Le modèle se télécharge depuis
+l'écran de première installation (~1,5 Go pour `medium`). Pour la meilleure qualité FR, pointez
 `Paramètres → Réglages techniques → Précision de la reconnaissance vocale`
 vers un modèle CTranslate2 fine-tuné français
 (ex. conversion de `bofenghuang/whisper-large-v3-french`).
@@ -218,8 +219,7 @@ vers un modèle CTranslate2 fine-tuné français
 pip install -r requirements-dev.txt        # pytest et ruff, versions de la CI
 pytest tests/        # 100 % hors ligne (LLM/embeddings mockés ;
                      # le test OCR est sauté si Tesseract n'est pas installé)
-bun tests/ui/test_questions_ui.mjs    # tests UI (happy-dom) : panneau questions
-bun tests/ui/test_robustesse_ui.mjs   # tests UI : brouillons, 423, anti double-clic
+for f in tests/ui/test_*_ui.mjs; do bun "$f" || break; done   # les sept suites UI (happy-dom)
 ruff check .                          # lint (config dans pyproject.toml)
 ```
 

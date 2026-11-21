@@ -27,7 +27,7 @@ pouvez d'ailleurs le vérifier vous-même (`verifier-que-rien-ne-sort.md`).
 4. **➡️ Structurer** : l'assistant répartit vos propos dans la trame et vous
    pose des **questions** quand il manque quelque chose — répondez-y.
 5. Saisissez une épreuve dans **🧪 Épreuves & scores** (le drapeau
-   norme/pathologique se calcule seul).
+   norme/pathologique se calcule seul, d'après vos seuils).
 6. **Relisez, corrigez, validez** chaque rubrique — c'est vous qui décidez,
    l'IA ne fait que proposer. Mettez en forme si besoin (gras, souligné,
    listes : barre au-dessus de chaque rubrique, ou Ctrl+B / Ctrl+I / Ctrl+U) ;
