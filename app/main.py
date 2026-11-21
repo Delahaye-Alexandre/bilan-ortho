@@ -196,6 +196,13 @@ def require_unlock() -> None:
     security.touch()
 
 
+def operation_longue():
+    """Dépendance des routes qui calculent longtemps : suspend le verrouillage
+    d'inactivité jusqu'à leur réponse (cf. ``security.operation_longue``)."""
+    with security.operation_longue():
+        yield
+
+
 # --- Session / sécurité ------------------------------------------------------
 
 @app.get("/api/status")
@@ -833,7 +840,7 @@ async def stt_info() -> dict:
     return stt.resolved(cfg)
 
 
-@app.post("/api/transcribe", dependencies=[Depends(require_unlock)])
+@app.post("/api/transcribe", dependencies=[Depends(require_unlock), Depends(operation_longue)])
 async def transcribe(audio: UploadFile = File(...)) -> dict:
     data = await _lire_borne(audio, TAILLE_MAX_AUDIO, "Enregistrement audio")
     if not data:
@@ -862,9 +869,14 @@ async def transcribe(audio: UploadFile = File(...)) -> dict:
             "La transcription a échoué. Réessayez ; au premier usage, le modèle "
             "de dictée doit d'abord finir de s'installer.",
         )
-    with security.transaction() as con:
-        # Journalise l'acte, jamais le contenu.
-        security.audit("transcribe", "dictee", None, f"{len(result['text'])} car.")
+    try:
+        with security.transaction():
+            # Journalise l'acte, jamais le contenu.
+            security.audit("transcribe", "dictee", None, f"{len(result['text'])} car.")
+    except security.CoffreVerrouille:
+        # Verrouillé à la main depuis une autre fenêtre pendant le calcul : la
+        # ligne d'audit manque, mais le texte dicté n'est pas jeté pour autant.
+        logger.warning("Transcription rendue sans ligne d'audit : coffre verrouillé entre-temps")
     return result
 
 
@@ -1067,7 +1079,7 @@ _analyses_en_cours: set[int] = set()
 _analyses_lock = threading.Lock()
 
 
-@app.post("/api/bilans/{bilan_id}/structure", dependencies=[Depends(require_unlock)])
+@app.post("/api/bilans/{bilan_id}/structure", dependencies=[Depends(require_unlock), Depends(operation_longue)])
 async def structure_bilan(bilan_id: int, req: StructureRequest, request: Request) -> dict:
     if not req.transcription.strip() and not req.reponses:
         raise HTTPException(400, "Rien à structurer : ni dictée, ni réponse.")
@@ -1247,6 +1259,15 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
                 "signalements": msgs,
             })
     with security.transaction() as con:
+        if bilan.statut(con, bilan_id) is None:
+            # Supprimé depuis une autre fenêtre pendant l'analyse : la route
+            # rendait 200 avec « bilan : null », l'interface plantait et la
+            # dictée était vidée.
+            raise HTTPException(
+                404,
+                "Ce bilan a été supprimé pendant l'analyse : rien n'a été "
+                "enregistré, votre dictée est conservée.",
+            )
         bilan.apply_updates(con, bilan_id, result["updates"])
         # Les avertissements suivent le texte qu'ils concernent, dans le coffre :
         # ils doivent survivre à un F5, à un verrouillage d'inactivité et à un
@@ -1477,7 +1498,7 @@ def _type_fichier(nom: str | None) -> str:
     suffixe = Path(nom or "").suffix.lower()
     return f"fichier {suffixe}" if suffixe else "fichier sans extension"
 
-@app.post("/api/references", dependencies=[Depends(require_unlock)])
+@app.post("/api/references", dependencies=[Depends(require_unlock), Depends(operation_longue)])
 async def import_reference(
     file: UploadFile = File(...), domaine: str = Form(""),
     patient_id: int | None = Form(None),
@@ -1572,7 +1593,7 @@ def _decouper_pack(fichiers: list[tuple[str, str, bytes]]) -> list[tuple[str, st
 
 # Déclarées AVANT /api/references/{ref_id} : sinon « pack » serait happé par
 # le paramètre de chemin ref_id.
-@app.post("/api/references/pack", dependencies=[Depends(require_unlock)])
+@app.post("/api/references/pack", dependencies=[Depends(require_unlock), Depends(operation_longue)])
 async def import_pack() -> dict:
     """Indexe le pack de bilans fictifs embarqué (amorces de style).
 

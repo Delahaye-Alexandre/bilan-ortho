@@ -286,10 +286,13 @@ structureResponder = () => {
 document.getElementById("dicteeText").value = "une dictée";
 document.getElementById("structBtn").click();
 await settle();
-check("C2 : la correction manuelle non enregistrée est préservée après structuration",
-  lire("anamnese") === "Texte initial. CORRIGÉ À LA MAIN");
-check("C2 : l'utilisateur est prévenu (« non enregistrées »)",
-  savest("anamnese").textContent.includes("non enregistrées"));
+// La correction est préservée ET l'ajout de l'analyse reste visible, à la
+// suite : la correction seule le masquait, et « Enregistrer » l'effaçait sans
+// qu'il ait été lu (relecture du 2026-11-20).
+check("C2 : la correction manuelle est préservée, l'ajout de l'analyse placé à la suite",
+  lire("anamnese") === "Texte initial. CORRIGÉ À LA MAIN\n\nAjout proposé par l'IA.");
+check("C2 : l'utilisateur est prévenu (l'analyse a complété la rubrique)",
+  savest("anamnese").textContent.includes("l'analyse a complété cette rubrique"));
 check("C2 : les rubriques non modifiées suivent le serveur",
   lire("diagnostic") === "");
 
@@ -301,8 +304,8 @@ check("C2 : enregistrement du brouillon → PUT envoyé + statut ✓",
 __t.renderBilan();
 await settle();
 check("C2 : après enregistrement, re-rendu sans alerte ni perte",
-  lire("anamnese") === "Texte initial. CORRIGÉ À LA MAIN"
-  && !savest("anamnese").textContent.includes("non enregistrées"));
+  lire("anamnese") === "Texte initial. CORRIGÉ À LA MAIN\n\nAjout proposé par l'IA."
+  && !savest("anamnese").textContent.includes("⚠️"));
 
 // === 2. Les brouillons ne fuient pas vers un autre bilan =====================
 ecrire("anamnese", "BROUILLON DU BILAN 1");
@@ -1437,6 +1440,25 @@ check("formulaire remis à zéro après enregistrement : case décochée", elt("
 elt("patList").querySelector("a[data-id]").click(); await settle();
 check("modification d'un dossier : la case reflète la trace enregistrée", elt("patInforme").checked === true);
 globalThis.fetch = fetchAvantPatients;
+
+// === Relecture du 2026-11-20 : la fin d'une analyse ne détruit plus de saisie ==
+__t.CUR = structuredClone(CUR0);
+__t.renderBilan();
+document.getElementById("dicteeText").value = "Première partie.";
+structureResponder = () => {
+  // Pendant l'analyse, la personne continue de dicter à la suite.
+  document.getElementById("dicteeText").value = "Première partie. Suite dictée pendant l'analyse.";
+  return { bilan: structuredClone(CUR0), questions: [], prompt_trop_long: true, redevenu_brouillon: true };
+};
+document.getElementById("structBtn").click();
+await settle(); await settle();
+check("fin d'analyse : seul le texte envoyé quitte le champ de dictée",
+  document.getElementById("dicteeText").value === "Suite dictée pendant l'analyse.");
+check("fin d'analyse : le dépassement de la fenêtre du modèle est annoncé",
+  status().includes("consignes ont pu être tronquées"));
+check("fin d'analyse : un bilan validé redevenu brouillon est annoncé",
+  document.getElementById("coteInfo").textContent.includes("redevient un brouillon"));
+document.getElementById("dicteeText").value = "";
 
 console.log(failures ? `\n${failures} échec(s)` : "\nTous les scénarios passent.");
 process.exit(failures ? 1 : 0);

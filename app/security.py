@@ -20,7 +20,7 @@ from . import config, db
 
 logger = logging.getLogger(__name__)
 _lock = threading.RLock()
-_state: dict = {"con": None, "last_activity": 0.0, "minuteur": None}
+_state: dict = {"con": None, "last_activity": 0.0, "minuteur": None, "operations": 0}
 
 
 class CoffreVerrouille(RuntimeError):
@@ -341,6 +341,27 @@ def touch() -> None:
         _state["last_activity"] = time.monotonic()
 
 
+@contextmanager
+def operation_longue():
+    """Une requête qui calcule (transcription, analyse, import avec OCR) est
+    une activité : le verrouillage d'inactivité ne tombe pas sous ses pieds.
+
+    Le délai ne partait que de l'arrivée de la requête. Une dictée de vingt
+    minutes transcrite sur processeur dure à peu près autant : le minuteur
+    verrouillait le coffre en plein calcul, le texte obtenu était jeté (423),
+    et « Réessayer » échouait de la même façon. Tant qu'une opération est en
+    cours, l'échéance est suspendue ; elle repart de zéro à la fin. Le
+    verrouillage manuel (🔒) reste immédiat."""
+    with _lock:
+        _state["operations"] += 1
+    try:
+        yield
+    finally:
+        with _lock:
+            _state["operations"] = max(0, _state["operations"] - 1)
+            _state["last_activity"] = time.monotonic()
+
+
 def seconds_idle() -> float:
     with _lock:
         return time.monotonic() - _state["last_activity"]
@@ -406,6 +427,8 @@ def enforce_inactivity() -> bool:
         con = _state["con"]
         if con is None:
             return True
+        if _state["operations"] > 0:
+            return False  # un calcul est en cours (cf. operation_longue)
         minutes = _delai_inactivite_minutes(con)
         if minutes and (time.monotonic() - _state["last_activity"]) > minutes * 60:
             lock()  # RLock : réentrant depuis ce même thread
@@ -424,6 +447,8 @@ def secondes_avant_verrouillage() -> float | None:
         minutes = _delai_inactivite_minutes(con)
         if not minutes:
             return None
+        if _state["operations"] > 0:
+            return minutes * 60  # échéance suspendue pendant le calcul
         return max(0.0, minutes * 60 - (time.monotonic() - _state["last_activity"]))
 
 

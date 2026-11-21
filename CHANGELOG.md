@@ -7,6 +7,28 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Une dictée longue aboutit toujours.** Sur un poste sans carte graphique,
+  transcrire une dictée prend à peu près le temps de la dictée : au-delà du
+  délai de verrouillage (15 minutes par défaut), le coffre se verrouillait en
+  plein calcul, le texte était jeté et « Réessayer » échouait de la même
+  façon. Une transcription, une analyse ou un import en cours suspendent
+  désormais le verrouillage d'inactivité, qui repart à la fin.
+- **Une dictée ne peut plus atterrir dans le dossier d'un autre patient.**
+  Changer de dossier pendant la transcription déposait le texte sous
+  l'identité du dossier suivant ; le changement attend la fin de la
+  transcription, et un enregistrement en attente de « Réessayer » est signalé
+  avant d'être abandonné (comme avant un F5 ou un verrouillage).
+- **La fin d'une analyse ne détruit plus de saisie.** Ce qui a été dicté ou
+  tapé pendant l'analyse reste dans le champ (seul le texte envoyé en sort) ;
+  une rubrique corrigée pendant l'analyse garde votre correction et reçoit à la
+  suite ce que l'analyse y a ajouté, au lieu de le masquer puis de l'effacer à
+  l'enregistrement ; un bilan supprimé pendant son analyse rend un message
+  clair et conserve la dictée.
+- **L'alerte « dictée trop longue pour le modèle » s'affiche enfin** : elle
+  était calculée par le serveur, jamais montrée.
+- **La dictée ne contacte plus Hugging Face à chaque lancement** : le modèle
+  déjà installé est chargé depuis le disque, sans réseau. Aucune donnée
+  n'était transmise, mais la promesse « seul GitHub » était inexacte.
 - **Un écart-type saisi avec un vrai signe moins n'est plus classé « dans la
   norme ».** « −2,1 » (le signe que l'application affiche elle-même, et celui
   des comptes-rendus de logiciels de tests), « –2,1 » (tiret de Word) ou

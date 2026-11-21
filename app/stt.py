@@ -169,9 +169,17 @@ def _get_model(spec: dict):
 
     with _lock:
         if _cache["spec"] != spec or _cache["model"] is None:
-            _cache["model"] = WhisperModel(
-                spec["model"], device=spec["device"], compute_type=spec["compute_type"]
-            )
+            reglages = {"device": spec["device"], "compute_type": spec["compute_type"]}
+            # D'abord le cache local, sans réseau : par défaut, faster-whisper
+            # interroge Hugging Face à chaque chargement, même modèle présent —
+            # une requête sortante à la première dictée de chaque lancement,
+            # alors que la documentation promet « seul GitHub ». Le réseau ne
+            # sert que si le modèle manque (premier usage, écran d'installation).
+            try:
+                modele = WhisperModel(spec["model"], local_files_only=True, **reglages)
+            except Exception:
+                modele = WhisperModel(spec["model"], **reglages)
+            _cache["model"] = modele
             _cache["spec"] = spec
         return _cache["model"]
 

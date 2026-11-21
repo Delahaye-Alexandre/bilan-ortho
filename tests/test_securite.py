@@ -441,3 +441,58 @@ def test_memoire_des_pages_dechiffrees_effacee(con):
     """cipher_memory_security est désactivé par défaut dans cette distribution
     de SQLCipher : la clé dérivée pouvait partir en swap ou en hibernation."""
     assert str(con.execute("PRAGMA cipher_memory_security").fetchone()[0]) == "1"
+
+
+def test_operation_longue_suspend_le_verrouillage_d_inactivite(client, monkeypatch):
+    """Une dictée longue transcrite sur processeur dure plus que le délai
+    d'inactivité : le minuteur verrouillait le coffre en plein calcul, le
+    texte était jeté (423) et « Réessayer » échouait à l'identique."""
+    import time
+
+    from app import llm, security, stt
+
+    def minuteur_pendant_le_calcul():
+        # Le délai est dépassé depuis longtemps et le minuteur passe.
+        with security._lock:
+            security._state["last_activity"] = time.monotonic() - 86400
+        security._tic_minuteur()
+        assert security.secondes_avant_verrouillage() == 15 * 60  # échéance suspendue
+
+    def transcription_lente(data, nom, cfg):
+        minuteur_pendant_le_calcul()
+        return {"text": "Texte dicté.", "language": "fr", "duration": 1.0,
+                "model": "medium", "device": "cpu"}
+
+    async def analyse_lente(*args, **kwargs):
+        minuteur_pendant_le_calcul()
+        return {"updates": [{"section": "anamnese", "texte": "Texte dicté."}], "questions": []}
+
+    monkeypatch.setattr(stt, "transcribe", transcription_lente)
+    monkeypatch.setattr(llm, "structure", analyse_lente)
+    r = client.post("/api/transcribe", files={"audio": ("d.webm", b"x" * 64, "audio/webm")})
+    assert r.status_code == 200 and r.json()["text"] == "Texte dicté."
+    assert security.is_unlocked() and security._state["operations"] == 0
+    # L'échéance repart de zéro à la fin du calcul.
+    assert security.seconds_idle() < 5
+
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte dicté."})
+    assert r.status_code == 200
+    assert any("Texte dicté." in (s["contenu"] or "") for s in r.json()["bilan"]["sections"])
+    # Hors opération, le délai dépassé verrouille toujours.
+    with security._lock:
+        security._state["last_activity"] = time.monotonic() - 86400
+    assert security.enforce_inactivity() is True
+
+
+def test_transcription_rendue_meme_si_le_coffre_est_verrouille_a_la_main(client, monkeypatch):
+    from app import security, stt
+
+    def transcription_puis_verrou(data, nom, cfg):
+        security.lock()  # 🔒 cliqué dans une autre fenêtre pendant le calcul
+        return {"text": "Texte dicté.", "language": "fr", "duration": 1.0,
+                "model": "medium", "device": "cpu"}
+
+    monkeypatch.setattr(stt, "transcribe", transcription_puis_verrou)
+    r = client.post("/api/transcribe", files={"audio": ("d.webm", b"x" * 64, "audio/webm")})
+    assert r.status_code == 200 and r.json()["text"] == "Texte dicté."

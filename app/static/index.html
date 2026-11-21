@@ -1380,9 +1380,17 @@ function quitterBilanOk() {
     statutDossier('Arrêtez d\'abord l\'enregistrement en cours avant de changer de dossier.');
     return null;
   }
+  // La transcription rend son texte dans le champ de dictée : changer de
+  // dossier pendant qu'elle tourne la déposait sous l'identité d'un autre
+  // patient.
+  if (TRANSCRIPTION_EN_COURS) {
+    statutDossier('La transcription de votre dictée est en cours : attendez qu\'elle se termine avant de changer de dossier.');
+    return null;
+  }
   if (!CUR) return { abandon: false };
   const raisons = [];
   if (dicteeText.value.trim()) raisons.push('une dictée transcrite non analysée');
+  if (DERNIER_AUDIO) raisons.push('un enregistrement dont la transcription a échoué');
   const nb = sectionsNonEnregistrees().length;
   if (nb) raisons.push(`${nb} rubrique(s) modifiée(s) non enregistrée(s)`);
   if (enteteModifie()) raisons.push('un en-tête (date, prescripteur) non enregistré');
@@ -1414,7 +1422,7 @@ document.getElementById('newBilan').addEventListener('click', e => avecBouton(e.
     CUR = await r.json();
     // Le dossier a bien changé : c'est seulement maintenant que le contenu
     // abandonné peut disparaître.
-    if (suite.abandon) dicteeText.value = '';
+    if (suite.abandon) { dicteeText.value = ''; oublierAudioEnAttente(); }
     QS = []; DISMISSED.clear(); ANSWERED.clear(); renderBilan(); renderQuestions(); loadRecents(); loadPatients();
   } catch (err) { statutDossier('Erreur : ' + err.message); }
 }));
@@ -1424,7 +1432,7 @@ async function loadBilan(id) {
   try {
     CUR = await (await api('/api/bilans/' + id)).json();
   } catch (e) { statutDossier('Erreur : ' + e.message); return; }
-  if (suite.abandon) dicteeText.value = '';
+  if (suite.abandon) { dicteeText.value = ''; oublierAudioEnAttente(); }
   QS = []; DISMISSED.clear(); ANSWERED.clear(); renderBilan(); renderQuestions();
 }
 // Vraie pagination par offset : le serveur plafonne limit à 200 — recharger
@@ -1897,7 +1905,7 @@ function renderBilan() {
       const ta = sec.querySelector('.secText');
       const ref = SEC_RENDERED[sec.dataset.cle];
       const val = ta ? rtVersMd(ta) : '';
-      if (ta && ref !== undefined && val !== ref) drafts[sec.dataset.cle] = val;
+      if (ta && ref !== undefined && val !== ref) drafts[sec.dataset.cle] = { val, ref };
     });
   }
   // Même précaution pour la ligne de saisie d'une épreuve : elle est régénérée
@@ -1930,9 +1938,23 @@ function renderBilan() {
     // pour la seule raison qu'il se réécrit autrement.
     remplirEditeur(ta, (s && s.contenu) || '');
     SEC_RENDERED[cle] = rtVersMd(ta);
-    if (drafts[cle] !== undefined && drafts[cle] !== SEC_RENDERED[cle]) {
-      remplirEditeur(ta, drafts[cle]);
-      sec.querySelector('.savest').textContent = '⚠️ modifications non enregistrées';
+    if (drafts[cle] !== undefined && drafts[cle].val !== SEC_RENDERED[cle]) {
+      // La rubrique a changé dans le coffre pendant la correction (une analyse
+      // l'a complétée) : la correction seule masquait cet ajout, et
+      // « Enregistrer » l'effaçait sans qu'il ait été lu. L'ajout est placé à
+      // la suite de la correction, et annoncé.
+      const avant = drafts[cle].ref, apres = SEC_RENDERED[cle];
+      let brouillon = drafts[cle].val, note = '⚠️ modifications non enregistrées';
+      if (apres !== avant) {
+        if (apres.startsWith(avant) && apres.length > avant.length) {
+          brouillon = (brouillon.trimEnd() + '\n\n' + apres.slice(avant.length).trim()).trim();
+          note = '⚠️ l\'analyse a complété cette rubrique pendant votre correction : son ajout est à la suite de votre texte — relisez la fin, puis enregistrez';
+        } else {
+          note = '⚠️ cette rubrique a changé dans le coffre pendant votre correction : enregistrer remplacera sa version actuelle par la vôtre';
+        }
+      }
+      remplirEditeur(ta, brouillon);
+      sec.querySelector('.savest').textContent = note;
     }
     activerEditeur(sec, ta);
     sec.querySelector('.save').addEventListener('click', e => avecBouton(e.target, () => saveSection(cle, rtVersMd(ta), null, sec)));
@@ -2292,7 +2314,9 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
       // La dictée est effacée ici sans réserve : elle appartient au dossier
       // précédent, la garder à l'écran d'un autre patient serait pire que la
       // perdre — et son contenu est enregistré dans le bilan d'origine.
-      if (fromDictee) document.getElementById('dicteeText').value = '';
+      // Le champ de dictée n'est pas touché : celle du dossier quitté a été
+      // abandonnée au changement (confirmation), ce qui s'y trouve maintenant
+      // appartient au dossier ouvert.
       const reserve = (res.analyse_incomplete || (res.updates_non_placees || []).length)
         ? ' ⚠️ L\'analyse y semble incomplète : rouvrez ce bilan pour la relancer.'
         : '';
@@ -2343,15 +2367,24 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
       ? ' — ⚠️ l\'analyse semble incomplète au vu de la longueur de votre dictée :'
         + ' vérifiez les rubriques vides et relancez « Structurer » (votre dictée est conservée)'
       : '';
+    // Le serveur détecte le dépassement de la fenêtre du modèle (ses consignes
+    // sont alors tronquées) : l'alerte était calculée, jamais affichée.
+    const tropLong = res.prompt_trop_long
+      ? ' — ⚠️ la dictée et le bilan dépassent ce que le modèle lit d\'un coup : ses consignes ont pu être tronquées. Relisez ce passage avec soin, et structurez les prochaines dictées en plusieurs fois'
+      : '';
     majStatut((answeredIds.length
       ? `✓ réponse(s) intégrée(s)${fresh.length ? ` — ${fresh.length} nouvelle(s) question(s)` : ''}`
-      : `✓ ${fresh.length} question(s) de clarification`) + verif + perdues + incomplete + tronque + style);
+      : `✓ ${fresh.length} question(s) de clarification`) + verif + perdues + incomplete + tropLong + tronque + style);
     // La dictée n'est effacée que si l'analyse paraît complète ET que tout a
     // trouvé sa rubrique : le message ci-dessus invite à relancer l'analyse,
     // or `dicteeText` en est la seule copie — la vider ici rendrait la consigne
     // impossible à suivre.
     if (fromDictee && !res.analyse_incomplete && !(res.updates_non_placees || []).length) {
-      document.getElementById('dicteeText').value = '';
+      // Seul le texte envoyé disparaît : ce qui a été dicté ou tapé à la suite
+      // pendant l'analyse n'a pas été analysé, et reste.
+      const champ = document.getElementById('dicteeText');
+      const envoye = transcription.trim(), actuel = champ.value.trimStart();
+      if (actuel.startsWith(envoye)) champ.value = actuel.slice(envoye.length).trimStart();
     }
   } catch (e) {
     if (e && e.name === 'AbortError') {
@@ -2502,8 +2535,17 @@ let keepAlive = null, dicteeTimer = null;
 // dictée. Sans cela, un échec (modèle pas encore téléchargé, disque plein)
 // obligeait à tout redicter (revue du 2026-08-11, 6.3).
 let DERNIER_AUDIO = null;
+let TRANSCRIPTION_EN_COURS = false;
+// Changement de dossier confirmé : l'enregistrement en attente et son bouton
+// « Réessayer » appartiennent au dossier que l'on quitte.
+function oublierAudioEnAttente() {
+  if (!DERNIER_AUDIO) return;
+  DERNIER_AUDIO = null;
+  recStatus.textContent = '';
+}
 async function transcrire(blob) {
   recBtn.disabled = true;
+  TRANSCRIPTION_EN_COURS = true;
   try {
     const fd = new FormData(); fd.append('audio', blob, 'dictee.webm');
     const r = await api('/api/transcribe', { method: 'POST', body: fd });
@@ -2518,7 +2560,7 @@ async function transcrire(blob) {
     b.className = 'ghost'; b.id = 'recRetry'; b.textContent = '↻ Réessayer la transcription';
     b.addEventListener('click', () => { statutOccupe(recStatus, 'Transcription locale…'); transcrire(DERNIER_AUDIO); });
     recStatus.appendChild(b);
-  } finally { recBtn.disabled = false; }
+  } finally { recBtn.disabled = false; TRANSCRIPTION_EN_COURS = false; }
 }
 async function toggleRec() {
   if (recording) {
@@ -3848,6 +3890,9 @@ document.getElementById('cfgReset').addEventListener('click', async () => {
 // rubrique modifiée, réponse en cours de saisie, micro actif).
 function saisieEnCours() {
   if (recording || ansRec) return true;
+  // Une transcription qui tourne, ou un enregistrement gardé pour « Réessayer »,
+  // n'existent que dans cette page : F5 ou « Verrouiller » les détruirait.
+  if (TRANSCRIPTION_EN_COURS || DERNIER_AUDIO) return true;
   if (dicteeText.value.trim()) return true;
   if (enteteModifie()) return true;
   if (saisieEpreuveEnCours()) return true;

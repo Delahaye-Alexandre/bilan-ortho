@@ -1739,3 +1739,17 @@ def test_age_du_prompt_identique_a_celui_du_document(client, monkeypatch):
     client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
     assert "7 ans et 11 mois" in vu["user"]
     assert "7 ans et 11 mois" in client.get(f"/api/bilans/{bid}/export?format=md").text
+
+
+def test_bilan_supprime_pendant_son_analyse(client, monkeypatch):
+    """La route rendait 200 avec « bilan : null » : l'interface plantait et
+    vidait la dictée."""
+    async def analyse_puis_suppression(*args, **kwargs):
+        with security.transaction() as con:
+            con.execute("DELETE FROM bilan")
+        return {"updates": [{"section": "anamnese", "texte": "Texte."}], "questions": []}
+
+    monkeypatch.setattr(llm, "structure", analyse_puis_suppression)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    r = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert r.status_code == 404 and "dictée est conservée" in r.json()["detail"]

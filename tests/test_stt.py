@@ -78,3 +78,32 @@ def test_api_transcribe_dictee_trop_longue_400(client, monkeypatch):
     r = client.post("/api/transcribe", files={"audio": ("d.webm", b"\x00" * 100, "audio/webm")})
     assert r.status_code == 400 and "Dictée trop longue" in r.json()["detail"]
     assert "Paramètres" in r.json()["detail"]
+
+
+def test_modele_charge_depuis_le_cache_sans_reseau(monkeypatch):
+    """faster-whisper interroge Hugging Face à chaque chargement si on ne lui
+    demande pas le cache seul : une requête sortante par lancement, alors que
+    la documentation promet « seul GitHub ». Le réseau ne sert que si le
+    modèle manque."""
+    import faster_whisper
+
+    from app import stt
+
+    appels = []
+
+    class Faux:
+        def __init__(self, nom, **reglages):
+            appels.append(reglages.get("local_files_only", False))
+            if reglages.get("local_files_only") and absent["oui"]:
+                raise RuntimeError("modèle absent du cache")
+
+    absent = {"oui": False}
+    monkeypatch.setattr(faster_whisper, "WhisperModel", Faux)
+    monkeypatch.setattr(stt, "_cache", {"model": None, "spec": None})
+    spec = {"model": "medium", "device": "cpu", "compute_type": "int8"}
+    stt._get_model(spec)
+    assert appels == [True]  # présent : aucun appel au réseau
+    absent["oui"] = True
+    monkeypatch.setattr(stt, "_cache", {"model": None, "spec": None})
+    stt._get_model(spec)
+    assert appels == [True, True, False]  # absent : téléchargement, comme avant
