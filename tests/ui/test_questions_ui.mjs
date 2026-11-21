@@ -189,7 +189,10 @@ structureResponder = () => ({
 holdNext = new Promise((r) => setTimeout(r, 1400));
 ansBtns()[0].click();
 await new Promise((r) => setTimeout(r, 1200));
-check("chrono : le temps écoulé défile pendant l'analyse", /Analyse en cours… \d+ s/.test(status()));
+// Le temps écoulé vit dans un élément à part, caché aux lecteurs d'écran
+// (réécrit chaque seconde dans la zone annoncée, il était lu en boucle).
+check("chrono : le temps écoulé défile pendant l'analyse", /Analyse en cours….*\d+ s/.test(status())
+  && !!document.querySelector('#structStatus .chrono[aria-hidden="true"]'));
 await new Promise((r) => setTimeout(r, 400));
 holdNext = null;
 check("chrono : arrêté après l'analyse (message final)", status().includes("réponse(s) intégrée(s)"));

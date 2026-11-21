@@ -2414,12 +2414,23 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     }
     cibles.forEach(c => occupe ? statutOccupe(c, texte) : (c.textContent = texte));
   };
+  // Le chronomètre vit dans un élément à part, ignoré des lecteurs d'écran :
+  // réécrit chaque seconde dans la zone annoncée, il était lu en boucle.
+  const majChrono = (duree) => {
+    const cibles = [st];
+    if (enPanneau) { const sp = document.querySelector('#questions .qStatus'); if (sp) cibles.push(sp); }
+    cibles.forEach(c => {
+      let h = c.querySelector('.chrono');
+      if (!h) { h = document.createElement('span'); h.className = 'chrono'; h.setAttribute('aria-hidden', 'true'); c.appendChild(h); }
+      h.textContent = ' ' + duree;
+    });
+  };
   const t0 = Date.now();
   majStatut('Analyse en cours… (souvent 2-3 min selon la machine)', true);
   const chrono = setInterval(() => {
     const s = Math.round((Date.now() - t0) / 1000);
     const el = s >= 60 ? `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')}` : `${s} s`;
-    majStatut(`Analyse en cours… ${el} (souvent 2-3 min selon la machine)`, true);
+    majChrono(el);
   }, 1000);
   document.getElementById('structBtn').disabled = true;
   setQuestionBtns(true);
