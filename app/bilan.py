@@ -99,8 +99,10 @@ def maj_entete(
     prescripteur_rpps: str | None = None,
 ) -> bool:
     """Met à jour la date du bilan et/ou son prescripteur (None = inchangé)."""
-    if con.execute("SELECT 1 FROM bilan WHERE id=?", (bilan_id,)).fetchone() is None:
+    ligne = con.execute("SELECT date_bilan FROM bilan WHERE id=?", (bilan_id,)).fetchone()
+    if ligne is None:
         return False
+    avant = (ligne[0], prescripteur_bilan(con, bilan_id))
     if date_bilan is not None:
         con.execute(
             "UPDATE bilan SET date_bilan=COALESCE(NULLIF(?,''), date('now', 'localtime')), "
@@ -108,7 +110,7 @@ def maj_entete(
             (date_bilan, bilan_id),
         )
     if prescripteur is not None or prescripteur_rpps is not None:
-        actuel = prescripteur_bilan(con, bilan_id)
+        actuel = avant[1]
         set_prescripteur(
             con,
             bilan_id,
@@ -119,6 +121,16 @@ def maj_entete(
         con.execute(
             "UPDATE bilan SET updated_at=datetime('now') WHERE id=?", (bilan_id,)
         )
+    apres = (
+        con.execute("SELECT date_bilan FROM bilan WHERE id=?", (bilan_id,)).fetchone()[0],
+        prescripteur_bilan(con, bilan_id),
+    )
+    # La date et le prescripteur sont imprimés sur le document : les corriger
+    # après validation change ce qui a été validé. Un enregistrement à
+    # l'identique (l'interface enregistre l'en-tête avant chaque export) ne
+    # retire rien.
+    if apres != avant:
+        _contenu_modifie(con, bilan_id)
     return True
 
 
@@ -133,6 +145,68 @@ def prescripteur_bilan(con, bilan_id: int) -> dict:
     if row is None:
         return {}
     return {"nom": row[0] or "", "rpps": row[1] or "", "date": row[2] or ""}
+
+
+def _contenu_modifie(con, bilan_id: int) -> bool:
+    """À appeler après toute modification de ce que le document imprime.
+
+    Met à jour la date de modification (la purge de conservation en dépend) et
+    **retire la validation** : un bilan « validé » ou « envoyé » le restait
+    après une nouvelle analyse ou une retouche, si bien que l'export sortait
+    sans la mention BROUILLON avec un texte proposé par l'IA que personne
+    n'avait relu — et qu'un document « envoyé » n'était plus celui qui était
+    parti, sans trace. Rend True quand le bilan vient de redevenir un
+    brouillon ; le journal d'audit en garde la trace."""
+    con.execute("UPDATE bilan SET updated_at=datetime('now') WHERE id=?", (bilan_id,))
+    cur = con.execute(
+        "UPDATE bilan SET statut='brouillon' WHERE id=? AND statut IN ('valide','envoye')",
+        (bilan_id,),
+    )
+    if cur.rowcount:
+        con.execute(
+            "INSERT INTO audit_log(action, entite, entite_id, details) VALUES(?,?,?,?)",
+            ("statut", "bilan", bilan_id, "brouillon (contenu modifié après validation)"),
+        )
+    return cur.rowcount > 0
+
+
+def statut(con, bilan_id: int) -> str | None:
+    """Statut du bilan (None s'il n'existe pas)."""
+    row = con.execute("SELECT statut FROM bilan WHERE id=?", (bilan_id,)).fetchone()
+    return row[0] if row else None
+
+
+# Une rubrique reste à relire tant qu'elle porte un texte proposé par l'IA que
+# l'orthophoniste n'a pas validé, ou un signalement de traçabilité en attente.
+_A_RELIRE = (
+    "bilan_id=? AND TRIM(COALESCE(contenu,''))!='' "
+    "AND (statut='propose_ia' OR signalements IS NOT NULL)"
+)
+
+
+def rubriques_a_relire(con, bilan_id: int) -> list[str]:
+    """Intitulés des rubriques encore « à valider » ou signalées.
+
+    « Marquer validé » ne regardait que le bilan : toutes ses rubriques
+    pouvaient être des propositions de l'IA jamais relues, signalements « chiffre
+    absent de la dictée » compris, et le document sortait sans la mention
+    BROUILLON. La validation d'ensemble les exige désormais relues — ou
+    l'attestation explicite qu'elles l'ont été (cf. :func:`valider_rubriques`)."""
+    return [
+        r[0] for r in con.execute(
+            f"SELECT titre FROM section WHERE {_A_RELIRE} ORDER BY ordre", (bilan_id,)
+        )
+    ]
+
+
+def valider_rubriques(con, bilan_id: int) -> int:
+    """Marque validées les rubriques encore à relire : l'orthophoniste vient
+    d'attester les avoir relues en validant le bilan entier. Même règle que
+    l'enregistrement d'une rubrique : le signalement a joué son rôle."""
+    return con.execute(
+        f"UPDATE section SET statut='valide', signalements=NULL WHERE {_A_RELIRE}",
+        (bilan_id,),
+    ).rowcount
 
 
 def set_statut(con, bilan_id: int, statut: str, destinataire: str = "") -> bool:
@@ -222,6 +296,11 @@ def get(con, bilan_id: int) -> dict | None:
     eps = _dicts(
         con.execute("SELECT * FROM epreuve WHERE bilan_id=? ORDER BY id", (bilan_id,))
     )
+    # Seuils du moment, pour confronter les drapeaux enregistrés d'un brouillon
+    # (un document validé ou envoyé reste tel qu'il a été relu).
+    cfg_seuils = None
+    if eps and b.get("statut") == "brouillon":
+        cfg_seuils = config.ConfigStore(con).effective()
     for e in eps:
         e["resultats"] = _dicts(
             con.execute("SELECT * FROM resultat WHERE epreuve_id=? ORDER BY id", (e["id"],))
@@ -229,7 +308,7 @@ def get(con, bilan_id: int) -> dict | None:
         # Recalculée à chaque lecture depuis les valeurs enregistrées : l'alerte
         # n'était rendue qu'à la saisie et disparaissait au premier F5, alors
         # que le drapeau du compte-rendu continuait d'en dépendre.
-        e["avertissements"] = alertes_plausibilite(e["test_nom"], e["resultats"])
+        e["avertissements"] = alertes_plausibilite(e["test_nom"], e["resultats"], cfg_seuils)
     b["epreuves"] = eps
     b["prescripteur"] = prescripteur_bilan(con, bilan_id)
     cot = _dicts(con.execute("SELECT * FROM cotation WHERE bilan_id=?", (bilan_id,)))
@@ -265,9 +344,7 @@ def delete_epreuve(con, bilan_id: int, epreuve_id: int) -> bool:
         "DELETE FROM epreuve WHERE id=? AND bilan_id=?", (epreuve_id, bilan_id)
     )
     if cur.rowcount:
-        con.execute(
-            "UPDATE bilan SET updated_at=datetime('now') WHERE id=?", (bilan_id,)
-        )
+        _contenu_modifie(con, bilan_id)  # le tableau des résultats change
     return cur.rowcount > 0
 
 
@@ -342,6 +419,10 @@ def apply_updates(
         )
         applied += 1
     con.execute("UPDATE bilan SET updated_at=datetime('now') WHERE id=?", (bilan_id,))
+    if applied:
+        # Un texte proposé par l'IA vient d'entrer dans un bilan déjà validé :
+        # il n'est plus validé.
+        _contenu_modifie(con, bilan_id)
     return applied
 
 
@@ -350,6 +431,9 @@ def update_section(
 ) -> bool:
     # Enregistrer une rubrique, c'est l'avoir relue : l'avertissement de
     # traçabilité a joué son rôle et disparaît (même règle que dans l'interface).
+    avant = con.execute(
+        "SELECT contenu FROM section WHERE bilan_id=? AND cle=?", (bilan_id, cle)
+    ).fetchone()
     if statut:
         cur = con.execute(
             "UPDATE section SET contenu=?, statut=?, source='manuel', "
@@ -369,6 +453,10 @@ def update_section(
         con.execute(
             "UPDATE bilan SET updated_at=datetime('now') WHERE id=?", (bilan_id,)
         )
+        # Seul un texte qui change retire la validation du bilan : valider une
+        # rubrique sans y toucher ne modifie pas le document.
+        if ((avant[0] if avant else "") or "").strip() != (contenu or "").strip():
+            _contenu_modifie(con, bilan_id)
     return cur.rowcount > 0
 
 
@@ -386,11 +474,28 @@ _ET_LBL = {
 }
 
 
+# Tous les tirets qu'une saisie réelle met devant un nombre : le vrai signe
+# moins (U+2212 — celui que l'écran Paramètres affiche lui-même et que portent
+# les comptes-rendus des logiciels de tests), les tirets que Word substitue à
+# la frappe, les variantes insécables et pleine chasse.
+_MOINS = str.maketrans(dict.fromkeys("\u2212\u2013\u2014\u2012\u2010\u2011\ufe63\uff0d", "-"))
+_NOMBRE = re.compile(r"([-+])?[ \u00a0\u202f]*(\d+(?:[.,]\d+)?)")
+
+
 def _parse_num(v) -> float | None:
+    """Premier nombre d'une valeur saisie, signe compris.
+
+    « −2,1 », « –2,1 » et « - 2,1 » étaient lus +2,1 : seul le tiret du clavier
+    collé au chiffre comptait comme un signe. Un déficit sévère ressortait
+    alors « dans la norme » dans le tableau du compte-rendu, sans alerte
+    (2,1 est une valeur plausible)."""
     if v is None:
         return None
-    m = re.search(r"-?\d+(?:[.,]\d+)?", str(v))
-    return float(m.group(0).replace(",", ".")) if m else None
+    m = _NOMBRE.search(str(v).translate(_MOINS))
+    if not m:
+        return None
+    n = float(m.group(2).replace(",", "."))
+    return -n if m.group(1) == "-" else n
 
 
 def interpret_drapeau(etalonnage_type: str | None, valeur, cfg: dict) -> str:
@@ -461,16 +566,37 @@ def alerte_etalonnage(etalonnage_type: str | None, valeur) -> str:
     return f"« {valeur} » sort des valeurs possibles ({rappel})"
 
 
-def alertes_plausibilite(test_nom: str, resultats: list[dict]) -> list[str]:
-    """Alertes de saisie pour une épreuve, prêtes à être affichées telles quelles."""
+def alertes_plausibilite(
+    test_nom: str, resultats: list[dict], cfg: dict | None = None,
+) -> list[str]:
+    """Alertes de saisie pour une épreuve, prêtes à être affichées telles quelles.
+
+    Avec ``cfg`` (relecture d'un brouillon), le drapeau enregistré est aussi
+    confronté à celui que donnent aujourd'hui la valeur et les seuils : il est
+    figé à la saisie, et le tableau du compte-rendu l'imprime tel quel. Deux
+    causes d'écart, toutes deux invisibles sans cela — des seuils modifiés
+    depuis, ou une valeur saisie avant que son signe moins ne soit reconnu
+    (« −2,1 » classé « dans la norme » jusqu'à la 1.14.0)."""
     out = []
     for r in resultats:
+        tete = test_nom + (f" — {r['sous_epreuve']}" if r.get("sous_epreuve") else "")
         msg = alerte_etalonnage(*etalonnage_effectif(r))
         if msg:
-            tete = test_nom + (f" — {r['sous_epreuve']}" if r.get("sous_epreuve") else "")
             out.append(
                 f"{tete} : {msg}. Vérifiez l'échelle choisie et la valeur saisie — "
                 "le drapeau en dépend."
+            )
+        if cfg is None:
+            continue
+        enregistre = r.get("drapeau_seuil")
+        attendu = interpret_drapeau(*etalonnage_effectif(r), cfg)
+        if attendu and enregistre in DRAPEAU_LIBELLE and attendu != enregistre:
+            out.append(
+                f"{tete} : le drapeau enregistré (« {DRAPEAU_LIBELLE[enregistre]} ») ne "
+                f"correspond pas à la valeur saisie et à vos seuils "
+                f"(« {DRAPEAU_LIBELLE[attendu]} »). Supprimez cette épreuve et "
+                "saisissez-la de nouveau : le tableau du compte-rendu imprime le "
+                "drapeau enregistré."
             )
     return out
 
@@ -565,6 +691,6 @@ def add_epreuve(
              r.get("age_dev"), r.get("interpretation"), drap),
         )
         stored.append({**r, "drapeau_seuil": drap})
-    con.execute("UPDATE bilan SET updated_at=datetime('now') WHERE id=?", (bilan_id,))
+    _contenu_modifie(con, bilan_id)  # le tableau des résultats change
     return {"id": eid, "test_nom": test_nom, "domaine": domaine,
             "version": version, "resultats": stored}

@@ -481,11 +481,23 @@ class SectionPut(BaseModel):
     statut: SectionStatut | None = None
 
 
+class SectionReponse(OkResponse):
+    """Réponse à l'enregistrement d'une rubrique."""
+
+    # Statut du bilan après l'enregistrement : un bilan validé ou envoyé dont
+    # le texte change redevient « brouillon », et l'interface doit le dire.
+    statut_bilan: str = ""
+
+
 class StatutPut(BaseModel):
     """Évolution du cycle de vie du bilan (validation, envoi au prescripteur)."""
 
     statut: BilanStatut
     destinataire: str = ""
+    # L'orthophoniste atteste avoir relu les rubriques encore « à valider » ou
+    # signalées : sans cette attestation, la validation d'ensemble est refusée
+    # tant qu'il en reste.
+    relu: bool = False
 
 
 class PatientIn(BaseModel):

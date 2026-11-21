@@ -1635,3 +1635,107 @@ def test_installation_expose_et_lance_le_modele_de_dictee(client, monkeypatch):
     )
     r = client.post("/api/installation/whisper")
     assert r.status_code == 200 and r.json()["etat"] == "en_cours" and lances
+
+
+# --- relecture du 2026-11-20 : le compte-rendu ne part pas faux --------------------
+
+def test_signe_moins_typographique_des_etalonnages():
+    """« −2,1 », « –2,1 » et « - 2,1 » étaient lus +2,1 : un déficit sévère
+    ressortait « dans la norme » dans le tableau du compte-rendu."""
+    from app import bilan
+
+    for v in ("-2,1", "\u22122,1", "\u20132,1", "- 2,1", "\u2212\u00a02,1", "\u2264 \u2212 2 ET"):
+        assert bilan.interpret_drapeau("ecart_type", v, config.DEFAULTS) == "severe", v
+    assert bilan.interpret_drapeau("ecart_type", "+2,1", config.DEFAULTS) == "norme"
+    # Une plage n'est pas un nombre négatif : c'est sa première borne qui est lue.
+    assert bilan.interpret_drapeau("percentile", "5-10", config.DEFAULTS) == "pathologique"
+
+
+def test_drapeau_enregistre_incoherent_signale_sur_un_brouillon(client):
+    """Le drapeau est figé à la saisie et imprimé tel quel : s'il contredit la
+    valeur et les seuils du moment, la relecture du brouillon le dit."""
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    r = client.post(f"/api/bilans/{bid}/epreuves", json={
+        "domaine": "langage_ecrit", "test_nom": "BALE", "version": "",
+        "resultats": [{"sous_epreuve": "Mots", "etalonnage_type": "ecart_type",
+                       "etalonnage_valeur": "-2,1", "drapeau_seuil": "norme"}],
+    })
+    assert r.status_code == 200
+    alertes = client.get(f"/api/bilans/{bid}").json()["epreuves"][0]["avertissements"]
+    assert any("ne correspond pas" in a and "déficit sévère" in a for a in alertes)
+
+
+def test_bilan_valide_redevient_brouillon_des_que_son_contenu_change(client, monkeypatch):
+    """Un bilan « validé » ou « envoyé » le restait après une nouvelle analyse
+    ou une retouche : l'export sortait sans la mention BROUILLON avec un texte
+    de l'IA que personne n'avait relu."""
+    import json
+
+    async def faux_modele(*args, **kwargs):
+        return json.dumps({"updates": [
+            {"section": "anamnese", "texte": "Marche acquise à quatorze mois."}
+        ], "questions": []})
+
+    monkeypatch.setattr(llm, "chat_json", faux_modele)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    sec = f"/api/bilans/{bid}/sections/anamnese"
+    client.put(sec, json={"contenu": "Texte relu.", "statut": "valide"})
+    assert client.put(f"/api/bilans/{bid}/statut", json={"statut": "valide"}).json()["statut"] == "valide"
+    # Valider une rubrique sans y toucher ne retire pas la validation du bilan.
+    assert client.put(sec, json={"contenu": "Texte relu.", "statut": "valide"}).json()["statut_bilan"] == "valide"
+
+    # Une nouvelle analyse ajoute un texte de l'IA : le bilan n'est plus validé.
+    res = client.post(
+        f"/api/bilans/{bid}/structure", json={"transcription": "Marche acquise à quatorze mois."}
+    ).json()
+    assert res["redevenu_brouillon"] is True and res["bilan"]["statut"] == "brouillon"
+    assert "BROUILLON" in client.get(f"/api/bilans/{bid}/export?format=md").text
+
+    # La validation d'ensemble exige les rubriques relues, ou l'attestation.
+    r = client.put(f"/api/bilans/{bid}/statut", json={"statut": "valide"})
+    assert r.status_code == 409 and "rubrique(s)" in r.json()["detail"]
+    assert client.get(f"/api/bilans/{bid}").json()["statut"] == "brouillon"
+    b = client.put(f"/api/bilans/{bid}/statut", json={"statut": "valide", "relu": True}).json()
+    assert b["statut"] == "valide"
+    assert all(s["statut"] != "propose_ia" and not s["signalements"] for s in b["sections"])
+    assert "BROUILLON" not in client.get(f"/api/bilans/{bid}/export?format=md").text
+
+    # Une retouche à la main, une épreuve ajoutée ou retirée, l'en-tête corrigé.
+    assert client.put(sec, json={"contenu": "Texte corrigé."}).json()["statut_bilan"] == "brouillon"
+    client.put(f"/api/bilans/{bid}/statut", json={"statut": "envoye", "destinataire": "Dr Martin"})
+    b = client.post(f"/api/bilans/{bid}/epreuves", json={
+        "domaine": "langage_ecrit", "test_nom": "BALE", "version": "",
+        "resultats": [{"sous_epreuve": "Mots", "etalonnage_type": "ecart_type",
+                       "etalonnage_valeur": "-2,1"}],
+    }).json()
+    assert b["statut"] == "brouillon"
+    client.put(f"/api/bilans/{bid}/statut", json={"statut": "valide"})
+    eid = b["epreuves"][0]["id"]
+    assert client.delete(f"/api/bilans/{bid}/epreuves/{eid}").json()["statut"] == "brouillon"
+    client.put(f"/api/bilans/{bid}/statut", json={"statut": "valide"})
+    avant = client.get(f"/api/bilans/{bid}").json()
+    # En-tête réenregistré à l'identique : rien ne change ; date corrigée : brouillon.
+    assert client.put(f"/api/bilans/{bid}", json={"date_bilan": avant["date_bilan"]}).json()["statut"] == "valide"
+    assert client.put(f"/api/bilans/{bid}", json={"date_bilan": "2026-01-05"}).json()["statut"] == "brouillon"
+
+
+def test_age_du_prompt_identique_a_celui_du_document(client, monkeypatch):
+    """L'âge transmis au modèle était calculé à la date de création du bilan,
+    celui du document à la date du bilan : « 8 ans et 1 mois » d'un côté,
+    « 7 ans et 11 mois » de l'autre."""
+    import json
+
+    vu = {}
+
+    async def faux_modele(system, user, **kwargs):
+        vu["user"] = user
+        return json.dumps({"updates": [], "questions": []})
+
+    monkeypatch.setattr(llm, "chat_json", faux_modele)
+    pid = client.post("/api/patients", json={"nom": "Essai", "date_naissance": "2018-10-15"}).json()["id"]
+    bid = client.post(
+        "/api/bilans", json={"domaines": [], "patient_id": pid, "date_bilan": "2026-10-01"}
+    ).json()["id"]
+    client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."})
+    assert "7 ans et 11 mois" in vu["user"]
+    assert "7 ans et 11 mois" in client.get(f"/api/bilans/{bid}/export?format=md").text

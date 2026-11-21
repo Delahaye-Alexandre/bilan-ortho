@@ -71,6 +71,7 @@ from .models import (
     PromptRemplacement,
     RestaurationRequest,
     SectionPut,
+    SectionReponse,
     StatusResponse,
     StatutPut,
     StructureRequest,
@@ -1140,7 +1141,10 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
     patient_desc = ""
     p = b.get("patient") or {}
     if p.get("date_naissance"):
-        age = patient.age_texte(p["date_naissance"], b.get("created_at"))
+        # Même date de référence que le document (date du bilan, à défaut
+        # celle de création) : le modèle recevait l'âge au jour de la saisie,
+        # l'en-tête imprimait l'âge au jour de la séance.
+        age = patient.age_texte(p["date_naissance"], export._date_reference(b))
         if age:
             patient_desc = f"âge à la date du bilan : {age}"
     if p.get("sexe"):
@@ -1261,6 +1265,11 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
         b2 = bilan.get(con, bilan_id)
     return {
         "bilan": b2,
+        # Le bilan était validé (ou envoyé) et l'analyse vient d'y ajouter un
+        # texte : il est redevenu un brouillon, à relire et valider de nouveau.
+        "redevenu_brouillon": bool(
+            b2 and b.get("statut") in ("valide", "envoye") and b2["statut"] == "brouillon"
+        ),
         "questions": result["questions"],
         # Rubriques trop longues, transmises seulement en partie au modèle :
         # l'interface le signale discrètement (l'anti-répétition en pâtit).
@@ -1285,18 +1294,34 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
 @app.put(
     "/api/bilans/{bilan_id}/sections/{cle}", dependencies=[Depends(require_unlock)]
 )
-async def put_section(bilan_id: int, cle: str, req: SectionPut) -> OkResponse:
+async def put_section(bilan_id: int, cle: str, req: SectionPut) -> SectionReponse:
     statut = req.statut.value if req.statut else None
     with security.transaction() as con:
         ok = bilan.update_section(con, bilan_id, cle, req.contenu, statut)
+        statut_bilan = bilan.statut(con, bilan_id) or ""
     if not ok:
         raise HTTPException(404, "Rubrique introuvable.")
-    return OkResponse(ok=True)
+    return SectionReponse(ok=True, statut_bilan=statut_bilan)
 
 
 @app.put("/api/bilans/{bilan_id}/statut", dependencies=[Depends(require_unlock)])
 async def put_statut(bilan_id: int, req: StatutPut) -> dict:
     with security.transaction() as con:
+        relues = 0
+        if req.statut.value in ("valide", "envoye"):
+            # Valider le bilan, c'est valider ce qu'il contient : tant que des
+            # rubriques portent un texte de l'IA non validé ou un signalement,
+            # il faut les relire — ou attester l'avoir fait (`relu`).
+            a_relire = bilan.rubriques_a_relire(con, bilan_id)
+            if a_relire and not req.relu:
+                raise HTTPException(
+                    409,
+                    f"{len(a_relire)} rubrique(s) portent encore un texte proposé par "
+                    "l'IA que vous n'avez pas validé : " + ", ".join(a_relire) + ". "
+                    "Relisez-les, puis validez de nouveau.",
+                )
+            if a_relire:
+                relues = bilan.valider_rubriques(con, bilan_id)
         if not bilan.set_statut(con, bilan_id, req.statut.value, req.destinataire):
             raise HTTPException(404, "Bilan introuvable.")
         # Le nom du destinataire n'est pas journalisé : il reste dans la table
@@ -1304,7 +1329,8 @@ async def put_statut(bilan_id: int, req: StatutPut) -> dict:
         # `audit_log`, qu'aucun effacement ne nettoie.
         security.audit(
             "statut", "bilan", bilan_id,
-            req.statut.value + (" → destinataire enregistré" if req.destinataire else ""),
+            req.statut.value + (" → destinataire enregistré" if req.destinataire else "")
+            + (f" — {relues} rubrique(s) attestée(s) relue(s)" if relues else ""),
         )
         return bilan.get(con, bilan_id)
 

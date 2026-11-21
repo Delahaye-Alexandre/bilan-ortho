@@ -1459,6 +1459,13 @@ function curLabel() {
   document.getElementById('curBilan').textContent =
     CUR ? `#${CUR.id} · ${pat}${CUR.domaine_titres || 'Générique'} · ${CUR.statut}` : 'aucun';
 }
+// Un bilan validé ou envoyé dont le contenu change redevient un brouillon
+// (décidé par le serveur) : le dire, sinon le changement de statut passe
+// inaperçu et le prochain export porte « BROUILLON » sans explication.
+function avertirBrouillon() {
+  document.getElementById('coteInfo').textContent =
+    'Bilan modifié après validation : il redevient un brouillon. Relisez, puis marquez-le validé de nouveau.';
+}
 async function setStatut(statut) {
   if (!CUR) return;
   const geste = statut === 'valide' ? 'la validation' : 'l\'envoi';
@@ -1468,6 +1475,21 @@ async function setStatut(statut) {
     return;
   }
   const body = { statut };
+  // Valider le bilan, c'est valider ce qu'il contient : s'il reste des
+  // rubriques « à valider » ou signalées, l'orthophoniste atteste les avoir
+  // relues (le serveur refuse la validation d'ensemble sans cette attestation).
+  const aRelire = (CUR.sections || []).filter(s => (s.contenu || '').trim()
+    && (s.statut === 'propose_ia' || (s.signalements || []).length));
+  if (aRelire.length) {
+    const signalees = aRelire.filter(s => (s.signalements || []).length).length;
+    const ok = confirm(
+      `${aRelire.length} rubrique(s) portent encore un texte proposé par l'IA que vous n'avez pas validé : `
+      + `${aRelire.map(s => s.titre).join(', ')}.`
+      + (signalees ? `\n\n⚠️ ${signalees} d'entre elles signalent un élément absent de votre dictée.` : '')
+      + `\n\nOK : je les ai relues, continuer.\nAnnuler : revenir au compte-rendu.`);
+    if (!ok) return;
+    body.relu = true;
+  }
   if (statut === 'envoye') {
     const d = prompt('Destinataire (médecin prescripteur) :', '');
     if (d === null) return;
@@ -2061,7 +2083,13 @@ async function saveSection(cle, contenu, statut, sec) {
   const st = sec.querySelector('.savest'); st.textContent = '…';
   const body = { contenu }; if (statut) body.statut = statut;
   try {
-    await api(`/api/bilans/${CUR.id}/sections/${cle}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const rep = await api(`/api/bilans/${CUR.id}/sections/${encodeURIComponent(cle)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let retour = {};
+    try { retour = await rep.json(); } catch {}
+    if (retour && retour.statut_bilan && retour.statut_bilan !== CUR.statut) {
+      CUR.statut = retour.statut_bilan; curLabel(); loadRecents();
+      if (retour.statut_bilan === 'brouillon') avertirBrouillon();
+    }
     const s = CUR.sections.find(x => x.cle === cle);
     s.contenu = contenu; if (statut) s.statut = statut;
     s.signalements = []; // le serveur les efface aussi : la rubrique a été relue
@@ -2276,6 +2304,7 @@ async function structure({ transcription = '', reponses = [] }, fromDictee, answ
     VERIF = {}; VERIF_BILAN = res.bilan.id;
     (res.rubriques_a_verifier || []).forEach(c => { VERIF[c.section] = c.signalements || []; });
     CUR = res.bilan; renderBilan();
+    if (res.redevenu_brouillon) { avertirBrouillon(); loadRecents(); }
     // Les questions répondues ne sont retirées qu'ici, une fois l'analyse réussie
     // (en cas d'erreur, rien n'est perdu — et ANSWERED n'est enrichi qu'ici aussi).
     // Ids stables + dédoublonnage : malgré les consignes, l'IA peut reposer une

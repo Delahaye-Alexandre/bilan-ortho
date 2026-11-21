@@ -7,6 +7,24 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Un écart-type saisi avec un vrai signe moins n'est plus classé « dans la
+  norme ».** « −2,1 » (le signe que l'application affiche elle-même, et celui
+  des comptes-rendus de logiciels de tests), « –2,1 » (tiret de Word) ou
+  « - 2,1 » étaient lus +2,1 : le tableau imprimait « dans la norme » pour un
+  déficit sévère. Le signe est reconnu sous toutes ces formes, et un brouillon
+  dont un drapeau enregistré contredit la valeur et vos seuils le signale.
+- **Un bilan validé dont le contenu change redevient un brouillon.** Après une
+  nouvelle analyse, une rubrique retouchée, une épreuve ajoutée ou retirée, un
+  en-tête corrigé, le bilan restait « validé » ou « envoyé » : l'export sortait
+  sans la mention BROUILLON, texte de l'IA non relu compris. L'application le
+  dit et demande de valider de nouveau.
+- **Même âge dans le texte et dans l'en-tête.** L'âge transmis au modèle était
+  calculé au jour de la saisie, celui du document à la date du bilan : un
+  compte-rendu rédigé après la séance pouvait dire « 8 ans » dans le texte et
+  « 7 ans et 11 mois » dans l'en-tête.
+- **« Marquer validé » vérifie ce qu'il valide.** S'il reste des rubriques « à
+  valider » ou signalées, l'application les nomme et vous demande d'attester
+  les avoir relues ; elles passent alors « validées ».
 - **Bibliothèques embarquées : correctifs de sécurité.** Pillow 13 (traitement
   du logo), pypdf 6.21 (lecture des PDF importés), cryptography 50
   (vérification des mises à jour), certifi et filelock (téléchargement du
