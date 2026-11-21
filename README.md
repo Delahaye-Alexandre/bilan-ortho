@@ -167,8 +167,8 @@ Au premier lancement, créez la **passphrase** de votre coffre : elle chiffre
 toutes les données et est **irrécupérable** en cas d'oubli.
 
 Les données vivent dans `~/.local/share/bilan-ortho/` (surchargeable via
-`BILAN_ORTHO_DATA_DIR`). Hôte/port : `BILAN_ORTHO_HOST` / `BILAN_ORTHO_PORT` ;
-Ollama : `OLLAMA_HOST`.
+`BILAN_ORTHO_DATA_DIR`). Port : `./run.sh --port N` (l'écoute reste sur
+`127.0.0.1`). Ollama : `OLLAMA_HOST`, à condition qu'il désigne cette machine — une adresse distante est ignorée (les données patient ne quittent pas le poste).
 
 ## Parcours type
 

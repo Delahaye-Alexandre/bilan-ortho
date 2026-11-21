@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import base64
 import copy
+import functools
 import ipaddress
 import json
+import logging
 import os
 import socket
 import sys
@@ -24,9 +26,42 @@ from . import db as _db
 
 # --- Config applicative (non sensible) --------------------------------------
 
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-APP_HOST = os.environ.get("BILAN_ORTHO_HOST", "127.0.0.1")
-APP_PORT = int(os.environ.get("BILAN_ORTHO_PORT", "8000"))
+OLLAMA_LOCAL = "http://localhost:11434"
+
+
+@functools.lru_cache(maxsize=64)
+def hote_ollama(valeur: str | None) -> str:
+    """Adresse d'Ollama réellement utilisée : toujours une URL complète, toujours
+    sur cette machine.
+
+    La variable d'environnement ``OLLAMA_HOST`` était reprise telle quelle, et
+    le contrôle « hôte local » n'existait qu'à l'enregistrement des Paramètres.
+    Deux conséquences : « 0.0.0.0 » (la valeur que la documentation d'Ollama
+    fait poser pour l'ouvrir au réseau) donnait une URL sans schéma et l'IA
+    était déclarée injoignable ; une adresse distante envoyait dictée et
+    extraits de bilans sur le réseau sans aucun refus, à rebours de ce que
+    l'application promet. Une valeur non locale est donc écartée ici, au
+    moment de l'appel, au profit de l'adresse locale."""
+    v = (valeur or "").strip()
+    if not v:
+        return OLLAMA_LOCAL
+    url = v if "://" in v else f"http://{v}"
+    try:
+        u = urlparse(url)
+        hote, port = u.hostname or "", u.port
+    except ValueError:
+        return OLLAMA_LOCAL
+    if hote in ("0.0.0.0", "::"):  # « toutes les interfaces » : côté client, la boucle locale
+        return f"{u.scheme}://127.0.0.1:{port or 11434}"
+    if not hote_est_local(url):
+        logging.getLogger(__name__).warning(
+            "Hôte Ollama non local ignoré (%s) : les données patient ne quittent pas "
+            "la machine. Adresse locale utilisée.", hote,
+        )
+        return OLLAMA_LOCAL
+    if port is None:  # « 127.0.0.1 » seul : Ollama écoute sur 11434
+        return f"{u.scheme}://{hote if ':' not in hote else f'[{hote}]'}:11434"
+    return url.rstrip("/")
 
 
 def _data_dir_defaut() -> Path:
@@ -115,6 +150,8 @@ DOMAINES: list[dict[str, str]] = [
 
 
 # --- Valeurs par défaut (surchargées par la config praticien) ---------------
+
+OLLAMA_HOST = hote_ollama(os.environ.get("OLLAMA_HOST", ""))
 
 DEFAULTS: dict[str, Any] = {
     # Identité professionnelle, reportée en en-tête et en signature des exports.
@@ -292,6 +329,17 @@ def fusionner(base: dict, override: dict) -> dict:
     return _deep_merge(base, override)
 
 
+def _hotes_locaux(cfg: dict) -> dict:
+    """Config effective dont les hôtes du modèle et des embeddings sont
+    garantis locaux (cf. :func:`hote_ollama`) : une surcharge enregistrée avant
+    la validation, ou la variable d'environnement, ne peut plus désigner une
+    autre machine."""
+    for section in ("llm", "embeddings"):
+        if isinstance(cfg.get(section), dict):
+            cfg[section]["host"] = hote_ollama(cfg[section].get("host") or "")
+    return cfg
+
+
 class ConfigStore:
     """Lit/écrit les surcharges de config dans la base chiffrée (table config)."""
 
@@ -311,13 +359,13 @@ class ConfigStore:
 
     def effective(self) -> dict:
         """DEFAULTS fusionné avec les surcharges praticien."""
-        return _deep_merge(DEFAULTS, self.overrides())
+        return _hotes_locaux(_deep_merge(DEFAULTS, self.overrides()))
 
     def set_overrides(self, override: dict) -> dict:
         """Fusionne de nouvelles surcharges et persiste. Retourne l'effectif."""
         merged = _deep_merge(self.overrides(), override)
         self._ecrire(merged)
-        return _deep_merge(DEFAULTS, merged)
+        return _hotes_locaux(_deep_merge(DEFAULTS, merged))
 
     def remplacer_section(self, cle: str, valeur) -> dict:
         """Remplace la surcharge d'une section EN BLOC (aucune fusion) : la

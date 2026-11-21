@@ -580,3 +580,37 @@ def test_coffre_d_une_version_plus_recente_message_clair(client):
     client.post("/api/lock")
     r = client.post("/api/unlock", json={"passphrase": PASSPHRASE})
     assert r.status_code == 409 and "version plus récente" in r.json()["detail"]
+
+
+def test_hote_ollama_toujours_local():
+    """OLLAMA_HOST était repris tel quel : « 0.0.0.0 » cassait l'IA, une
+    adresse distante envoyait la dictée sur le réseau sans aucun refus."""
+    from app import config
+
+    h = config.hote_ollama
+    assert h("") == h(None) == "http://localhost:11434"
+    assert h("http://localhost:11434") == "http://localhost:11434"
+    assert h("0.0.0.0") == "http://127.0.0.1:11434"
+    assert h("0.0.0.0:11500") == "http://127.0.0.1:11500"
+    assert h("127.0.0.1") == "http://127.0.0.1:11434"
+    assert h("http://127.0.0.1:11434/") == "http://127.0.0.1:11434"
+    assert h("http://192.0.2.1:11434") == "http://localhost:11434"
+    assert h("ollama.exemple.invalid:11434") == "http://localhost:11434"
+
+
+def test_surcharge_d_hote_distant_ignoree_a_l_appel(client):
+    """Une surcharge écrite avant la validation (ou à la main) ne peut plus
+    désigner une autre machine : la config effective la ramène en local."""
+    import json
+
+    from app import security
+
+    with security.transaction() as con:
+        con.execute(
+            "INSERT INTO config(key, value) VALUES('overrides', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (json.dumps({"llm": {"host": "http://192.0.2.1:11434"},
+                         "embeddings": {"host": "192.0.2.7"}}),),
+        )
+    cfg = client.get("/api/config").json()
+    assert cfg["llm"]["host"] == cfg["embeddings"]["host"] == "http://localhost:11434"

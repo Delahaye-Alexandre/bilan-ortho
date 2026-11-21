@@ -11,10 +11,10 @@ import unicodedata
 import httpx
 
 from . import catalogues, prompts, systeme
+from .config import OLLAMA_HOST, hote_ollama  # adresse locale garantie
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
 
 
@@ -41,7 +41,7 @@ async def list_models(host: str | None = None) -> list[str]:
     structuration : interroger l'hôte du module alors qu'un autre est
     configuré afficherait un sélecteur qui ne correspond à rien."""
     async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(f"{host or OLLAMA_HOST}/api/tags")
+        resp = await client.get(f"{hote_ollama(host) if host else OLLAMA_HOST}/api/tags")
         resp.raise_for_status()
         data = resp.json()
     return systeme.modeles_locaux(data)
@@ -85,7 +85,7 @@ async def chat_json(
     }
     timeout = httpx.Timeout(timeout_s or 600, connect=10)
     async with httpx.AsyncClient(timeout=timeout) as client:
-        url = f"{host or OLLAMA_HOST}/api/chat"
+        url = f"{hote_ollama(host) if host else OLLAMA_HOST}/api/chat"
         resp = await client.post(url, json=payload)
         if resp.status_code == 400:
             # Vieil Ollama qui rejette le champ `think` : réessai sans.

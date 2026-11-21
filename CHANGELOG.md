@@ -7,6 +7,12 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **L'adresse du moteur d'IA est garantie locale au moment de l'appel.** La
+  variable d'environnement `OLLAMA_HOST` était reprise telle quelle : réglée
+  sur une autre machine, elle y envoyait la dictée sans aucun refus ; réglée
+  sur « 0.0.0.0 » (valeur que la documentation d'Ollama fait poser), elle
+  rendait l'IA « injoignable ». Une adresse non locale est désormais ignorée,
+  et « 0.0.0.0 » compris comme cette machine.
 - **Réduire la durée de conservation ne supprime plus rien en silence.**
   L'écran Paramètres annonce combien de bilans et de fiches partiront à la
   prochaine ouverture et demande confirmation ; à l'ouverture, un bandeau dit

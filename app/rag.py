@@ -9,6 +9,7 @@ from __future__ import annotations
 import httpx
 import sqlite_vec
 
+from . import config as _config
 from .db import dicts as _dicts
 from .importer import cle_de_rubrique
 from .systeme import nom_modele_cloud
@@ -34,7 +35,7 @@ async def embed(text: str, cfg: dict) -> list[float]:
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             r = await client.post(
-                f"{e['host']}/api/embeddings",
+                f"{_config.hote_ollama(e.get('host') or '')}/api/embeddings",
                 json={"model": e["model"], "prompt": text},
             )
             r.raise_for_status()
