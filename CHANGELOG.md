@@ -7,6 +7,11 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **L'analyse fonctionne de nouveau avec le modèle compact (qwen3.5:4b)**, celui
+  que l'installation propose sur les postes modestes. Ce modèle rend sa réponse
+  entre balises de code ; depuis la 1.15.0, elle était rejetée comme
+  « illisible » à chaque analyse. Mesuré après correction, même dictée, trois
+  passages : 5 à 7 rubriques remplies en 84 à 115 secondes.
 - **Deux fenêtres ouvertes sur le même bilan** : enregistrer une rubrique que
   l'autre fenêtre (ou une analyse) vient de modifier ne l'écrase plus. La
   version actuelle est rechargée à la suite de votre texte, à relire avant

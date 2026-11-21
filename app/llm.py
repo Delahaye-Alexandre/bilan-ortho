@@ -151,9 +151,26 @@ async def _appel_chat(
     return data["message"]["content"]
 
 
+def _json_enrobe(raw: str):
+    """Objet JSON rendu dans un bloc de code ou entouré de texte, ou None.
+
+    Le mode ``format`` d'Ollama ne garantit pas un JSON nu avec tous les
+    modèles : qwen3.5:4b — le modèle proposé à l'installation sur les postes
+    modestes — rend sa réponse entre balises ```json, cinq fois sur cinq
+    (mesuré le 2026-11-21). Le repli qui le tolérait avait été retiré en
+    septembre : chaque analyse échouait alors en « réponse illisible »."""
+    debut, fin = raw.find("{"), raw.rfind("}")
+    if debut < 0 or fin <= debut:
+        return None
+    try:
+        return json.loads(raw[debut:fin + 1])
+    except json.JSONDecodeError:
+        return None
+
+
 def _parse_structure(raw: str) -> dict:
-    """Lecture de la réponse JSON du modèle (Ollama garantit un JSON valide
-    en mode ``format``, un texte tronqué mis à part).
+    """Lecture de la réponse JSON du modèle : JSON nu, ou enrobé d'un bloc de
+    code ou de texte (cf. :func:`_json_enrobe`).
 
     Une réponse non vide qui n'est pas un objet JSON lève ``ReponseIllisible`` :
     un succès silencieux avec 0 mise à jour serait indistinguable d'un légitime
@@ -161,7 +178,7 @@ def _parse_structure(raw: str) -> dict:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        data = None
+        data = _json_enrobe(raw)
     if not isinstance(data, dict):
         if raw.strip():
             raise ReponseIllisible(

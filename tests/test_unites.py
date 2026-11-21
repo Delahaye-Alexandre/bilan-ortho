@@ -1505,3 +1505,19 @@ def test_import_texte_quel_que_soit_l_encodage():
         assert importer.extract_text(texte.encode(encodage), "bilan.txt") == texte, encodage
     with pytest.raises(ValueError):
         importer.extract_text(b"PK\x03\x04\x00\x00binaire", "bilan.txt")
+
+
+def test_reponse_du_modele_dans_un_bloc_de_code_est_lue():
+    """qwen3.5:4b rend son JSON entre balises ```json malgré le mode « format » :
+    chaque analyse échouait en « réponse illisible »."""
+    import pytest
+
+    from app import llm
+
+    brut = '```json\n{"updates": [{"section": "anamnese", "texte": "Léa a huit ans."}], "questions": []}\n```'
+    assert llm._parse_structure(brut)["updates"] == [{"section": "anamnese", "texte": "Léa a huit ans."}]
+    assert llm._parse_structure('Voici : {"updates": [], "questions": []} — fin')["updates"] == []
+    with pytest.raises(llm.ReponseIllisible):
+        llm._parse_structure("désolé, je ne peux pas")
+    with pytest.raises(llm.ReponseIllisible):
+        llm._parse_structure('{"updates": [')
