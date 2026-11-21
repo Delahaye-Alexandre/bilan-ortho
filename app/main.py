@@ -1481,11 +1481,26 @@ async def _structurer(
 async def put_section(bilan_id: int, cle: str, req: SectionPut) -> SectionReponse:
     statut = req.statut.value if req.statut else None
     with security.transaction() as con:
+        actuel = con.execute(
+            "SELECT updated_at FROM section WHERE bilan_id=? AND cle=?", (bilan_id, cle)
+        ).fetchone()
+        if actuel and req.attendu_le and actuel[0] and actuel[0] != req.attendu_le:
+            raise HTTPException(
+                409,
+                "Cette rubrique a changé depuis que vous l'avez ouverte (une analyse, ou "
+                "une autre fenêtre) : rien n'a été écrasé. Sa version actuelle vient "
+                "d'être rechargée à la suite de votre texte — relisez, puis enregistrez.",
+            )
         ok = bilan.update_section(con, bilan_id, cle, req.contenu, statut)
         statut_bilan = bilan.statut(con, bilan_id) or ""
+        modifie = con.execute(
+            "SELECT updated_at FROM section WHERE bilan_id=? AND cle=?", (bilan_id, cle)
+        ).fetchone()
     if not ok:
         raise HTTPException(404, "Rubrique introuvable.")
-    return SectionReponse(ok=True, statut_bilan=statut_bilan)
+    return SectionReponse(
+        ok=True, statut_bilan=statut_bilan, modifie_le=(modifie[0] if modifie else "") or "",
+    )
 
 
 @app.put("/api/bilans/{bilan_id}/statut", dependencies=[Depends(require_unlock)])

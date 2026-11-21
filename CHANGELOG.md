@@ -7,6 +7,12 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Deux fenêtres ouvertes sur le même bilan** : enregistrer une rubrique que
+  l'autre fenêtre (ou une analyse) vient de modifier ne l'écrase plus. La
+  version actuelle est rechargée à la suite de votre texte, à relire avant
+  d'enregistrer.
+- Le temps écoulé d'une analyse n'est plus relu chaque seconde par les
+  lecteurs d'écran.
 - **Relecture guidée.** Une barre, toujours visible en haut du compte-rendu,
   dit combien de rubriques restent à relire et lesquelles portent un point à
   vérifier ; « Aller à la suivante » y mène, et Ctrl+Entrée dans une rubrique

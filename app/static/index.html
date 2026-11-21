@@ -2245,6 +2245,9 @@ function badgeLabel(s) { return s === 'valide' ? 'validé' : s === 'propose_ia' 
 async function saveSection(cle, contenu, statut, sec) {
   const st = sec.querySelector('.savest'); st.textContent = '…';
   const body = { contenu }; if (statut) body.statut = statut;
+  // Garde contre l'écrasement : la date de modification reçue avec la rubrique.
+  const connue = (CUR.sections.find(x => x.cle === cle) || {}).updated_at;
+  if (connue) body.attendu_le = connue;
   try {
     const rep = await api(`/api/bilans/${CUR.id}/sections/${encodeURIComponent(cle)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     let retour = {};
@@ -2255,6 +2258,7 @@ async function saveSection(cle, contenu, statut, sec) {
     }
     const s = CUR.sections.find(x => x.cle === cle);
     s.contenu = contenu; if (statut) s.statut = statut;
+    if (retour && retour.modifie_le) s.updated_at = retour.modifie_le;
     s.signalements = []; // le serveur les efface aussi : la rubrique a été relue
     SEC_RENDERED[cle] = contenu; // le contenu affiché est désormais celui du serveur
     const badge = sec.querySelector('.badge'); if (statut) { badge.className = 'badge ' + statut; badge.textContent = badgeLabel(statut); }
@@ -2266,7 +2270,23 @@ async function saveSection(cle, contenu, statut, sec) {
     const av = sec.querySelector('.verif'); if (av) av.remove();
     st.textContent = '✓';
     majRelecture();
-  } catch (e) { st.textContent = 'Erreur : ' + e.message; }
+  } catch (e) {
+    st.textContent = 'Erreur : ' + e.message;
+    // La rubrique a changé ailleurs (autre fenêtre, analyse) : on recharge le
+    // bilan ; le re-rendu garde le texte saisi et place à sa suite ce qui a
+    // été ajouté entre-temps.
+    if (/a changé depuis que vous l'avez ouverte/.test(e.message || '')) {
+      const id = CUR.id;
+      try {
+        const frais = await (await api('/api/bilans/' + id)).json();
+        if (CUR && CUR.id === id) {
+          CUR = frais; renderBilan();
+          const sec2 = [...document.querySelectorAll('#bilanView .sec[data-cle]')].find(x => x.dataset.cle === cle);
+          if (sec2) sec2.querySelector('.savest').textContent = '⚠️ ' + e.message;
+        }
+      } catch {}
+    }
+  }
 }
 // ---------- « Ce qui est à l'écran est ce qui part » ----------
 // L'export et la copie lisent le contenu enregistré (serveur ou CUR), jamais

@@ -1907,3 +1907,25 @@ def test_modele_garde_en_memoire_et_prechauffe(client, monkeypatch):
 
     monkeypatch.setattr(llm, "prechauffer", faux)
     assert client.post("/api/llm/prechauffe").json()["ok"] is True
+
+
+def test_enregistrement_d_une_rubrique_modifiee_ailleurs_refuse(client):
+    """Deux fenêtres, ou une analyse qui se termine pendant une correction : le
+    dernier enregistrement écrasait en silence le texte ajouté entre-temps."""
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    sec = f"/api/bilans/{bid}/sections/anamnese"
+    vu = {s["cle"]: s["updated_at"] for s in client.get(f"/api/bilans/{bid}").json()["sections"]}
+    # Une autre fenêtre écrit la rubrique ; on force une date différente.
+    client.put(sec, json={"contenu": "Texte de l'autre fenêtre."})
+    with security.transaction() as con:
+        con.execute("UPDATE section SET updated_at=datetime('now','+1 minute') WHERE bilan_id=? AND cle='anamnese'", (bid,))
+    r = client.put(sec, json={"contenu": "Ma correction.", "attendu_le": vu["anamnese"] or "2000-01-01 00:00:00"})
+    assert r.status_code == 409 and "rien n'a été écrasé" in r.json()["detail"]
+    b = client.get(f"/api/bilans/{bid}").json()
+    actuel = next(s for s in b["sections"] if s["cle"] == "anamnese")
+    assert actuel["contenu"] == "Texte de l'autre fenêtre."
+    # Avec la date à jour, l'enregistrement passe et rend la nouvelle date.
+    r = client.put(sec, json={"contenu": "Fusion relue.", "attendu_le": actuel["updated_at"]})
+    assert r.status_code == 200 and r.json()["modifie_le"]
+    # Sans date (client ancien), comportement inchangé.
+    assert client.put(sec, json={"contenu": "Sans garde."}).status_code == 200

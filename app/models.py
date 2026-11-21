@@ -479,6 +479,11 @@ class StructureRequest(BaseModel):
 class SectionPut(BaseModel):
     contenu: str
     statut: SectionStatut | None = None
+    # Date de modification de la rubrique telle que la page l'a reçue. Fournie,
+    # elle protège d'un écrasement : si la rubrique a changé entre-temps (autre
+    # fenêtre, analyse terminée pendant la correction), l'enregistrement est
+    # refusé au lieu de faire disparaître ce texte en silence.
+    attendu_le: str | None = None
 
 
 class SectionReponse(OkResponse):
@@ -487,6 +492,9 @@ class SectionReponse(OkResponse):
     # Statut du bilan après l'enregistrement : un bilan validé ou envoyé dont
     # le texte change redevient « brouillon », et l'interface doit le dire.
     statut_bilan: str = ""
+    # Nouvelle date de modification de la rubrique (à renvoyer au prochain
+    # enregistrement, cf. SectionPut.attendu_le).
+    modifie_le: str = ""
 
 
 class StatutPut(BaseModel):
