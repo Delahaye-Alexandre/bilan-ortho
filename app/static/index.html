@@ -3279,22 +3279,26 @@ function afficherLogo(logo) {
 // Aperçu : PDF d'un bilan fictif mis en page par le serveur avec les réglages
 // de l'écran (POST, réglages dans le corps : rien n'est enregistré), affiché
 // dans le cadre. Regroupé (400 ms) pour ne pas mettre en page à chaque frappe.
-let APERCU_TIMER = null, APERCU_URL = null;
+let APERCU_TIMER = null, APERCU_URL = null, APERCU_TOUR = 0;
 function planifierApercu() { clearTimeout(APERCU_TIMER); APERCU_TIMER = setTimeout(rafraichirApercu, 400); }
 async function rafraichirApercu() {
   const st = $('mepApercuSt');
   statutOccupe(st, 'Mise en page de l\'exemple…');
+  // Seule la dernière demande compte : une réponse tardive remplaçait l'aperçu
+  // des réglages affichés par celui de réglages déjà changés.
+  const tour = ++APERCU_TOUR;
   try {
     const r = await api('/api/config/mise_en_page/apercu', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(collectMiseEnPage()),
     });
     if (typeof r.blob !== 'function' || typeof URL.createObjectURL !== 'function') { st.textContent = ''; return; }
     const blob = await r.blob();
+    if (tour !== APERCU_TOUR) return;
     if (APERCU_URL) URL.revokeObjectURL(APERCU_URL);
     APERCU_URL = URL.createObjectURL(blob);
     $('mepApercu').src = APERCU_URL + '#toolbar=0&navpanes=0&view=FitH';
     st.textContent = '';
-  } catch (e) { st.textContent = 'Aperçu indisponible : ' + e.message; }
+  } catch (e) { if (tour === APERCU_TOUR) st.textContent = 'Aperçu indisponible : ' + e.message; }
 }
 $('mepApercuBtn').addEventListener('click', e => avecBouton(e.target, rafraichirApercu));
 ['cfgMepPolice', 'cfgMepTaille', 'cfgMepInterligne', 'cfgMepMarges', 'cfgMepCouleur', 'cfgMepLogoPos',
