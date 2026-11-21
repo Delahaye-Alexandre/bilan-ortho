@@ -7,6 +7,13 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Changer de modèle d'embeddings n'efface plus vos bilans de référence.**
+  Le style cessait de s'appliquer sans explication, puis le premier import
+  supprimait toute la base. Les références sont désormais réindexées avec le
+  nouveau modèle, et l'analyse dit pourquoi le style n'a pas été appliqué.
+- **Messages d'erreur de saisie en français** (« Seuil de fragilité : la
+  valeur doit être inférieure ou égale à 0 ») au lieu du message technique en
+  anglais.
 - **Export Word** : format A4 (il sortait au format américain « Letter », le
   PDF en A4) ; un logo en bandeau ne déborde plus de la page ; un caractère
   invisible collé depuis Word ou un PDF (retour à la ligne manuel, saut de

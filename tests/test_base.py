@@ -449,9 +449,18 @@ def test_rag_ajout_recherche_suppression(con):
 def test_rag_changement_de_modele_invalide_l_index(con):
     rag.add_reference(con, None, "import", "", "global", "T", "Texte.", fake_vec("Texte."))
     assert len(rag.liste(con)) == 1
-    # dimension différente -> l'index et les références sont réinitialisés
-    rag._ensure_table(con, 8)
-    assert rag.liste(con) == []
+    # Dimension différente : les références ne sont plus effacées en silence.
+    import pytest
+
+    with pytest.raises(rag.IndexPerime):
+        rag._ensure_table(con, 8)
+    assert len(rag.liste(con)) == 1 and rag.index_perime(con, 8)
+    # Elles sont réindexées avec le nouveau modèle, textes intacts.
+    rid = rag.textes_a_reindexer(con)[0][0]
+    assert rag.reindexer(con, {rid: [0.5] * 8}, "nouveau-modele") == 1
+    assert not rag.index_perime(con, 8, "nouveau-modele")
+    assert rag.index_perime(con, 8, "encore-un-autre")
+    assert rag.retrieve(con, [0.5] * 8)[0]["texte"] == "Texte."
 
 
 def test_rag_vide_sans_table(con):

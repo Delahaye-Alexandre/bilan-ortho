@@ -1794,3 +1794,47 @@ def test_rubrique_a_cle_inhabituelle_enregistrable_et_controles_filtres(client):
     b = client.get(f"/api/bilans/{bid}").json()
     assert all(s["contenu"] == "Ligne 1\nLigne 2\n" for s in b["sections"])
     assert client.get(f"/api/bilans/{bid}/export?format=docx").status_code == 200
+
+
+def test_changement_de_modele_d_embeddings_reindexe_au_lieu_d_effacer(client, monkeypatch):
+    """Changer de modèle d'embeddings coupait le style sans dire pourquoi, puis
+    le premier import effaçait toute la base de références."""
+    import json
+
+    async def emb16(text, cfg):
+        return [0.1] * 16
+
+    async def emb24(text, cfg):
+        return [0.2] * 24
+
+    async def faux_modele(*args, **kwargs):
+        return json.dumps({"updates": [], "questions": []})
+
+    monkeypatch.setattr(llm, "chat_json", faux_modele)
+    monkeypatch.setattr(rag, "embed", emb16)
+    for nom in ("a.txt", "b.txt"):
+        assert client.post("/api/references", files={"file": (nom, BILAN_TXT.encode())}).status_code == 200
+    avant = len(client.get("/api/references").json())
+    assert avant >= 2
+    monkeypatch.setattr(rag, "embed", emb24)
+    bid = client.post("/api/bilans", json={"domaines": []}).json()["id"]
+    res = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."}).json()
+    assert "autre modèle d'embeddings" in res["style_indisponible"]
+    r = client.post("/api/references", files={"file": ("c.txt", BILAN_TXT.encode())}).json()
+    assert r["reindexes"] == avant
+    assert len(client.get("/api/references").json()) == avant + r["n"]
+    res = client.post(f"/api/bilans/{bid}/structure", json={"transcription": "Texte."}).json()
+    assert res["style_indisponible"] == ""
+
+
+def test_erreurs_de_saisie_en_francais(client):
+    """« Input should be less than or equal to 0 » et la clé interne étaient
+    montrés tels quels à l'orthophoniste."""
+    r = client.put("/api/config", json={"overrides": {"seuils": {"fragilite_et": 1.5}}})
+    assert r.status_code == 422
+    assert r.json()["detail"] == (
+        "Seuil de fragilité (écarts-types) : la valeur doit être inférieure ou égale à 0.0."
+    ) or r.json()["detail"].startswith("Seuil de fragilité (écarts-types) : la valeur doit être inférieure")
+    r = client.put("/api/config", json={"overrides": {"seuils": {"severe_et": -1.0, "pathologique_et": -1.5}}})
+    assert r.status_code == 422 and "Value error" not in r.json()["detail"]
+    assert "Input should" not in r.json()["detail"] and "overrides" not in r.json()["detail"]

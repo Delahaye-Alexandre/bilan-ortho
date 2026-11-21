@@ -59,6 +59,67 @@ async def embed(text: str, cfg: dict) -> list[float]:
     return emb
 
 
+class IndexPerime(RuntimeError):
+    """Les références existantes ont été indexées avec un autre modèle."""
+
+
+def index_perime(con, dim: int | None = None, modele: str = "") -> bool:
+    """Les vecteurs en base viennent-ils d'un autre modèle que le modèle courant ?
+
+    Dimension différente, ou — à dimension égale — nom de modèle différent :
+    comparer des vecteurs de deux espaces donne des extraits arbitraires, sans
+    aucune erreur."""
+    if not con.execute("SELECT COUNT(*) FROM bilan_reference").fetchone()[0]:
+        return False
+    meta = dict(con.execute(
+        "SELECT key, value FROM meta WHERE key IN ('embed_dim', 'embed_modele')"
+    ).fetchall())
+    if dim is not None and meta.get("embed_dim") and int(meta["embed_dim"]) != dim:
+        return True
+    return bool(modele and meta.get("embed_modele") and meta["embed_modele"] != modele)
+
+
+def noter_modele(con, modele: str) -> None:
+    con.execute(
+        "INSERT INTO meta(key,value) VALUES('embed_modele',?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (modele,),
+    )
+
+
+def textes_a_reindexer(con) -> list[tuple[int, str]]:
+    return [(r[0], r[1]) for r in con.execute("SELECT id, texte FROM bilan_reference ORDER BY id")]
+
+
+def reindexer(con, vecteurs: dict[int, list[float]], modele: str) -> int:
+    """Remplace tous les vecteurs par ceux du modèle courant (textes inchangés).
+    Une référence disparue entre-temps est ignorée ; une référence sans
+    vecteur (ajoutée entre-temps) est retirée de l'index, pas de la base."""
+    if not vecteurs:
+        return 0
+    dim = len(next(iter(vecteurs.values())))
+    con.execute("DROP TABLE IF EXISTS reference_embedding")
+    con.execute(
+        f"CREATE VIRTUAL TABLE reference_embedding USING vec0(embedding float[{dim}])"
+    )
+    con.execute(
+        "INSERT INTO meta(key,value) VALUES('embed_dim',?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (str(dim),),
+    )
+    presents = {r[0] for r in con.execute("SELECT id FROM bilan_reference")}
+    n = 0
+    for rid, emb in vecteurs.items():
+        if rid in presents:
+            con.execute(
+                "INSERT INTO reference_embedding(rowid, embedding) VALUES(?,?)",
+                (rid, sqlite_vec.serialize_float32(emb)),
+            )
+            n += 1
+    noter_modele(con, modele)
+    return n
+
+
 def _ensure_table(con, dim: int) -> None:
     """Crée reference_embedding à la bonne dimension (recrée si le modèle change)."""
     row = con.execute("SELECT value FROM meta WHERE key='embed_dim'").fetchone()
@@ -66,9 +127,19 @@ def _ensure_table(con, dim: int) -> None:
     if cur_dim == dim:
         return
     if cur_dim is not None:
-        # Changement de modèle d'embeddings : les vecteurs existants sont invalidés.
+        # Changement de modèle d'embeddings : les vecteurs existants ne valent
+        # plus rien, mais les TEXTES des références, eux, sont toujours là. Ils
+        # étaient effacés ici sans un mot, au premier import suivant — toute la
+        # base de style de l'orthophoniste, dont les originaux ont souvent été
+        # jetés. Les routes d'import les réindexent d'abord (cf. reindexer) ;
+        # si des références subsistent à ce stade, on refuse plutôt que de
+        # détruire.
+        if con.execute("SELECT COUNT(*) FROM bilan_reference").fetchone()[0]:
+            raise IndexPerime(
+                "Vos bilans de référence ont été indexés avec un autre modèle "
+                "d'embeddings : ils doivent être réindexés avant tout nouvel import."
+            )
         con.execute("DROP TABLE IF EXISTS reference_embedding")
-        con.execute("DELETE FROM bilan_reference")
     con.execute(
         f"CREATE VIRTUAL TABLE IF NOT EXISTS reference_embedding "
         f"USING vec0(embedding float[{dim}])"

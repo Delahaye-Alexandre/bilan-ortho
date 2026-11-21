@@ -20,6 +20,7 @@ import httpx
 import sqlcipher3
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     FileResponse,
     JSONResponse,
@@ -99,6 +100,72 @@ async def coffre_verrouille_handler(request, exc: security.CoffreVerrouille):
     (course multi-onglets via POST /api/lock) : 423 sur TOUTES les routes,
     plutôt qu'un 500 opaque — l'interface ré-affiche l'écran de verrouillage."""
     return JSONResponse(status_code=423, content={"detail": "Application verrouillée."})
+
+
+# Libellés des réglages que l'on peut saisir de travers, pour nommer le champ
+# dans les mots de l'écran plutôt que par sa clé interne.
+_LIBELLES_CHAMPS = {
+    "seuils.fragilite_et": "seuil de fragilité (écarts-types)",
+    "seuils.pathologique_et": "seuil pathologique (écarts-types)",
+    "seuils.severe_et": "seuil de déficit sévère (écarts-types)",
+    "seuils.fragilite_percentile": "seuil de fragilité (percentile)",
+    "seuils.pathologique_percentile": "seuil pathologique (percentile)",
+    "seuils.severe_percentile": "seuil de déficit sévère (percentile)",
+    "cotation.valeur_amo": "valeur de la lettre-clé AMO",
+    "llm.temperature": "créativité du modèle",
+    "rgpd.verrouillage_inactivite_minutes": "délai de verrouillage",
+    "rgpd.conservation_jours": "durée de conservation",
+    "rgpd.dictee_max_minutes": "durée maximale d'une dictée",
+    "sauvegarde.retention": "nombre de sauvegardes conservées",
+    "date_bilan": "date du bilan",
+    "date_naissance": "date de naissance",
+}
+
+
+def _message_validation(erreur: dict) -> str:
+    """Une erreur de validation dite en français, sans clé interne."""
+    type_, ctx, msg = erreur.get("type", ""), erreur.get("ctx") or {}, erreur.get("msg", "")
+    if msg.startswith("Value error, "):
+        texte = msg[len("Value error, "):]  # messages maison, déjà en français
+    elif type_ == "less_than_equal":
+        texte = f"la valeur doit être inférieure ou égale à {ctx.get('le')}"
+    elif type_ == "greater_than_equal":
+        texte = f"la valeur doit être supérieure ou égale à {ctx.get('ge')}"
+    elif type_ == "less_than":
+        texte = f"la valeur doit être inférieure à {ctx.get('lt')}"
+    elif type_ == "greater_than":
+        texte = f"la valeur doit être supérieure à {ctx.get('gt')}"
+    elif type_ == "missing":
+        texte = "une information obligatoire manque"
+    elif type_ in ("string_too_long", "too_long"):
+        texte = "le texte ou la liste est trop long"
+    elif type_ in ("enum", "literal_error"):
+        texte = "ce choix n'existe pas"
+    elif "parsing" in type_ or type_.endswith("_type"):
+        texte = "le format de la valeur n'est pas celui attendu (un nombre ?)"
+    else:
+        texte = "la valeur n'est pas acceptée"
+    chemin = ".".join(str(x) for x in erreur.get("loc", ())[1:] if x != "overrides")
+    libelle = _LIBELLES_CHAMPS.get(chemin, "")
+    if libelle:
+        return f"{libelle[:1].upper()}{libelle[1:]} : {texte}."
+    return f"Saisie refusée : {texte}."
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_handler(request, exc: RequestValidationError):
+    """Les erreurs de saisie s'affichaient en anglais avec les clés internes
+    (« overrides.seuils.fragilite_et : Input should be less than or equal to
+    0 ») : l'interface reçoit une phrase, les outils gardent le détail brut."""
+    erreurs = exc.errors()
+    detail = _message_validation(erreurs[0]) if erreurs else "Saisie refusée."
+    return JSONResponse(
+        status_code=422,
+        content={"detail": detail, "erreurs": [
+            {"champ": ".".join(str(x) for x in e.get("loc", ())), "type": e.get("type", "")}
+            for e in erreurs
+        ]},
+    )
 
 
 @app.exception_handler(db.CoffreTropRecent)
@@ -1182,8 +1249,15 @@ async def _structurer(bilan_id: int, req: StructureRequest, b: dict, cfg: dict) 
         try:
             emb = await rag.embed(texte_tour, cfg)
             with security.transaction() as con:
-                refs = rag.retrieve(con, emb, domaine=dom, k=k)
+                perime = rag.index_perime(con, len(emb), cfg["embeddings"]["model"])
+                refs = [] if perime else rag.retrieve(con, emb, domaine=dom, k=k)
             style = [r["texte"][:800] for r in refs]
+            if perime:
+                style_indisponible = (
+                    "ils ont été indexés avec un autre modèle d'embeddings. Importez "
+                    "un document (ou rechargez les bilans d'exemple) : tous seront "
+                    "réindexés ; ou revenez au modèle précédent dans ⚙️ Paramètres."
+                )
         except security.CoffreVerrouille:
             raise  # géré globalement en 423
         except rag.EmbeddingUnavailable as exc:
@@ -1559,6 +1633,24 @@ def _type_fichier(nom: str | None) -> str:
     suffixe = Path(nom or "").suffix.lower()
     return f"fichier {suffixe}" if suffixe else "fichier sans extension"
 
+async def _reindexer_si_modele_change(cfg: dict, embs: list) -> int:
+    """Réindexe les références existantes quand le modèle d'embeddings a changé
+    depuis leur import. Les embeddings se calculent hors verrou, comme à
+    l'import. Rend le nombre de références réindexées."""
+    if not embs:
+        return 0
+    modele = cfg["embeddings"]["model"]
+    with security.transaction() as con:
+        if not rag.index_perime(con, len(embs[0]), modele):
+            return 0
+        textes = rag.textes_a_reindexer(con)
+    vecteurs = {rid: await rag.embed(texte, cfg) for rid, texte in textes}
+    with security.transaction() as con:
+        n = rag.reindexer(con, vecteurs, modele)
+        security.audit("reindexation", "reference", None, f"{n} extraits · modèle {modele}")
+    return n
+
+
 @app.post("/api/references", dependencies=[Depends(require_unlock), Depends(operation_longue)])
 async def import_reference(
     file: UploadFile = File(...), domaine: str = Form(""),
@@ -1599,12 +1691,14 @@ async def import_reference(
     #    continuent de répondre pendant l'indexation.
     try:
         embs = [await rag.embed(contenu, cfg) for _, _, contenu in nettoyes]
+        reindexes = await _reindexer_si_modele_change(cfg, embs)
     except rag.EmbeddingUnavailable as exc:
         raise HTTPException(503, str(exc))
     # 3. Insertion rapide sous verrou.
     with security.transaction() as con:
-        if patient_id and not patient.get(con, patient_id):
+        if patient_id is not None and not patient.get(con, patient_id):
             raise HTTPException(404, "Patient introuvable.")
+        rag.noter_modele(con, cfg["embeddings"]["model"])
         for (cle, titre, contenu), emb in zip(nettoyes, embs):
             rag.add_reference(
                 con, None, "import", domaine, cle, titre, contenu, emb,
@@ -1620,6 +1714,9 @@ async def import_reference(
         )
     return {
         "n": len(nettoyes),
+        # Références existantes réindexées parce que le modèle d'embeddings a
+        # changé (elles étaient jusqu'ici effacées sans un mot).
+        "reindexes": reindexes,
         "sections": [c[0] for c in nettoyes],
         "filename": file.filename or "",
         # Rendus à l'interface pour que le praticien sache ce qui a été fait de
@@ -1671,9 +1768,11 @@ async def import_pack() -> dict:
     extraits = await run_in_threadpool(_decouper_pack, fichiers)
     try:
         embs = [await rag.embed(contenu, cfg) for _, _, _, contenu in extraits]
+        await _reindexer_si_modele_change(cfg, embs)
     except rag.EmbeddingUnavailable as exc:
         raise HTTPException(503, str(exc))
     with security.transaction() as con:
+        rag.noter_modele(con, cfg["embeddings"]["model"])
         rag.delete_par_source(con, "fictif")
         for (domaine, cle, titre, contenu), emb in zip(extraits, embs):
             rag.add_reference(con, None, "fictif", domaine, cle, titre, contenu, emb)
