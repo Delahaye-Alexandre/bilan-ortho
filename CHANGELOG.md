@@ -7,6 +7,13 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+- **Les consignes recopiées par le modèle ne polluent plus les rubriques.** Le
+  modèle par défaut commençait une rubrique sur trois par la consigne qu'on
+  lui donne (« Histoire rapportée par le patient ou sa famille : grossesse et
+  naissance, étapes du développement… : ») avant le vrai contenu, à effacer à
+  la main. Ce préambule est retiré automatiquement ; le contenu n'est jamais
+  touché.
+
 ## 1.15.1 — 2026-11-21
 
 - **L'analyse fonctionne de nouveau avec le modèle compact (qwen3.5:4b)**, celui

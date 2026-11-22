@@ -1521,3 +1521,31 @@ def test_reponse_du_modele_dans_un_bloc_de_code_est_lue():
         llm._parse_structure("désolé, je ne peux pas")
     with pytest.raises(llm.ReponseIllisible):
         llm._parse_structure('{"updates": [')
+
+
+def test_repere_de_rubrique_recite_par_le_modele_est_retire():
+    """qwen2.5:7b recopiait en tête de texte le repère fourni dans le prompt
+    (9 textes sur 26 mesurés) : à effacer à la main dans chaque rubrique."""
+    from app import prompts
+
+    f = lambda cle, t: prompts.sans_repere_recite(t, prompts.aide_rubrique(cle))  # noqa: E731
+    assert f("anamnese", (
+        "Histoire rapportée par le patient ou sa famille : grossesse et naissance, étapes du "
+        "développement (marche, premiers mots, association de mots), antécédents médicaux et ORL, "
+        "audition, vision, antécédents familiaux, prises en charge antérieures, plainte actuelle "
+        "et son retentissement au quotidien (évitement, refus, fatigue, souffrance) : Pas "
+        "d'antécédents ORL.")) == "Pas d'antécédents ORL."
+    assert f("projet", "Suites proposées : rééducation orthophonique, deux séances par semaine.") == (
+        "Rééducation orthophonique, deux séances par semaine.")
+    assert f("observations", (
+        "Comportement pendant la passation : contact, coopération, attention, fatigabilité, "
+        "appétence, communication spontanée : Léa est souriante.")) == "Léa est souriante."
+    assert f("analyse", (
+        "Interprétation clinique croisée : ce qui est déficitaire, ce qui est préservé, "
+        "hypothèses explicatives : Léa présente une lecture lente.")) == "Léa présente une lecture lente."
+    # Un contenu légitime qui ressemble au repère n'est jamais touché.
+    for cle, texte in [("projet", "Suites à donner au bilan : à discuter."),
+                       ("anamnese", "Histoire familiale chargée."),
+                       ("observations", "Comportement pendant la passation correct."),
+                       ("diagnostic", "Trouble spécifique du langage écrit.")]:
+        assert f(cle, texte) == texte

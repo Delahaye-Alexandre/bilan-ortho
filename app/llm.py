@@ -454,7 +454,13 @@ async def structure(
     for u in result["updates"]:
         cle = resoudre_cle(u["section"], sections)
         if cle:
-            placees.append({**u, "section": cle})
+            # Le repère de la rubrique, recopié en tête par le modèle, est retiré.
+            texte = prompts.sans_repere_recite(
+                u["texte"], prompts.aide_rubrique(cle, _aides_trame(cfg))
+            )
+            if not texte.strip():
+                continue  # le modèle n'avait rendu que le repère
+            placees.append({**u, "section": cle, "texte": texte})
         else:
             non_placees.append(u["section"] or "rubrique non précisée")
             # Le texte lui-même est rendu : seul le nom de la rubrique

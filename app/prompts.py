@@ -4,6 +4,7 @@ Le LLM répartit une dictée libre (et les réponses aux questions de
 clarification) dans les rubriques du bilan. Style attendu : clinique, sobre,
 en français, sans invention.
 """
+import re
 
 # --- Structuration d'une dictée libre + questions de clarification ----------
 
@@ -159,6 +160,55 @@ MISE_EN_FORME_INTERDITE = (
     "N'utilise AUCUNE mise en forme : ni astérisques, ni balises, ni listes à "
     "puces — du texte brut uniquement."
 )
+
+
+def _debut(texte: str, modele: str):
+    """Correspondance de ``modele`` en tête de ``texte`` (casse et espaces libres)."""
+    mots = modele.split()
+    if not mots:
+        return None
+    # Ponctuation de fin de mot libre : le modèle récite « hypothèses
+    # explicatives : » là où le repère écrit « hypothèses explicatives, ».
+    motif = r"\s+".join(re.escape(m.rstrip(",;")) + "[,;]?" for m in mots)
+    return re.match(r"\s*" + motif, texte, re.I)
+
+
+def sans_repere_recite(texte: str, aide: str) -> str:
+    """Le texte proposé, sans le repère de la rubrique que le modèle a recopié
+    en tête.
+
+    Mesuré le 2026-11-21 sur qwen2.5:7b : 9 textes sur 26 commençaient par le
+    repère fourni dans le prompt — « Histoire rapportée par le patient ou sa
+    famille : grossesse et naissance, étapes du développement… : » puis
+    seulement le contenu —, à effacer à la main dans chaque rubrique. Le
+    repère entier, ou son étiquette suivie de deux-points (« Suites proposées :
+    »), est retiré ; le contenu n'est jamais touché."""
+    if not aide or not texte:
+        return texte
+    t = texte.lstrip()
+    separateurs = " :.—–-\n\t"
+    m = _debut(t, aide)
+    if m:
+        reste = t[m.end():].lstrip(separateurs)
+        return reste[:1].upper() + reste[1:]
+    etiquette = re.split(r"\s[:—]\s", aide, maxsplit=1)[0]
+    if etiquette == aide or len(etiquette) < 12:
+        return texte
+    m = _debut(t, etiquette)
+    if not m or not re.match(r"\s*[:—]", t[m.end():]):
+        return texte
+    reste = t[m.end():].lstrip(" :—")
+    # La suite du repère est souvent récitée elle aussi, en partie (le modèle
+    # s'arrête avant « ; aucun score ») : on retire le plus long début commun,
+    # dès trois mots — et seulement s'il est suivi de deux-points, signe qu'il
+    # s'agit bien d'une étiquette et non du contenu.
+    mots = aide[len(etiquette):].lstrip(" :—").split()
+    for k in range(len(mots), 2, -1):
+        m2 = _debut(reste, " ".join(mots[:k]))
+        if m2 and re.match(r"\s*:" if k < 5 else r"\s*[:.]", reste[m2.end():]):
+            reste = reste[m2.end():].lstrip(separateurs)
+            break
+    return reste[:1].upper() + reste[1:]
 
 
 def aide_rubrique(cle: str, aides: dict[str, str] | None = None) -> str:
