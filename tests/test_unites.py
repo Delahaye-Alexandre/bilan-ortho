@@ -1549,3 +1549,19 @@ def test_repere_de_rubrique_recite_par_le_modele_est_retire():
                        ("observations", "Comportement pendant la passation correct."),
                        ("diagnostic", "Trouble spécifique du langage écrit.")]:
         assert f(cle, texte) == texte
+
+
+def test_diagnostic_redige_sans_conclusion_dictee_est_signale():
+    """Sur « … pour terminer le bilan avant de conclure », le modèle remplissait
+    quand même le diagnostic (« Hypophonémie… ») sans aucun signalement."""
+    from app import verif_texte
+
+    sans = ["Hugo simplifie les groupes consonantiques. Je n'ai pas encore coté la phonologie. "
+            "Je propose de le revoir dans trois semaines pour terminer le bilan avant de conclure."]
+    msgs = verif_texte.signalement_diagnostic("Hypophonémie avec simplification des groupes.", sans)
+    assert len(msgs) == 1 and "aucune conclusion n'a été dictée" in msgs[0]
+    for avec in ("Je conclus à un trouble spécifique du langage écrit.",
+                 "C'est en faveur d'un retard de parole.", "Il s'agit d'un bégaiement, à mon sens.",
+                 "Tableau de dysphasie.", "Diagnostic : dyslexie."):
+        assert verif_texte.signalement_diagnostic("Trouble du langage.", [avec]) == [], avec
+    assert verif_texte.signalement_diagnostic("", sans) == []

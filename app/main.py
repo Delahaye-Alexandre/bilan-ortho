@@ -1398,6 +1398,12 @@ async def _structurer(
             + verif_texte.signalements_redite(
                 clair, texte_riche.en_clair(contenus.get(u["section"], ""), numeroter=False)
             )
+            # Le diagnostic est la seule rubrique que l'outil s'interdit de
+            # rédiger de lui-même : sans conclusion dictée, il est signalé.
+            + (
+                verif_texte.signalement_diagnostic(clair, sources_claires)
+                if u["section"] == "diagnostic" else []
+            )
         )
         if msgs:
             rubriques_a_verifier.append({

@@ -211,3 +211,18 @@ Cible : production complète, générique & configurable, Python/FastAPI local, 
   - **Vérifié** : 469 tests, ruff, sept suites UI ; passe réelle sur coffre jetable (27 contrôles par l'API avec vraie dictée et Ollama, 11 dans Chromium).
   - **Reste** (détail hors dépôt) : numérotation des listes interrompues, PDF scanné à mince couche de texte, gabarit Word à plusieurs sections, relance d'analyse qui double le contenu, deux onglets sur la même rubrique, fermeture des Paramètres sans confirmation, accessibilité (noms des boutons ✕, focus rendu, contraste des bordures), installeur (dossier supprimé avant copie, à éprouver sur la CI Windows).
 
+- [x] **Suite de la relecture (2026-11-21 et 22) — versions 1.15.0, 1.15.1 et 1.15.2** *(publiées ; 1.15.2 à taguer)*
+  - 1.15.0 : les dix lots de la relecture, relance d'analyse qui remplace, modèle gardé en mémoire et préchargé, numérotation des listes, Paramètres protégés.
+  - 1.15.1 : la réponse du modèle compact (qwen3.5:4b) était rejetée à chaque analyse depuis la 1.15.0 — corrigé ; relecture guidée (barre, « aller à la suivante », Ctrl+Entrée) ; protection entre deux fenêtres ; import des références.
+  - 1.15.2 : consignes recopiées par le modèle retirées ; diagnostic non dicté signalé.
+  - **Mesure des modèles** (deux dictées, 3 à 6 passages chacun, poste i7-12700H + RTX 3050 Ti 4 Go, machine parfois chargée) :
+    | Modèle | Dictée 1 (langage écrit) | Dictée 2 (langage oral, sans conclusion) | Fidélité |
+    |---|---|---|---|
+    | qwen2.5:7b (défaut du code) | 128-170 s, 6-7 rubriques, un blocage à 600 s | 89-148 s, 5-7 rubriques | recopie ses consignes (corrigé) ; diagnostic inventé 2 fois sur 3 sur la dictée 2 |
+    | qwen3.5:4b (installation, postes modestes) | 84-201 s, 5-7 rubriques | 122-132 s, 6 rubriques | ajoute « dyslexie », « visuo-spatial » sur la dictée 1 ; aucun diagnostic inventé sur la 2 |
+    | qwen3.5:9b (installation, 16 Go et plus) | 235-412 s, 6-7 rubriques | 214-229 s, 4-6 rubriques | le plus sobre ; diagnostic non dicté 1 fois sur 3 |
+    | gemma3:4b | 105-111 s, 6 rubriques | 32-69 s, 6 rubriques et un passage tronqué | diagnostic inventé 2 fois sur 3 sur la dictée 2 |
+    | qwen3:8b | 239-280 s, 6 rubriques | non mesuré | fidèle sur la dictée 1 |
+    | gemma4:e4b | erreur 500 d'Ollama à chaque passage | — | cause non cherchée |
+  - **Conclusion** : aucun modèle n'est assez nettement meilleur pour changer le défaut ni la proposition d'installation ; tous écrivent parfois un diagnostic qui n'a pas été dicté, d'où le garde-fou de la 1.15.2. À refaire sur de vraies dictées d'orthophonistes avant de trancher.
+

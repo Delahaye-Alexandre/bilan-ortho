@@ -7,6 +7,15 @@ installeur Windows publié dans les releases.
 
 ## Non publié
 
+## 1.15.2 — 2026-11-22
+
+- **Un diagnostic que vous n'avez pas dicté est signalé.** Sur une dictée qui
+  se terminait par « je le revois dans trois semaines avant de conclure », le
+  modèle remplissait quand même la rubrique « Diagnostic », deux fois sur
+  trois, parfois avec un terme inventé. Quand aucune formule de conclusion ne
+  figure dans la dictée, la rubrique porte désormais la mention « aucune
+  conclusion n'a été dictée : ce diagnostic est une proposition du modèle ».
+  Rien n'est retiré : vous tranchez.
 - **Les consignes recopiées par le modèle ne polluent plus les rubriques.** Le
   modèle par défaut commençait une rubrique sur trois par la consigne qu'on
   lui donne (« Histoire rapportée par le patient ou sa famille : grossesse et

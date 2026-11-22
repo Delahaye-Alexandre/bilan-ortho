@@ -113,3 +113,36 @@ def signalements_redite(propose: str, existant: str) -> list[str]:
         "texte déjà présent pour l'essentiel dans la rubrique : vérifiez qu'il "
         "ne fait pas doublon"
     ]
+
+
+# --- Diagnostic sans conclusion dictée ----------------------------------------
+# Formules par lesquelles un clinicien énonce sa conclusion. Volontairement
+# étroit : « avant de conclure » ou « je n'ai pas encore coté » n'en sont pas.
+_CONCLUSION_DICTEE = re.compile(
+    r"\b(je conclus|je conclue|nous concluons|en conclusion|ma conclusion|diagnostic|"
+    r"je retiens|je pose|je propose le diagnostic|en faveur d|il s agit d un|"
+    r"tableau de|evocateur d|compatible avec|trouble|retard de|dys[a-z]{4,})\b"
+)
+
+
+def signalement_diagnostic(propose: str, sources: Iterable[str]) -> list[str]:
+    """Signale un diagnostic rédigé alors qu'aucune conclusion n'a été dictée.
+
+    Mesuré le 2026-11-22 sur une dictée qui se terminait par « je propose de
+    revoir Hugo dans trois semaines pour terminer le bilan avant de conclure » :
+    le modèle par défaut a tout de même rempli la rubrique « Diagnostic » deux
+    fois sur trois (« Hypophonémie avec simplification… », terme inventé), et
+    les autres modèles essayés aussi. Le texte reprenant des mots de la dictée,
+    le contrôle d'adossement ne voyait rien. Or c'est la seule rubrique que
+    l'application s'interdit de rédiger d'elle-même : sans formule de
+    conclusion dans ce qui a été dicté, son contenu est signalé. Rien n'est
+    retiré — l'orthophoniste tranche."""
+    if not (propose or "").strip():
+        return []
+    dicte = _sans_accents(" ".join(s or "" for s in sources).lower()).replace("'", " ").replace("\u2019", " ")
+    if _CONCLUSION_DICTEE.search(dicte):
+        return []
+    return [
+        "aucune conclusion n'a été dictée : ce diagnostic est une proposition du "
+        "modèle, pas la vôtre — vérifiez-le ou effacez-le"
+    ]
