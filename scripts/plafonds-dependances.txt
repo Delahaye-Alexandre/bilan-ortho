@@ -18,7 +18,7 @@
 # sécurité n'impose cette montée.
 # À lever après un essai réel du téléchargement du modèle dans l'application
 # installée sous Windows (poste derrière un proxy ou un antivirus compris).
-huggingface-hub<2
+huggingface-hub<3
 
 # 2026-11-20 — PyAV 19 (octobre 2026) embarque un FFmpeg plus récent et exige
 # Python 3.12 : c'est lui qui décode chaque dictée (WebM/Opus du navigateur).

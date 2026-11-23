@@ -74,7 +74,7 @@ httpx==0.28.1
     # via
     #   -r requirements.txt
     #   huggingface-hub
-huggingface-hub==1.33.0
+huggingface-hub==2.4.0
     # via
     #   -c scripts/plafonds-dependances.txt
     #   faster-whisper
