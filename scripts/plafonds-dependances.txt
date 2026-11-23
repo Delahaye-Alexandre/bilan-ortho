@@ -32,4 +32,4 @@ av<19
 # À lever dès que la série 7 est stabilisée, ou à la première alerte que la
 # série 6 ne corrige pas (pypdf en publie plusieurs par mois) ; contrôle :
 # l'import d'un PDF natif et d'un PDF scanné (tests/test_api.py, test OCR).
-pypdf<7
+pypdf<8

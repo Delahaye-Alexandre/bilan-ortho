@@ -115,7 +115,7 @@ pydantic==2.14.3
     #   fastapi
 pydantic-core==2.50.4
     # via pydantic
-pypdf==6.21.4
+pypdf==7.1.0
     # via
     #   -c scripts/plafonds-dependances.txt
     #   -r requirements.txt
