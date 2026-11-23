@@ -25,7 +25,7 @@ huggingface-hub<2
 # Aucune alerte ne l'impose, et la matrice de tests couvre encore Python 3.11.
 # À lever après une dictée réelle (micro du navigateur, pas un fichier WAV)
 # dans l'application installée sous Windows.
-av<19
+av<20
 
 # 2026-11-20 — pypdf 7 est sorti le 2026-11-06 et a reçu quatre versions en
 # douze jours. La 6.21.4 corrige toutes les alertes connues à cette date.
