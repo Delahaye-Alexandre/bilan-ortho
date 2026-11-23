@@ -50,7 +50,7 @@ cryptography==50.0.2
     # via -r requirements.txt
 ctranslate2==4.9.0
     # via faster-whisper
-fastapi==0.162.7
+fastapi==0.163.1
     # via -r requirements.txt
 faster-whisper==1.2.1
     # via -r requirements.txt
@@ -89,7 +89,7 @@ numpy==2.4.6 ; python_full_version < '3.12'
     # via
     #   ctranslate2
     #   onnxruntime
-numpy==2.5.4 ; python_full_version >= '3.12'
+numpy==2.5.5 ; python_full_version >= '3.12'
     # via
     #   ctranslate2
     #   onnxruntime
